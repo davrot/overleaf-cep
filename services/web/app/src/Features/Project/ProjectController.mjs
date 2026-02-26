@@ -784,7 +784,7 @@ const _ProjectController = {
       }
 
       const isAdminOrTemplateOwner =
-        hasAdminAccess(user) || Settings.templates?.nonAdminCanManage
+        hasAdminAccess(user) || Settings.templates?.nonAdminCanManage || Settings.templates?.user_id === userId
       const showTemplatesServerPro =
         Features.hasFeature('templates-server-pro') && isAdminOrTemplateOwner
 
