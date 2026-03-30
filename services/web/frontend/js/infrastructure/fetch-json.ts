@@ -251,3 +251,10 @@ export function isRateLimited(error?: Error | FetchError | any) {
   }
   return false
 }
+
+export function isForbidden(error?: Error | FetchError | any) {
+  if (error && error instanceof FetchError) {
+    return error.response?.status === 403
+  }
+  return false
+}

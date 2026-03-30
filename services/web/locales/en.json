@@ -502,6 +502,8 @@
   "could_not_connect_to_collaboration_server": "Could not connect to collaboration server",
   "could_not_connect_to_websocket_server": "Could not connect to WebSocket server",
   "could_not_load_translations": "Could not load translations",
+  "could_not_save_reference_to_bib_file": "The reference could not be saved to a .bib file.",
+  "could_not_save_reference_to_bib_file_forbidden": "The reference could not be saved to a .bib file. Ask a collaborator with edit access to add it.",
   "country": "Country",
   "country_flag": "__country__ country flag",
   "coupon_code": "Coupon code",
