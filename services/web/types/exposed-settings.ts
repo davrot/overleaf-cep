@@ -55,4 +55,5 @@ export type ExposedSettings = {
   githubSyncEnabled: boolean
   zoteroEnabled: boolean
   enablePandocConversions: boolean
+  llmAllowUserSettings?: boolean
 }

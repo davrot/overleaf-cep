@@ -59,7 +59,7 @@ async function loadManifest() {
       webpackManifest = {}
   }
 }
-function loadManifestFromWebpackDevServer(done = function () {}) {
+function loadManifestFromWebpackDevServer(done = function () { }) {
   fetchJson(new URL(`/manifest.json`, Settings.apis.webpack.url), {
     headers: {
       Host: 'localhost',
@@ -422,6 +422,8 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
       enablePandocConversions: Settings.enablePandocConversions,
       mixpanelLabsToken:
         Settings.labs?.enable && Settings.analytics?.mixpanel?.labsToken,
+      llmAllowUserSettings: Settings.llm?.allowUserSettings ?? false,
+      llmEnabled: Settings.llm?.enabled ?? false,
     }
     next()
   })
