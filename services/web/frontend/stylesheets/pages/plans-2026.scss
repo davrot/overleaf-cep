@@ -50,6 +50,17 @@
       padding-block-end: var(--spacing-07);
       position: relative;
     }
+
+    .plans-feature-table-section .show-for-plan-period-annual,
+    .plans-feature-table-col-header-inner .show-for-plan-period-annual {
+      display: block;
+    }
+
+    @include media-breakpoint-down(xl) {
+      .plans-feature-table-col-header-inner .show-for-plan-period-annual {
+        display: none;
+      }
+    }
   }
 
   &[data-ol-current-plan-period='monthly'] {
@@ -67,6 +78,17 @@
 
     .plans-cards-section .plans-new-group-member-picker {
       display: none;
+    }
+
+    .plans-feature-table-section .show-for-plan-period-monthly,
+    .plans-feature-table-col-header-inner .show-for-plan-period-monthly {
+      display: block;
+    }
+
+    @include media-breakpoint-down(xl) {
+      .plans-feature-table-col-header-inner .show-for-plan-period-monthly {
+        display: none;
+      }
     }
   }
 
@@ -451,6 +473,312 @@
     padding-bottom: 3px;
     vertical-align: middle;
   }
+
+  // ─── Organization logos ────────────────────────────────────────────────────────
+
+  .plans-and-pricing-section .plans-new-organizations {
+    padding-block: var(--spacing-13);
+
+    .plans-new-organizations-logo {
+      margin-top: var(--spacing-06);
+    }
+  }
+
+  // ─── Feature comparison table ──────────────────────────────────────────────
+
+  .plans-feature-table-section {
+    padding-top: var(--spacing-15);
+  }
+
+  .plans-feature-table-section .only-show-for-specific-plan-period {
+    display: none;
+  }
+
+  .plans-feature-table-heading {
+    color: var(--content-primary);
+    font-size: var(--font-size-08);
+    font-weight: 600;
+    margin-bottom: var(--spacing-04);
+    text-align: center;
+  }
+
+  .plans-feature-table-subheading {
+    color: var(--content-secondary);
+    font-size: var(--font-size-05);
+    margin-bottom: var(--spacing-10);
+    text-align: center;
+  }
+
+  .plans-feature-table-scroll-wrapper {
+    padding-top: var(--spacing-04);
+
+    @include media-breakpoint-down(lg) {
+      overflow-x: auto;
+    }
+  }
+
+  // Below xl the plan cards already show prices and CTAs — the table
+  // just needs plan names so users can compare features.
+  @include media-breakpoint-down(xl) {
+    .plans-feature-table-most-popular-badge {
+      display: none;
+    }
+
+    .plans-feature-table-col-header-inner .plans-cta {
+      display: none;
+    }
+
+    .plans-feature-table-col-header {
+      padding-bottom: var(--spacing-06);
+    }
+  }
+
+  .plans-feature-table {
+    border: 1px solid var(--border-divider);
+
+    // separate + spacing 0 is required for position: sticky on header cells
+    border-collapse: separate;
+    border-radius: var(--border-radius-medium);
+    border-spacing: 0;
+    min-width: 640px;
+    table-layout: fixed;
+    width: 100%;
+
+    th.plans-feature-table-corner-cell,
+    th.plans-feature-table-feature-name-cell {
+      width: 22%;
+    }
+
+    .plans-feature-table-header-row th:first-child {
+      border-top-left-radius: var(--border-radius-medium);
+    }
+
+    .plans-feature-table-header-row th:last-child {
+      border-top-right-radius: var(--border-radius-medium);
+    }
+
+    .plans-feature-table-section:last-child
+      .plans-feature-table-feature-row:last-child
+      th:first-child {
+      border-bottom-left-radius: var(--border-radius-medium);
+    }
+
+    .plans-feature-table-section:last-child
+      .plans-feature-table-feature-row:last-child
+      td:last-child {
+      border-bottom-right-radius: var(--border-radius-medium);
+    }
+
+    .plans-feature-table-section:last-child
+      .plans-feature-table-feature-row:last-child
+      th,
+    .plans-feature-table-section:last-child
+      .plans-feature-table-feature-row:last-child
+      td {
+      border-bottom: none;
+    }
+  }
+
+  .plans-feature-table-thead .plans-feature-table-header-row th {
+    backdrop-filter: blur(12px);
+    background: rgb($white, 0.7);
+
+    // -1px spread prevents shadow extending past table edges
+    box-shadow: 0 2px 4px -1px rgb($neutral-90, 0.16);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .plans-feature-table-col-header {
+    overflow: hidden;
+    padding: var(--spacing-06);
+
+    // Extra bottom padding reserves space for the absolutely-positioned CTA button
+    padding-bottom: 56px;
+    text-align: center;
+    vertical-align: top;
+  }
+
+  .plans-feature-table-col-header-inner .plans-cta {
+    bottom: var(--spacing-06);
+    left: var(--spacing-06);
+    position: absolute;
+    right: var(--spacing-06);
+
+    .btn {
+      width: 100%;
+    }
+  }
+
+  .plans-feature-table-corner-cell {
+    padding: var(--spacing-06);
+  }
+
+  .plans-feature-table-most-popular-badge {
+    @extend .mono-text;
+
+    background-color: var(--green-bright-tint-50);
+    border-radius: var(--border-radius-medium);
+    color: var(--content-primary);
+    font-size: var(--font-size-01);
+    left: 50%;
+    padding: var(--spacing-01) var(--spacing-03);
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    z-index: 1;
+  }
+
+  .plans-feature-table-col-name {
+    color: var(--green-60);
+    display: block;
+    font-size: var(--font-size-03);
+    font-weight: 500;
+    margin-bottom: var(--spacing-02);
+    text-align: center;
+  }
+
+  .plans-feature-table-col-price {
+    align-items: baseline;
+    display: flex;
+    gap: var(--spacing-01);
+    justify-content: center;
+    margin-bottom: var(--spacing-02);
+  }
+
+  .plans-feature-table-col-price-amount {
+    color: var(--content-primary);
+    font-size: var(--font-size-03);
+    font-weight: 400;
+  }
+
+  .plans-feature-table-col-price-term {
+    color: var(--content-primary);
+    font-size: var(--font-size-03);
+  }
+
+  .plans-feature-table-col-price-yearly {
+    color: var(--neutral-60);
+    font-size: var(--font-size-01);
+    margin-bottom: var(--spacing-02);
+    text-align: center;
+  }
+
+  .plans-feature-table-section-header-row {
+    .plans-feature-table-section-title {
+      background-color: var(--bg-light-secondary);
+      color: var(--content-secondary);
+      font-size: var(--font-size-03);
+      font-weight: 700;
+      padding: var(--spacing-06);
+    }
+
+    .plans-feature-table-section-title-content {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-03);
+    }
+  }
+
+  .plans-feature-table-section-icons {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-04);
+  }
+
+  .plans-feature-table-section-icon-wrapper {
+    display: inline-flex;
+  }
+
+  .plans-feature-table-section-icon {
+    height: var(--spacing-08);
+    width: var(--spacing-08);
+  }
+
+  .plans-feature-table-feature-row th,
+  .plans-feature-table-feature-row td {
+    border-bottom: 1px solid var(--border-divider);
+  }
+
+  .plans-feature-table-feature-name-cell {
+    padding: var(--spacing-06);
+    vertical-align: middle;
+  }
+
+  .plans-feature-table-feature-name-content {
+    display: inline-flex;
+  }
+
+  .plans-feature-table-integrations-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-03);
+  }
+
+  .plans-feature-table-integrations-label {
+    color: var(--content-secondary);
+    font-size: var(--font-size-02);
+    font-weight: 500;
+  }
+
+  .plans-feature-table-feature-name {
+    color: var(--neutral-60);
+    font-size: var(--font-size-03);
+    font-weight: 400;
+
+    &.plans-feature-table-feature-name-has-tooltip {
+      cursor: help;
+      text-decoration: underline dotted var(--green-60);
+    }
+  }
+
+  .plans-feature-table-cell {
+    padding: var(--spacing-06);
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .plans-feature-table-check-icon {
+    display: inline-block;
+    height: var(--spacing-07);
+    vertical-align: middle;
+    width: var(--spacing-07);
+  }
+
+  .plans-feature-table-cell-bool-content {
+    display: inline-block;
+    position: relative;
+
+    &[data-bs-toggle='tooltip'] {
+      cursor: help;
+    }
+  }
+
+  .plans-feature-table-info-icon {
+    color: var(--content-secondary);
+    font-size: var(--font-size-03);
+    vertical-align: middle;
+  }
+
+  // In bool cells the info icon floats beside the check; in text cells it flows inline
+  .plans-feature-table-cell-bool-content .plans-feature-table-info-icon {
+    left: calc(100% + var(--spacing-01));
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .plans-feature-table-cell-text-content {
+    align-items: center;
+    color: var(--content-primary);
+    display: inline-flex;
+    font-size: var(--font-size-02);
+    gap: var(--spacing-02);
+  }
+
+  // ─── Quotes and FAQs section────────────────────────────────────────────────
 
   .plans-quotes-section {
     padding-bottom: var(--spacing-13);
