@@ -1,9 +1,10 @@
 .plans-2026 {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-14);
-  padding-top: calc($header-height + var(--spacing-15));
-  padding-bottom: var(--spacing-15);
+  padding-top: $header-height;
+
+  .plans-title-section {
+    padding-top: var(--spacing-15);
+    padding-bottom: var(--spacing-13);
+  }
 
   // Period toggle switch — used only by _plans-period-toggle.pug
   .plans-period-switch-wrapper {
@@ -73,6 +74,7 @@
 
   .plans-cards-section {
     background-color: var(--bg-light-primary);
+    padding-block: var(--spacing-13);
 
     .plans-cards-toggles {
       align-items: center;
@@ -166,8 +168,11 @@
       column-gap: var(--spacing-04);
       overflow-x: auto;
       padding-top: var(--spacing-08);
-      padding-bottom: var(--spacing-06);
       -webkit-overflow-scrolling: touch;
+
+      // so the scrollbar doesn't overlap the last card's content
+      margin-bottom: calc(-1 * var(--spacing-05));
+      padding-bottom: var(--spacing-05);
 
       @include media-breakpoint-up(md) {
         grid-auto-columns: 60%;
@@ -445,5 +450,44 @@
     margin-left: var(--spacing-02);
     padding-bottom: 3px;
     vertical-align: middle;
+  }
+
+  .plans-quotes-section {
+    padding-bottom: var(--spacing-13);
+  }
+
+  .plans-faq {
+    padding-block: var(--spacing-15);
+
+    .faq-heading-container {
+      text-align: center;
+      margin-bottom: var(--spacing-10);
+
+      @include media-breakpoint-up(md) {
+        margin-bottom: var(--spacing-15);
+      }
+
+      h2 {
+        margin-bottom: 0;
+      }
+    }
+
+    .eyebrow-text {
+      margin-bottom: var(--spacing-08);
+    }
+  }
+
+  .plans-faq-tabs {
+    .nav-tabs-container {
+      padding-bottom: var(--spacing-05);
+      margin-bottom: var(--spacing-08);
+
+      ul.nav-tabs {
+        border-bottom-width: 2px;
+        font-size: var(--font-size-04);
+        margin: unset;
+        justify-content: space-between;
+      }
+    }
   }
 }

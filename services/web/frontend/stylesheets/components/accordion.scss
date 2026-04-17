@@ -1,5 +1,9 @@
-.ol-accordions-container :last-child {
+.ol-accordions-container .custom-accordion-item:last-of-type {
   border: 0 !important;
+}
+
+.plans-2026 .ol-accordions-container .custom-accordion-item:last-of-type {
+  border-bottom: 1px solid var(--border-divider) !important;
 }
 
 .ol-accordions-container {
@@ -27,6 +31,10 @@
         align-items: center;
         transition: transform 0.35s ease;
         margin-left: var(--spacing-08);
+
+        .material-symbols {
+          font-size: var(--font-size-06);
+        }
       }
 
       &:not(.collapsed) {
