@@ -51,6 +51,21 @@ export class SizeLimitedStream extends Transform {
   }
 }
 
+/**
+ * @type {{
+ *   ensureDumpFolderExists: () => void,
+ *   writeLinesToDisk: (identifier: any, lines: any, callback?: any) => void,
+ *   writeContentToDisk: (identifier: any, content: any, callback?: any) => void,
+ *   writeStreamToDisk: (identifier: any, stream: any, options?: any, callback?: any) => void,
+ *   writeUrlToDisk: (identifier: any, url: any, options?: any, callback?: any) => void,
+ *   promises: {
+ *     writeLinesToDisk: (identifier: any, lines: any) => Promise<string>,
+ *     writeContentToDisk: (identifier: any, content: any) => Promise<string>,
+ *     writeStreamToDisk: (identifier: any, stream: any, options?: any) => Promise<string>,
+ *     writeUrlToDisk: (identifier: any, url: any, options?: any) => Promise<string>,
+ *   },
+ * }}
+ */
 const FileWriter = {
   ensureDumpFolderExists() {
     fs.mkdirSync(Settings.path.dumpFolder, { recursive: true })
