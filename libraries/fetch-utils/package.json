@@ -22,12 +22,12 @@
     "mocha": "^11.1.0",
     "mocha-junit-reporter": "^2.2.1",
     "mocha-multi-reporters": "^1.5.1",
+    "selfsigned": "^5.5.0",
     "typescript": "^5.0.4"
   },
   "dependencies": {
     "@overleaf/o-error": "*",
     "lodash": "^4.17.21",
-    "node-fetch": "^2.7.0",
-    "selfsigned": "^2.4.1"
+    "node-fetch": "^2.7.0"
   }
 }
