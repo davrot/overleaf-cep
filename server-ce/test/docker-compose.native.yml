@@ -25,7 +25,11 @@ services:
 
   # For testing "native" on Linux
   cypress:
-    image: cypress/included:13.13.2
+    build:
+      context: ../../dockerfiles/cypress
+      args:
+        - USER_UID
+        - USER_GID
     volumes:
       - ../../:/overleaf
       - /tmp/.X11-unix:/tmp/.X11-unix
@@ -33,7 +37,6 @@ services:
     working_dir: /overleaf/server-ce/test
     entrypoint: npm
     command: run cypress:open
-    user: "${DOCKER_USER:-1000:1000}"
     environment:
       CI:
       VERBOSE_LOGGING:

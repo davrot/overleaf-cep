@@ -13,7 +13,8 @@ export IMAGE_TAG_CE ?= sharelatex/sharelatex:main
 export IMAGE_TAG_PRO ?= us-east1-docker.pkg.dev/overleaf-ops/ol-docker/pro:main
 export CYPRESS_SHARD ?=
 export COMPOSE_PROJECT_NAME ?= test
-export DOCKER_USER := $(shell id -u):$(shell id -g)
+export USER_UID=$(shell id -u)
+export USER_GID=$(shell id -g)
 IMAGE_TAG_PRO_BASE := $(shell echo $(IMAGE_TAG_PRO) | sed -E s/:.+//)
 
 test-e2e-native:
@@ -105,5 +106,9 @@ prefetch_default_compose_build: build_mailtrap
 build_mailtrap:
 	git clone https://github.com/dbck/docker-mailtrap.git || true && cd docker-mailtrap && git checkout v1.5.0
 	docker build -t mailtrap docker-mailtrap/build
+
+prefetch_default_compose_build: build_cypress
+build_cypress:
+	docker compose build e2e
 
 .PHONY: test-e2e test-e2e-open

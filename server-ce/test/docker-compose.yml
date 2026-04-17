@@ -66,7 +66,11 @@ services:
     command: ["/server-pro-start.sh"]
 
   e2e:
-    image: cypress/included:13.13.2
+    build:
+      context: ../../dockerfiles/cypress
+      args:
+        - USER_UID
+        - USER_GID
     stop_grace_period: 0s
     entrypoint: npm
     command: run cypress:run
@@ -76,7 +80,6 @@ services:
       - $PWD:$PWD
       - $MONOREPO/libraries:$MONOREPO/libraries:ro
       - $MONOREPO/node_modules:$MONOREPO/node_modules:ro
-    user: "${DOCKER_USER:-1000:1000}"
     environment:
       MONOREPO:
       CYPRESS_SHARD:
