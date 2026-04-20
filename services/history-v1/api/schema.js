@@ -8,19 +8,26 @@ const hexHashPattern = new RegExp(Blob.HEX_HASH_RX_STRING)
 const fileSchema = z
   .object({
     hash: z.string().optional(),
+    rangesHash: z.string().optional(),
     byteLength: z.number().int().nullable().optional(),
     stringLength: z.number().int().nullable().optional(),
     metadata: z.object({}).passthrough().optional(),
   })
   .passthrough()
 
-const snapshotSchema = z.object({
-  files: z.record(z.string(), fileSchema),
-})
-
 const v2DocVersionsSchema = z.object({
   pathname: z.string().optional(),
   v: z.number().int().optional(),
+})
+
+const snapshotSchema = z.object({
+  files: z.record(z.string(), fileSchema),
+  projectVersion: z.string().optional(),
+  v2DocVersions: z
+    .record(z.string(), v2DocVersionsSchema)
+    .nullable()
+    .optional(),
+  timestamp: z.string().optional(),
 })
 
 const operationSchema = z
