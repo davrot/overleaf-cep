@@ -103,9 +103,9 @@ export const ReactContextRoot: FC<
                 <Providers.UserProvider>
                   <Providers.SnapshotProvider>
                     <Providers.DetachProvider>
-                      <Providers.EditorPropertiesProvider>
+                      <Providers.EditorOpenDocProvider>
                         <Providers.EditorViewProvider>
-                          <Providers.EditorOpenDocProvider>
+                          <Providers.EditorPropertiesProvider>
                             <Providers.EditorProvider>
                               <Providers.TutorialProvider>
                                 <Providers.FileTreeDataProvider>
@@ -151,9 +151,9 @@ export const ReactContextRoot: FC<
                                 </Providers.FileTreeDataProvider>
                               </Providers.TutorialProvider>
                             </Providers.EditorProvider>
-                          </Providers.EditorOpenDocProvider>
+                          </Providers.EditorPropertiesProvider>
                         </Providers.EditorViewProvider>
-                      </Providers.EditorPropertiesProvider>
+                      </Providers.EditorOpenDocProvider>
                     </Providers.DetachProvider>
                   </Providers.SnapshotProvider>
                 </Providers.UserProvider>

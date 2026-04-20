@@ -636,6 +636,7 @@ export function makeEditorPropertiesProvider(
     const value = {
       showVisual,
       setShowVisual,
+      showVisualForFile: () => showVisual,
       showSymbolPalette,
       setShowSymbolPalette,
       toggleSymbolPalette,

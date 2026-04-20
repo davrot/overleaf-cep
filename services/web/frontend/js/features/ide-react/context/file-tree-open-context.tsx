@@ -49,7 +49,7 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
   const { eventEmitter, projectJoined } = useIdeReactContext()
   const { openDocWithId, openInitialDoc } = useEditorManagerContext()
   const { currentDocumentId } = useEditorOpenDocContext()
-  const { showVisual } = useEditorPropertiesContext()
+  const { showVisualForFile } = useEditorPropertiesContext()
   const { setOpenFile } = useLayoutContext()
   const [openEntity, setOpenEntity] = useState<
     FileTreeDocumentFindResult | FileTreeFileRefFindResult | null
@@ -93,7 +93,8 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
 
       setOpenEntity(selected)
       const editorMode =
-        isVisualEditorAvailable(selected.entity.name) && showVisual
+        isVisualEditorAvailable(selected.entity.name) &&
+        showVisualForFile(selected.entity.name)
           ? 'visual'
           : 'code'
 
@@ -127,7 +128,7 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
         window.dispatchEvent(new CustomEvent('file-view:file-opened'))
       }
     },
-    [fileTreeReady, openDocWithId, projectOwner, setOpenFile, showVisual]
+    [fileTreeReady, openDocWithId, projectOwner, setOpenFile, showVisualForFile]
   )
 
   const handleFileTreeDelete = useCallback(

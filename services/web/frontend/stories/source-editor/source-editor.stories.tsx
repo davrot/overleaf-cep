@@ -92,6 +92,7 @@ const VisualEditorPropertiesProvider: FC<React.PropsWithChildren> = ({
   const value = {
     showVisual,
     setShowVisual,
+    showVisualForFile: () => showVisual,
     showSymbolPalette: true,
     setShowSymbolPalette: () => undefined,
     toggleSymbolPalette: () => undefined,

@@ -27,3 +27,13 @@ export function getVisualEditorComponent(filename: string) {
   }
   return null
 }
+
+export function getVisualEditorStorageKey(filename: string): string {
+  for (const provider of visualEditorProviders) {
+    if (provider.import.isVisualEditorAvailable(filename)) {
+      const id = provider.import.id
+      return id != null ? `editor.lastUsedMode.${id}` : 'editor.lastUsedMode'
+    }
+  }
+  return 'editor.lastUsedMode'
+}
