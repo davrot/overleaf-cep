@@ -107,21 +107,22 @@ function OLAutocompleteInternal({
   const showCreateOption =
     allowCreateForInput && internalInputValue && !exactMatch
 
+  const createDisplayItem: OLAutocompleteDisplayItem[] = showCreateOption
+    ? [{ type: 'create' as const, inputValue: internalInputValue }]
+    : []
+
   const displayItems: OLAutocompleteDisplayItem[] = [
+    ...(expandUp ? [] : createDisplayItem),
     ...inputItems.map(item => ({
       type: 'item' as const,
       value: item.value,
       label: item.label,
     })),
-    ...(showCreateOption
-      ? [
-          {
-            type: 'create' as const,
-            inputValue: internalInputValue,
-          },
-        ]
-      : []),
+    ...(expandUp ? createDisplayItem : []),
   ]
+
+  const getDisplayIndex = (inputItemIndex: number) =>
+    !expandUp && showCreateOption ? inputItemIndex + 1 : inputItemIndex
 
   const hasGroupedItems = inputItems.some(item => Boolean(item.group))
 
@@ -141,6 +142,28 @@ function OLAutocompleteInternal({
       if (!item) return ''
       return item.type === 'create' ? item.inputValue : item.label
     },
+    stateReducer: (_state, { type, changes }) => {
+      if (type === useCombobox.stateChangeTypes.InputChange) {
+        const newInputValue = changes.inputValue || ''
+        const newAllowCreate =
+          typeof allowCreate === 'function'
+            ? allowCreate(newInputValue)
+            : allowCreate
+        const hasExactMatch = items.some(
+          item => item.label.toLowerCase() === newInputValue.toLowerCase()
+        )
+        const hasMatchingItems = items.some(item =>
+          item.label.toLowerCase().includes(newInputValue.toLowerCase())
+        )
+        const newShowCreate = newAllowCreate && newInputValue && !hasExactMatch
+        return {
+          ...changes,
+          highlightedIndex:
+            !expandUp && newShowCreate && hasMatchingItems ? 1 : 0,
+        }
+      }
+      return changes
+    },
     onSelectedItemChange: ({ selectedItem }) => {
       if (selectedItem) {
         if (selectedItem.type === 'create') {
@@ -159,13 +182,41 @@ function OLAutocompleteInternal({
 
   const shouldShowDropdown = isOpen && displayItems.length > 0
 
+  const renderCreateOption = (index: number) => (
+    <>
+      {hasGroupedItems && expandUp && (
+        <li role="separator" className="dropdown-divider" />
+      )}
+      <li
+        {...getItemProps({
+          item: { type: 'create', inputValue: internalInputValue },
+          index,
+        })}
+      >
+        <OLButton
+          variant="ghost"
+          size="sm"
+          className={classnames('w-100', 'justify-content-start', {
+            'dropdown-item-highlighted': highlightedIndex === index,
+          })}
+        >
+          <span className="text-muted">{createOptionPrefix} </span>
+          <strong>'{internalInputValue}'</strong>
+        </OLButton>
+      </li>
+      {hasGroupedItems && !expandUp && (
+        <li role="separator" className="dropdown-divider" />
+      )}
+    </>
+  )
+
   const handleClear = () => {
     selectItem(null)
     setInternalInputValue('')
     onChange('')
   }
 
-  const getSearchBar = () => (
+  const renderSearchBar = () => (
     <div className={classnames({ 'mb-3': !expandUp, 'mt-3': expandUp })}>
       <OLFormLabel
         {...getLabelProps()}
@@ -196,7 +247,7 @@ function OLAutocompleteInternal({
     </div>
   )
 
-  const getResultsList = () => (
+  const renderResultsList = () => (
     <>
       <ul
         {...getMenuProps()}
@@ -207,11 +258,13 @@ function OLAutocompleteInternal({
       >
         {hasGroupedItems ? (
           <>
+            {!expandUp && showCreateOption && <>{renderCreateOption(0)}</>}
             {inputItems.map((item, index) => {
               const previousItem = inputItems[index - 1]
               const hasGroupHeader =
                 item.group &&
                 (!previousItem || previousItem.group !== item.group)
+              const displayIndex = getDisplayIndex(index)
 
               return (
                 <Fragment key={`${item.value}${index}`}>
@@ -230,14 +283,15 @@ function OLAutocompleteInternal({
                         value: item.value,
                         label: item.label,
                       },
-                      index,
+                      index: displayIndex,
                     })}
                   >
                     <DropdownItem
                       as="span"
                       role={undefined}
                       className={classnames({
-                        'dropdown-item-highlighted': highlightedIndex === index,
+                        'dropdown-item-highlighted':
+                          highlightedIndex === displayIndex,
                       })}
                     >
                       {item.label}
@@ -246,49 +300,24 @@ function OLAutocompleteInternal({
                 </Fragment>
               )
             })}
-            {showCreateOption && (
-              <>
-                <li role="separator" className="dropdown-divider" />
-                <li
-                  {...getItemProps({
-                    item: {
-                      type: 'create',
-                      inputValue: internalInputValue,
-                    },
-                    index: displayItems.length - 1,
-                  })}
-                >
-                  <DropdownItem
-                    as="span"
-                    role={undefined}
-                    className={classnames({
-                      'dropdown-item-highlighted':
-                        highlightedIndex === displayItems.length - 1,
-                    })}
-                  >
-                    <span className="text-muted">{createOptionPrefix} </span>
-                    <strong>'{internalInputValue}'</strong>
-                  </DropdownItem>
-                </li>
-              </>
+            {expandUp && showCreateOption && (
+              <>{renderCreateOption(displayItems.length - 1)}</>
             )}
           </>
         ) : (
           displayItems.map((item, index) => {
-            const isCreateOption = item.type === 'create'
-            const displayValue = isCreateOption ? item.inputValue : item.label
+            if (item.type === 'create') {
+              return (
+                <Fragment key={`create-${item.inputValue}-${index}`}>
+                  {renderCreateOption(index)}
+                </Fragment>
+              )
+            }
 
             return (
               <li
-                key={
-                  item.type === 'create'
-                    ? `create-${item.inputValue}-${index}`
-                    : `${item.value}${index}`
-                }
-                {...getItemProps({
-                  item,
-                  index,
-                })}
+                key={`${item.value}${index}`}
+                {...getItemProps({ item, index })}
               >
                 <DropdownItem
                   as="span"
@@ -297,14 +326,7 @@ function OLAutocompleteInternal({
                     'dropdown-item-highlighted': highlightedIndex === index,
                   })}
                 >
-                  {isCreateOption ? (
-                    <>
-                      <span className="text-muted">{createOptionPrefix} </span>
-                      <strong>'{displayValue}'</strong>
-                    </>
-                  ) : (
-                    displayValue
-                  )}
+                  {item.label}
                 </DropdownItem>
               </li>
             )
@@ -318,13 +340,13 @@ function OLAutocompleteInternal({
     <div className={classnames('dropdown', 'd-block', 'ol-autocomplete')}>
       {expandUp ? (
         <>
-          {getResultsList()}
-          {getSearchBar()}
+          {renderResultsList()}
+          {renderSearchBar()}
         </>
       ) : (
         <>
-          {getSearchBar()}
-          {getResultsList()}
+          {renderSearchBar()}
+          {renderResultsList()}
         </>
       )}
     </div>
