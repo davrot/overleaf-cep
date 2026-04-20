@@ -12,7 +12,8 @@ export type InitRequest = {
 
 export type RunCodeRequest = {
   type: 'run-code'
-  id: string
+  fileId: string
+  executionId: string
   code: string
   files: ProjectFileData[]
 }
@@ -29,7 +30,8 @@ export type OutputLineEvent = {
   type: 'output-line'
   stream: 'stdout' | 'stderr'
   line: string
-  requestId?: string
+  fileId: string
+  executionId: string
 }
 
 export type PyodideWorkerEvent =
@@ -42,7 +44,8 @@ export type PyodideWorkerEvent =
 
 export type RunCodeResult = {
   type: 'run-code-result'
-  id: string
+  fileId: string
+  executionId: string
   outputs: string[]
 }
 

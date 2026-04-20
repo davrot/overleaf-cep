@@ -84,17 +84,20 @@ async function handleInit(msg: { baseAssetPath: string }) {
 }
 
 async function handleRunCode(msg: RunCodeRequest) {
+  const { fileId, executionId } = msg
+
   if (!pyodideModule) {
-    const error = 'Pyodide is not initialized'
     self.postMessage({
       type: 'output-line',
       stream: 'stderr',
-      line: error,
-      requestId: msg.id,
+      line: 'Pyodide is not initialized',
+      fileId,
+      executionId,
     })
     self.postMessage({
       type: 'run-code-result',
-      id: msg.id,
+      fileId,
+      executionId,
       outputs: [],
     })
     return
@@ -112,7 +115,8 @@ async function handleRunCode(msg: RunCodeRequest) {
         type: 'output-line',
         stream: 'stdout',
         line,
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     },
   })
@@ -122,7 +126,8 @@ async function handleRunCode(msg: RunCodeRequest) {
         type: 'output-line',
         stream: 'stderr',
         line,
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     },
   })
@@ -153,7 +158,8 @@ async function handleRunCode(msg: RunCodeRequest) {
         type: 'output-line',
         stream: 'stdout',
         line: String(result),
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     }
   } catch (runError) {
@@ -164,14 +170,16 @@ async function handleRunCode(msg: RunCodeRequest) {
       type: 'output-line',
       stream: 'stderr',
       line: errorMessage,
-      requestId: msg.id,
+      fileId,
+      executionId,
     })
   } finally {
     fs.write = originalWrite
     const outputs = [...writtenPaths].sort()
     self.postMessage({
       type: 'run-code-result',
-      id: msg.id,
+      fileId,
+      executionId,
       outputs,
     })
   }

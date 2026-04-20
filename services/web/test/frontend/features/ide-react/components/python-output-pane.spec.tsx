@@ -7,6 +7,7 @@ import {
 import { FileTreePathContext } from '@/features/file-tree/contexts/file-tree-path'
 import { ProjectContext } from '@/shared/context/project-context'
 import { ProjectSnapshot } from '@/infrastructure/project-snapshot'
+import { PythonExecutionProvider } from '@/features/ide-react/context/python-execution-context'
 
 const pythonExecutableScript: Record<string, string> = {
   file_id: 'test-py-doc-id',
@@ -83,11 +84,13 @@ describe('<PythonOutputPane />', function () {
         }}
         providers={{ FileTreePathProvider, ProjectProvider }}
       >
-        <PythonOutputPane />
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
       </EditorProviders>
     )
 
-    cy.findByRole('button', { name: 'Run Python Code' })
+    cy.findByRole('button', { name: 'Run Python code' })
       .should('not.be.disabled')
       .click()
     cy.findByText('hello!').should('exist')
@@ -122,11 +125,13 @@ describe('<PythonOutputPane />', function () {
         }}
         providers={{ FileTreePathProvider, ProjectProvider }}
       >
-        <PythonOutputPane />
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
       </EditorProviders>
     )
 
-    cy.findByRole('button', { name: 'Run Python Code' })
+    cy.findByRole('button', { name: 'Run Python code' })
       .should('not.be.disabled')
       .click()
     cy.findByText('hello!').should('exist')
@@ -195,11 +200,13 @@ describe('<PythonOutputPane />', function () {
           ProjectProvider,
         }}
       >
-        <PythonOutputPane />
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
       </EditorProviders>
     )
 
-    cy.findByRole('button', { name: 'Run Python Code' })
+    cy.findByRole('button', { name: 'Run Python code' })
       .should('not.be.disabled')
       .click()
     cy.findByText('name,type').should('exist')

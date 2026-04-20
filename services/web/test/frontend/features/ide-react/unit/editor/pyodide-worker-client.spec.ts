@@ -1,64 +1,24 @@
 import { expect } from 'chai'
 import { PyodideWorkerClient } from '@/features/ide-react/components/editor/python/pyodide-worker-client'
-
-type WorkerMessageListener = (event: MessageEvent) => void
+import { WorkerMock, createWorker } from './worker-mock'
 
 const BASE_ASSET_PATH = 'https://assets.example.test/'
 
-class WorkerMock {
-  static instances: WorkerMock[] = []
-
-  readonly postedMessages: any[] = []
-  terminated = false
-  private messageListeners: WorkerMessageListener[] = []
-
-  constructor() {
-    WorkerMock.instances.push(this)
-  }
-
-  addEventListener(type: string, listener: WorkerMessageListener) {
-    if (type === 'message') {
-      this.messageListeners.push(listener)
-    }
-  }
-
-  postMessage(message: unknown) {
-    this.postedMessages.push(message)
-  }
-
-  terminate() {
-    this.terminated = true
-  }
-
-  emitMessage(message: unknown) {
-    for (const listener of this.messageListeners) {
-      listener({ data: message, target: this } as unknown as MessageEvent)
-    }
-  }
-}
-
 describe('PyodideWorkerClient', function () {
-  let originalWorker: typeof Worker | undefined
-
   beforeEach(function () {
-    originalWorker = window.Worker
-    // @ts-ignore - allow mocking Worker
-    window.Worker = WorkerMock
     WorkerMock.instances.length = 0
   })
 
-  afterEach(function () {
-    if (originalWorker) {
-      window.Worker = originalWorker
-    }
-  })
-
   it('queues runCode until the worker reports listening', function () {
-    const client = new PyodideWorkerClient({ baseAssetPath: BASE_ASSET_PATH })
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+    })
     const worker = WorkerMock.instances[0]
 
     client.runCode('print("ok")', {
-      requestId: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-1',
       files: [{ relativePath: 'main.py', content: 'print("ok")' }],
     })
     expect(worker.postedMessages).to.have.length(0)
@@ -74,7 +34,8 @@ describe('PyodideWorkerClient', function () {
     )
     expect(runRequest).to.include({
       type: 'run-code',
-      id: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-1',
       code: 'print("ok")',
     })
     expect(runRequest.files).to.deep.equal([
@@ -83,29 +44,44 @@ describe('PyodideWorkerClient', function () {
   })
 
   it('sends runCode as fire-and-forget', function () {
-    const client = new PyodideWorkerClient({ baseAssetPath: BASE_ASSET_PATH })
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+    })
     const worker = WorkerMock.instances[0]
     worker.emitMessage({ type: 'listening' })
 
     client.runCode('raise RuntimeError("boom")', {
-      requestId: 'boom.py',
+      fileId: 'boom.py',
+      executionId: 'exec-2',
       files: [],
     })
     const runRequest = worker.postedMessages.find(
       message => message.type === 'run-code'
     )
-    expect(runRequest).to.include({ type: 'run-code', id: 'boom.py' })
+    expect(runRequest).to.include({
+      type: 'run-code',
+      fileId: 'boom.py',
+      executionId: 'exec-2',
+    })
   })
 
   function setupClientWithLifecycleTracking() {
-    const client = new PyodideWorkerClient({ baseAssetPath: BASE_ASSET_PATH })
-    const worker = WorkerMock.instances[0]
-    const lifecycleEvents: Array<{
+    const lifecycleEvents: {
       type: string
-      requestId?: string
+      fileId?: string
+      executionId?: string
       outputs?: string[]
-    }> = []
-    client.setLifecycleCallback(event => lifecycleEvents.push(event))
+    }[] = []
+
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+      onLifecycle: event => {
+        lifecycleEvents.push(event)
+      },
+    })
+    const worker = WorkerMock.instances[0]
     worker.emitMessage({ type: 'listening' })
     return { client, worker, lifecycleEvents }
   }
@@ -114,16 +90,22 @@ describe('PyodideWorkerClient', function () {
     const { client, worker, lifecycleEvents } =
       setupClientWithLifecycleTracking()
 
-    client.runCode('print("ok")', { requestId: 'main.py', files: [] })
+    client.runCode('print("ok")', {
+      fileId: 'main.py',
+      executionId: 'exec-3',
+      files: [],
+    })
     worker.emitMessage({
       type: 'run-code-result',
-      id: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-3',
       outputs: ['/project/output.txt'],
     })
 
     expect(lifecycleEvents).to.deep.include({
       type: 'run-finished',
-      requestId: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-3',
       outputs: ['/project/output.txt'],
     })
   })
@@ -132,16 +114,22 @@ describe('PyodideWorkerClient', function () {
     const { client, worker, lifecycleEvents } =
       setupClientWithLifecycleTracking()
 
-    client.runCode('write_files()', { requestId: 'main.py', files: [] })
+    client.runCode('write_files()', {
+      fileId: 'main.py',
+      executionId: 'exec-4',
+      files: [],
+    })
     worker.emitMessage({
       type: 'run-code-result',
-      id: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-4',
       outputs: ['/project/fig1.png', '/project/results/data.csv'],
     })
 
     expect(lifecycleEvents).to.deep.include({
       type: 'run-finished',
-      requestId: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-4',
       outputs: ['/project/fig1.png', '/project/results/data.csv'],
     })
   })
@@ -150,28 +138,37 @@ describe('PyodideWorkerClient', function () {
     const { client, worker, lifecycleEvents } =
       setupClientWithLifecycleTracking()
 
-    client.runCode('print("no writes")', { requestId: 'main.py', files: [] })
+    client.runCode('print("no writes")', {
+      fileId: 'main.py',
+      executionId: 'exec-5',
+      files: [],
+    })
     worker.emitMessage({
       type: 'run-code-result',
-      id: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-5',
       outputs: [],
     })
 
     expect(lifecycleEvents).to.deep.include({
       type: 'run-finished',
-      requestId: 'main.py',
+      fileId: 'main.py',
+      executionId: 'exec-5',
       outputs: [],
     })
   })
 
   it('reports lifecycle failure and rejects future run requests when loading fails', function () {
-    const client = new PyodideWorkerClient({ baseAssetPath: BASE_ASSET_PATH })
-    const worker = WorkerMock.instances[0]
     const lifecycleEvents: Array<{ type: string; error?: string }> = []
 
-    client.setLifecycleCallback(event => {
-      lifecycleEvents.push(event)
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+      onLifecycle: event => {
+        lifecycleEvents.push(event)
+      },
     })
+    const worker = WorkerMock.instances[0]
 
     worker.emitMessage({
       type: 'loading-failed',
@@ -182,12 +179,19 @@ describe('PyodideWorkerClient', function () {
       { type: 'loading-failed', error: 'runtime unavailable' },
     ])
     expect(() =>
-      client.runCode('print("ok")', { requestId: 'main.py', files: [] })
+      client.runCode('print("ok")', {
+        fileId: 'main.py',
+        executionId: 'exec-4',
+        files: [],
+      })
     ).to.throw('runtime unavailable')
   })
 
   it('terminates the worker even when destroy is called after loading failure', function () {
-    const client = new PyodideWorkerClient({ baseAssetPath: BASE_ASSET_PATH })
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+    })
     const worker = WorkerMock.instances[0]
 
     worker.emitMessage({
@@ -199,30 +203,32 @@ describe('PyodideWorkerClient', function () {
     expect(worker.terminated).to.equal(true)
   })
 
-  describe('stop', function () {
+  describe('reset', function () {
     it('terminates the current worker and creates a new one', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
+        createWorker,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
       originalWorker.emitMessage({ type: 'loaded' })
 
-      client.stop()
+      client.reset()
 
       expect(originalWorker.terminated).to.equal(true)
       expect(WorkerMock.instances).to.have.length(2)
     })
 
-    it('sends init to the new worker once it reports listening', function () {
+    it('sends init to the new worker once it reports listening after reset', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
+        createWorker,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
       originalWorker.emitMessage({ type: 'loaded' })
 
-      client.stop()
+      client.reset()
 
       const newWorker = WorkerMock.instances[1]
       expect(newWorker.postedMessages).to.have.length(0)
@@ -233,22 +239,24 @@ describe('PyodideWorkerClient', function () {
       ])
     })
 
-    it('allows running code on the new worker after stop', function () {
+    it('allows running code on the new worker after reset', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
+        createWorker,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
       originalWorker.emitMessage({ type: 'loaded' })
 
-      client.stop()
+      client.reset()
 
       const newWorker = WorkerMock.instances[1]
       newWorker.emitMessage({ type: 'listening' })
       newWorker.emitMessage({ type: 'loaded' })
 
-      client.runCode('print("after stop")', {
-        requestId: 'main.py',
+      client.runCode('print("after reset")', {
+        fileId: 'main.py',
+        executionId: 'exec-5',
         files: [],
       })
 
@@ -257,21 +265,23 @@ describe('PyodideWorkerClient', function () {
       )
       expect(runRequest).to.include({
         type: 'run-code',
-        id: 'main.py',
-        code: 'print("after stop")',
+        fileId: 'main.py',
+        executionId: 'exec-5',
+        code: 'print("after reset")',
       })
     })
 
-    it('is a no-op after destroy', function () {
+    it('reset is a no-op after destroy', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
+        createWorker,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
       originalWorker.emitMessage({ type: 'loaded' })
 
       client.destroy()
-      client.stop()
+      client.reset()
 
       // No new worker should have been created
       expect(WorkerMock.instances).to.have.length(1)

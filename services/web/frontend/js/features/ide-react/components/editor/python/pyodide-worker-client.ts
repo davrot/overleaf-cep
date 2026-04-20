@@ -7,30 +7,45 @@ import type {
 export type OutputCallback = (
   stream: 'stdout' | 'stderr',
   line: string,
-  requestId?: string
+  fileId: string,
+  executionId: string
 ) => void
 
 export type LifecycleCallback = (
   event:
     | { type: 'loaded' }
     | { type: 'loading-failed'; error: string }
-    | { type: 'run-finished'; requestId: string; outputs: string[] }
+    | {
+        type: 'run-finished'
+        fileId: string
+        executionId: string
+        outputs: string[]
+      }
 ) => void
 
 export class PyodideWorkerClient {
   private worker: Worker
   private baseAssetPath: string
+  private createWorker: () => Worker
   private listening = false
-  private loaded = false
   private destroyed = false
   private loadingError: string | null = null
   private pendingMessages: PyodideWorkerRequest[] = []
-  private outputCallback: OutputCallback | null = null
-  private lifecycleCallback: LifecycleCallback | null = null
+  private outputCallback: OutputCallback | null
+  private lifecycleCallback: LifecycleCallback | null
 
-  constructor(options: { baseAssetPath: string }) {
+  constructor(options: {
+    baseAssetPath: string
+    createWorker: () => Worker
+    onOutput?: OutputCallback
+    onLifecycle?: LifecycleCallback
+  }) {
     this.baseAssetPath = options.baseAssetPath
+    this.createWorker = options.createWorker
+    this.outputCallback = options.onOutput ?? null
+    this.lifecycleCallback = options.onLifecycle ?? null
     this.worker = this.createWorker()
+    this.worker.addEventListener('message', this.receive)
 
     this.queueMessage({
       type: 'init',
@@ -38,25 +53,9 @@ export class PyodideWorkerClient {
     })
   }
 
-  setOutputCallback(callback: OutputCallback) {
-    this.outputCallback = callback
-  }
-
-  setLifecycleCallback(handler: LifecycleCallback) {
-    this.lifecycleCallback = handler
-
-    if (this.loaded) {
-      handler({ type: 'loaded' })
-      return
-    }
-    if (this.loadingError) {
-      handler({ type: 'loading-failed', error: this.loadingError })
-    }
-  }
-
   runCode(
     code: string,
-    options: { requestId: string; files: ProjectFileData[] }
+    options: { fileId: string; executionId: string; files: ProjectFileData[] }
   ): void {
     if (this.destroyed) {
       throw new Error('Pyodide worker client has been destroyed')
@@ -69,12 +68,13 @@ export class PyodideWorkerClient {
     this.queueMessage({
       type: 'run-code',
       code,
-      id: options.requestId,
+      fileId: options.fileId,
+      executionId: options.executionId,
       files: options.files,
     })
   }
 
-  stop(): void {
+  reset(): void {
     if (this.destroyed) {
       return
     }
@@ -85,11 +85,11 @@ export class PyodideWorkerClient {
 
     // Reset state for the new worker
     this.listening = false
-    this.loaded = false
     this.loadingError = null
 
     // Create a fresh worker and re-initialize Pyodide
     this.worker = this.createWorker()
+    this.worker.addEventListener('message', this.receive)
     this.queueMessage({
       type: 'init',
       baseAssetPath: this.baseAssetPath,
@@ -104,21 +104,7 @@ export class PyodideWorkerClient {
     this.destroyed = true
     this.pendingMessages.length = 0
 
-    if (!this.loaded && !this.loadingError) {
-      this.loadingError = 'Pyodide worker was destroyed before loading finished'
-    }
-
     this.worker.terminate()
-  }
-
-  private createWorker(): Worker {
-    const worker = new Worker(
-      /* webpackChunkName: "pyodide-worker" */
-      new URL('./pyodide.worker.ts', import.meta.url),
-      { type: 'module' }
-    )
-    worker.addEventListener('message', this.receive)
-    return worker
   }
 
   private queueMessage(message: PyodideWorkerRequest) {
@@ -147,7 +133,6 @@ export class PyodideWorkerClient {
         return
 
       case 'loaded':
-        this.loaded = true
         this.lifecycleCallback?.({ type: 'loaded' })
         return
 
@@ -164,17 +149,18 @@ export class PyodideWorkerClient {
         this.outputCallback?.(
           response.stream,
           response.line,
-          response.requestId
+          response.fileId,
+          response.executionId
         )
-        break
+        return
 
       case 'run-code-result':
         this.lifecycleCallback?.({
           type: 'run-finished',
-          requestId: response.id,
+          fileId: response.fileId,
+          executionId: response.executionId,
           outputs: response.outputs,
         })
-        break
     }
   }
 }
