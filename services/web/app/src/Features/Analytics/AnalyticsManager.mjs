@@ -65,7 +65,10 @@ async function recordEventForUser(userId, event, segmentation) {
   if (_isAnalyticsDisabled() || _isSmokeTestUser(userId)) {
     return
   }
-  const analyticsId = await UserAnalyticsIdCache.get(userId)
+  const analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+    userId,
+    `recordEventForUser:${event}`
+  )
   if (analyticsId) {
     _recordEvent({ analyticsId, userId, event, segmentation, isLoggedIn: true })
   }
@@ -113,7 +116,10 @@ async function setUserPropertyForUser(userId, propertyName, propertyValue) {
 
   _checkPropertyValue(propertyValue)
 
-  const analyticsId = await UserAnalyticsIdCache.get(userId)
+  const analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+    userId,
+    `setUserPropertyForUser:${propertyName}`
+  )
   if (analyticsId) {
     await _setUserProperty({ analyticsId, propertyName, propertyValue })
   }
@@ -447,7 +453,11 @@ async function analyticsIdMiddleware(req, res, next) {
   const sessionUser = SessionManager.getSessionUser(session)
 
   if (sessionUser) {
-    session.analyticsId = await UserAnalyticsIdCache.get(sessionUser._id)
+    session.analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+      sessionUser._id,
+      // Do not drill down further, this middleware is on all endpoints.
+      'analyticsIdMiddleware'
+    )
   } else if (!session.analyticsId) {
     // generate an `analyticsId` if needed
     session.analyticsId = crypto.randomUUID()

@@ -164,7 +164,13 @@ async function sessionMaintenance(req, user) {
 
   Metrics.inc('split_test_session_maintenance', 1, { status: 'start' })
   if (sessionUser) {
-    user = user || (await SplitTestUserGetter.promises.getUser(sessionUser._id))
+    user =
+      user ||
+      (await SplitTestUserGetter.promises.getUser(
+        sessionUser._id,
+        null,
+        `sessionMaintenance:${Metrics.http.getRoutePath(req)}`
+      ))
     if (
       Boolean(sessionUser.alphaProgram) !== Boolean(user.alphaProgram) ||
       Boolean(sessionUser.betaProgram) !== Boolean(user.betaProgram)

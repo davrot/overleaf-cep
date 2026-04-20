@@ -58,6 +58,9 @@ vi.mock('@overleaf/metrics', () => {
           return 1
         }
       },
+      http: {
+        getRoutePath: sinon.stub().returns('project_Project_id'),
+      },
       prom: { Counter: sinon.stub(), Histogram: sinon.stub() },
       mongodb: { monitor: sinon.stub() },
     },

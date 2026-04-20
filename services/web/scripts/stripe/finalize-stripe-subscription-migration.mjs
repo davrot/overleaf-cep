@@ -437,7 +437,10 @@ async function processMigration(input, commit) {
   }
 
   // 7. If commit mode, perform migration
-  const analyticsId = await UserAnalyticsIdCache.get(overleafUserId)
+  const analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+    overleafUserId,
+    'script' // no-op, metrics are not collected from scripts.
+  )
   const mongoUser = await User.findOne({
     _id: overleafUserId,
   }).exec()

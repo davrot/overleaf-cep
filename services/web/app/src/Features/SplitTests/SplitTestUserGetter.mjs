@@ -2,7 +2,8 @@ import { callbackify } from 'node:util'
 import Metrics from '@overleaf/metrics'
 import UserGetter from '../User/UserGetter.mjs'
 
-async function getUser(id, splitTestName) {
+async function getUser(id, splitTestName, path) {
+  Metrics.inc('split_test_get_user', 1, { path })
   const projection = {
     analyticsId: 1,
     alphaProgram: 1,

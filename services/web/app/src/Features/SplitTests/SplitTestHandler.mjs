@@ -120,7 +120,10 @@ async function getAssignmentForUser(
       return _getNonSaasAssignment(splitTestName)
     }
 
-    const analyticsId = await UserAnalyticsIdCache.get(userId)
+    const analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+      userId,
+      `getAssignmentForUser:${splitTestName}`
+    )
     return _getAssignment(splitTestName, { analyticsId, userId, sync })
   } catch (error) {
     logger.error({ err: error }, 'Failed to get split test assignment for user')
@@ -227,7 +230,11 @@ async function getActiveAssignmentsForUser(
     return {}
   }
 
-  const user = await SplitTestUserGetter.promises.getUser(userId)
+  const user = await SplitTestUserGetter.promises.getUser(
+    userId,
+    null,
+    'getActiveAssignmentsForUser'
+  )
   if (user == null) {
     return {}
   }
@@ -402,7 +409,11 @@ async function _getAssignment(
   user =
     user ||
     (userId &&
-      (await SplitTestUserGetter.promises.getUser(userId, splitTestName)))
+      (await SplitTestUserGetter.promises.getUser(
+        userId,
+        splitTestName,
+        `_getAssignment:${splitTestName}`
+      )))
   const metadata = await _getAssignmentMetadata(analyticsId, user, splitTest)
   const { activeForUser, selectedVariantName, phase, versionNumber } = metadata
 
@@ -651,7 +662,12 @@ async function _recordAssignment({
     assignedAt: new Date(),
   }
   user =
-    user || (await SplitTestUserGetter.promises.getUser(userId, splitTestName))
+    user ||
+    (await SplitTestUserGetter.promises.getUser(
+      userId,
+      splitTestName,
+      `_recordAssignment:${splitTestName}`
+    ))
   if (user) {
     const assignedSplitTests = user.splitTests || []
     const assignmentLog = assignedSplitTests[splitTestName] || []

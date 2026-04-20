@@ -68,7 +68,7 @@ describe('CompileManager', function () {
       '../../../../app/src/Features/Analytics/UserAnalyticsIdCache',
       () => ({
         default: (ctx.UserAnalyticsIdCache = {
-          get: sinon.stub().resolves('abc'),
+          getWithMetrics: sinon.stub().resolves('abc'),
         }),
       })
     )

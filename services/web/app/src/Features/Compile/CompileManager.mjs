@@ -138,7 +138,10 @@ async function _getUserCompileLimits(userId) {
     ownerFeatures.compileGroup = 'alpha'
   }
 
-  const analyticsId = await UserAnalyticsIdCache.get(owner._id)
+  const analyticsId = await UserAnalyticsIdCache.getWithMetrics(
+    owner._id,
+    '_getUserCompileLimits'
+  )
 
   const compileGroup =
     ownerFeatures.compileGroup || Settings.defaultFeatures.compileGroup
