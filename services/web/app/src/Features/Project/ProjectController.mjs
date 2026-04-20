@@ -461,7 +461,6 @@ const _ProjectController = {
       'hotjar',
       'word-count-client',
       'editor-popup-ux-survey-03-2026',
-      'editor-redesign-new-users',
       'chat-edit-delete',
       'ai-workbench-release',
       'compile-timeout-target-plans',
