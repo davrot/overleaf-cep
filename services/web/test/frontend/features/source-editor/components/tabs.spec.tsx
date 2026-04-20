@@ -432,6 +432,158 @@ describe('File Tabs', function () {
     })
   })
 
+  describe('Context menu', function () {
+    it('opens the context menu on right-click of a tab', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+
+      cy.findByRole('menu').should('exist')
+      cy.findByRole('menuitem', { name: 'Close tab' }).should('exist')
+      cy.findByRole('menuitem', { name: 'Close others' }).should('exist')
+    })
+
+    it('closes the clicked tab via "Close tab"', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menuitem', { name: 'Close tab' }).click()
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).should('not.exist')
+      cy.findByRole('tab', { name: /main\.tex/ }).should('exist')
+      cy.findByRole('menu').should('not.exist')
+    })
+
+    it('closes all other tabs via "Close others"', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.appendix))
+
+      cy.findAllByRole('tab').should('have.length', 3)
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menuitem', { name: 'Close others' }).click()
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /intro\.tex/ }).should('exist')
+    })
+
+    it('navigates to the target tab when closing others from a non-active tab', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.appendix))
+
+      // appendix is the currently active tab; close others from intro
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menuitem', { name: 'Close others' }).click()
+
+      cy.get('@openDocWithId').should('have.been.calledWith', DOC_IDS.intro)
+    })
+
+    it('disables both items when only one tab is open', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+
+      cy.findByRole('tab', { name: /main\.tex/ }).rightclick()
+
+      cy.findByRole('menuitem', { name: 'Close tab' }).should(
+        'have.attr',
+        'aria-disabled',
+        'true'
+      )
+      cy.findByRole('menuitem', { name: 'Close others' }).should(
+        'have.attr',
+        'aria-disabled',
+        'true'
+      )
+    })
+
+    it('closes the menu on Escape', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menu').should('exist')
+
+      cy.findByRole('menu').trigger('keydown', {
+        key: 'Escape',
+      })
+
+      cy.findByRole('menu').should('not.exist')
+    })
+
+    it('closes the menu on right-click outside', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menu').should('exist')
+
+      // Right-click outside any tab
+      cy.get('.editor-tabs-container').rightclick('right')
+
+      cy.findByRole('menu').should('not.exist')
+    })
+
+    it('focuses the menu when opening', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+
+      cy.findByRole('menu').should('be.focused')
+    })
+
+    it('returns focus to the originating tab when closing', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menu').trigger('keydown', { key: 'Escape' })
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).should('be.focused')
+    })
+
+    it('moves the menu to another tab on right-click', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.appendix))
+
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menu').should('exist')
+
+      // Right-click appendix the menu should retarget to that tab
+      cy.findByRole('tab', { name: /appendix\.tex/ }).rightclick({
+        force: true,
+      })
+      cy.findByRole('menuitem', { name: 'Close others' }).click()
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
+    })
+
+    it('should not open the context menu if shift is held', function () {
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick({
+        shiftKey: true,
+      })
+      cy.findByRole('menu').should('not.exist')
+    })
+
+    it('should close already open context menu if shift is held', function () {
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.findByRole('tab', { name: /intro\.tex/ }).rightclick()
+      cy.findByRole('menu').should('exist')
+      cy.findByRole('tab', { name: /main\.tex/ }).rightclick({
+        force: true,
+        shiftKey: true,
+      })
+      cy.findByRole('menu').should('not.exist')
+    })
+  })
+
   describe('Tab interaction', function () {
     it('calls openDocWithId when clicking a non-selected doc tab', function () {
       // Open two tabs

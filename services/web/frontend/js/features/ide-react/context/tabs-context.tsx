@@ -2,7 +2,14 @@ import { findInTree } from '@/features/file-tree/util/find-in-tree'
 import { useFileTreeData } from '@/shared/context/file-tree-data-context'
 import { useProjectContext } from '@/shared/context/project-context'
 import usePersistedState from '@/shared/hooks/use-persisted-state'
-import React, { FC, useCallback, useContext, useEffect, useMemo } from 'react'
+import React, {
+  FC,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { useFileTreeOpenContext } from './file-tree-open-context'
 import { useEditorManagerContext } from './editor-manager-context'
 import { debugConsole } from '@/utils/debugging'
@@ -28,17 +35,28 @@ export type EditorFileTab = {
 
 export const TAB_TRANSFER_TYPE = 'text/x.tab-id'
 
+export type TabsContextMenuTarget = {
+  top: number
+  left: number
+  tabId: string
+}
+
 const TabsContext = React.createContext<
   | {
       tabs: EditorFileTab[]
       openTab: (id: string) => void
       closeTab: (id: string) => void
+      closeOtherTabs: (id: string) => void
       makeTabPermanent: (id: string) => void
       moveTab: (
         sourceTabId: string,
         targetTabId: string,
         position: 'left' | 'right'
       ) => void
+      contextMenuTarget: TabsContextMenuTarget | null
+      setContextMenuTarget: React.Dispatch<
+        React.SetStateAction<TabsContextMenuTarget | null>
+      >
     }
   | undefined
 >(undefined)
@@ -57,6 +75,9 @@ export const TabsProvider: FC<React.PropsWithChildren> = ({ children }) => {
     `open-tabs:${projectId}`,
     []
   )
+
+  const [contextMenuTarget, setContextMenuTarget] =
+    useState<TabsContextMenuTarget | null>(null)
 
   const tabs = useMemo(() => {
     if (!tabsEnabled) {
@@ -143,6 +164,16 @@ export const TabsProvider: FC<React.PropsWithChildren> = ({ children }) => {
     [openTabs, openEntity, setOpenTabs, openTab]
   )
 
+  const closeOtherTabs = useCallback(
+    async (id: string) => {
+      if (id !== openEntity?.entity._id) {
+        await openTab(id)
+      }
+      setOpenTabs(current => current.filter(tab => tab.id === id))
+    },
+    [openEntity, openTab, setOpenTabs]
+  )
+
   const moveTab = useCallback(
     (sourceTabId: string, targetTabId: string, position: 'left' | 'right') => {
       debugConsole.log({ sourceTabId, targetTabId, position })
@@ -211,8 +242,26 @@ export const TabsProvider: FC<React.PropsWithChildren> = ({ children }) => {
   }, [openEntity, previewTabs, setOpenTabs, tabsEnabled])
 
   const value = useMemo(
-    () => ({ tabs, openTab, closeTab, moveTab, makeTabPermanent }),
-    [tabs, openTab, closeTab, moveTab, makeTabPermanent]
+    () => ({
+      tabs,
+      openTab,
+      closeTab,
+      closeOtherTabs,
+      moveTab,
+      makeTabPermanent,
+      contextMenuTarget,
+      setContextMenuTarget,
+    }),
+    [
+      tabs,
+      openTab,
+      closeTab,
+      closeOtherTabs,
+      moveTab,
+      makeTabPermanent,
+      contextMenuTarget,
+      setContextMenuTarget,
+    ]
   )
 
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>
