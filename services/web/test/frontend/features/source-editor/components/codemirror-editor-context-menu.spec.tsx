@@ -119,6 +119,55 @@ describe('editor context menu', { scrollBehavior: false }, function () {
     cy.findByRole('menu').should('not.exist')
   })
 
+  it('should not open on Shift+right-click', function () {
+    const scope = mockScope()
+
+    cy.mount(
+      <TestContainer>
+        <EditorProviders scope={scope}>
+          <CodeMirrorEditor />
+        </EditorProviders>
+      </TestContainer>
+    )
+
+    cy.findByRole('menu').should('not.exist')
+
+    cy.get('.cm-line').eq(10).trigger('contextmenu', {
+      button: 2,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+      force: true,
+    })
+
+    cy.findByRole('menu').should('not.exist')
+  })
+
+  it('should close an already-open menu on Shift+right-click', function () {
+    const scope = mockScope()
+
+    cy.mount(
+      <TestContainer>
+        <EditorProviders scope={scope}>
+          <CodeMirrorEditor />
+        </EditorProviders>
+      </TestContainer>
+    )
+
+    cy.get('.cm-line').eq(10).rightclick()
+    cy.findByRole('menu').should('be.visible')
+
+    cy.get('.cm-line').eq(5).trigger('contextmenu', {
+      button: 2,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+      force: true,
+    })
+
+    cy.findByRole('menu').should('not.exist')
+  })
+
   it('should open on Shift+F10', { retries: 1 }, function () {
     const scope = mockScope()
 

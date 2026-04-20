@@ -61,6 +61,11 @@ function FileTreeItemInner({
   }, [isSelected, itemRef])
 
   function handleContextMenu(ev: React.MouseEvent<HTMLDivElement>) {
+    if (ev.shiftKey) {
+      setContextMenuCoords(null)
+      return
+    }
+
     ev.preventDefault()
 
     setContextMenuCoords({

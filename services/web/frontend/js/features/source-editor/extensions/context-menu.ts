@@ -246,6 +246,11 @@ const gutterContextMenuPlugin = (): Extension =>
     gutters.addEventListener('contextmenu', (event: Event) => {
       const mouseEvent = event as MouseEvent
 
+      if (mouseEvent.shiftKey) {
+        update.view.dispatch({ effects: closeAllContextMenusEffect.of(null) })
+        return
+      }
+
       const pos = update.view.posAtCoords({
         x: mouseEvent.clientX,
         y: mouseEvent.clientY,
@@ -284,6 +289,11 @@ const emptyLineFillerContextMenuPlugin = (): Extension =>
         return
       }
 
+      if (mouseEvent.shiftKey) {
+        view.dispatch({ effects: closeAllContextMenusEffect.of(null) })
+        return
+      }
+
       event.preventDefault()
       event.stopPropagation()
 
@@ -293,6 +303,7 @@ const emptyLineFillerContextMenuPlugin = (): Extension =>
         cancelable: true,
         clientX: mouseEvent.clientX,
         clientY: mouseEvent.clientY,
+        shiftKey: mouseEvent.shiftKey,
       })
       contentDOM.dispatchEvent(customEvent)
     }
@@ -310,6 +321,11 @@ const emptyLineFillerContextMenuPlugin = (): Extension =>
 const editorContextMenuHandlers = (): Extension =>
   EditorView.domEventHandlers({
     contextmenu(event: MouseEvent, view: EditorView) {
+      if (event.shiftKey) {
+        view.dispatch({ effects: closeAllContextMenusEffect.of(null) })
+        return false
+      }
+
       const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
       if (pos === null) {
         return false
@@ -347,8 +363,9 @@ const editorContextMenuHandlers = (): Extension =>
         closeContextMenu(view)
       }
 
-      // Prevent default on right-click to preserve selection
-      if (isRightClick) {
+      // Prevent default on right-click to preserve selection,
+      // but not when Shift is held (native context menu shortcut)
+      if (isRightClick && !event.shiftKey) {
         event.preventDefault()
         return true
       }

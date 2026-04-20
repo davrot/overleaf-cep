@@ -65,15 +65,26 @@ function FileTreeContextMenu() {
     keyboardInputRef.current = false
   }, [])
 
+  const handleShiftContextMenu = useCallback(
+    (event: MouseEvent) => {
+      if (event.shiftKey) {
+        setContextMenuCoords(null)
+      }
+    },
+    [setContextMenuCoords]
+  )
+
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('contextmenu', handleShiftContextMenu)
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('contextmenu', handleShiftContextMenu)
     }
-  }, [handleKeyDown, handleMouseDown])
+  }, [handleKeyDown, handleMouseDown, handleShiftContextMenu])
 
   if (!contextMenuCoords || fileTreeReadOnly) return null
 
