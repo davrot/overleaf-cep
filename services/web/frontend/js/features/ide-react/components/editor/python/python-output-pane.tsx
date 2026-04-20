@@ -74,9 +74,12 @@ export default function PythonOutputPane() {
         {error && (
           <div className="ide-redesign-python-output-pane-error">{error}</div>
         )}
-        {output.map((line, index) => (
-          <div className="ide-redesign-python-output-pane-line" key={index}>
-            {line}
+        {output.map((entry, index) => (
+          <div
+            className={`ide-redesign-python-output-pane-line ide-redesign-python-output-pane-line-${entry.stream}`}
+            key={index}
+          >
+            {entry.line}
           </div>
         ))}
       </div>

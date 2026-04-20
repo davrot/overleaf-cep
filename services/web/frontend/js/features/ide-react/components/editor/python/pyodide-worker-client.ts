@@ -5,7 +5,7 @@ import type {
 } from './pyodide-worker-messages'
 
 export type OutputCallback = (
-  stream: 'stdout' | 'stderr',
+  stream: 'stdout' | 'stderr' | 'info',
   line: string,
   fileId: string,
   executionId: string

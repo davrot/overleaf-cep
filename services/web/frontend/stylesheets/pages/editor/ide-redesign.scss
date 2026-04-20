@@ -92,6 +92,14 @@
   word-break: break-word;
 }
 
+.ide-redesign-python-output-pane-line-info {
+  color: var(--content-secondary);
+}
+
+.ide-redesign-python-output-pane-line-stderr {
+  color: var(--red-50);
+}
+
 .ide-redesign-python-output-pane-placeholder,
 .ide-redesign-python-output-pane-error {
   white-space: pre-wrap;

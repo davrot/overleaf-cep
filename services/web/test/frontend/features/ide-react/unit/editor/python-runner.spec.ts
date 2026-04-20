@@ -135,7 +135,9 @@ describe('PythonRunner', function () {
         executionId: runMsg.executionId,
         outputs: [],
       })
-      expect(runner.getState().output).to.deep.equal(['first run output'])
+      expect(runner.getState().output).to.deep.equal([
+        { stream: 'stdout', line: 'first run output' },
+      ])
 
       await runner.run()
       expect(runner.getState().output).to.deep.equal([])
@@ -193,7 +195,10 @@ describe('PythonRunner', function () {
         executionId: runMsg.executionId,
       })
 
-      expect(runner.getState().output).to.deep.equal(['line 1', 'line 2'])
+      expect(runner.getState().output).to.deep.equal([
+        { stream: 'stdout', line: 'line 1' },
+        { stream: 'stderr', line: 'line 2' },
+      ])
     })
 
     it('ignores output for a different fileId', async function () {
@@ -250,8 +255,8 @@ describe('PythonRunner', function () {
 
       const output = runner.getState().output
       expect(output).to.have.length(100)
-      expect(output[0]).to.equal('line 10')
-      expect(output[99]).to.equal('line 109')
+      expect(output[0]).to.deep.equal({ stream: 'stdout', line: 'line 10' })
+      expect(output[99]).to.deep.equal({ stream: 'stdout', line: 'line 109' })
     })
   })
 
@@ -274,8 +279,8 @@ describe('PythonRunner', function () {
 
       expect(runner.getState().status).to.equal('loading')
       expect(runner.getState().output).to.deep.equal([
-        'partial output',
-        'Execution interrupted',
+        { stream: 'stdout', line: 'partial output' },
+        { stream: 'info', line: 'Execution interrupted' },
       ])
     })
 

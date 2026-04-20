@@ -28,7 +28,7 @@ export type LoadingFailedEvent = { type: 'loading-failed'; error: string }
 
 export type OutputLineEvent = {
   type: 'output-line'
-  stream: 'stdout' | 'stderr'
+  stream: 'stdout' | 'stderr' | 'info'
   line: string
   fileId: string
   executionId: string
