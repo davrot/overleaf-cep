@@ -59,6 +59,7 @@ vi.mock('@overleaf/metrics', () => {
         }
       },
       prom: { Counter: sinon.stub(), Histogram: sinon.stub() },
+      mongodb: { monitor: sinon.stub() },
     },
   }
 })

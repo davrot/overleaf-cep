@@ -4,6 +4,7 @@ import Settings from '@overleaf/settings'
 import MongoUtils from '@overleaf/mongo-utils'
 import Mongoose from './Mongoose.mjs'
 import { addConnectionDrainer } from './GracefulShutdown.mjs'
+import Metrics from '@overleaf/metrics'
 
 // Ensure Mongoose is using the same mongodb instance as the mongodb module,
 // otherwise we will get multiple versions of the ObjectId class. Mongoose
@@ -27,6 +28,7 @@ const mongoClient = new mongodb.MongoClient(
   Settings.mongo.url,
   Settings.mongo.options
 )
+Metrics.mongodb.monitor(mongoClient, 'native')
 
 addConnectionDrainer('mongodb', async () => {
   await mongoClient.close()
