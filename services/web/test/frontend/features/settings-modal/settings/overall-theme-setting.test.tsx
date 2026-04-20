@@ -17,12 +17,10 @@ describe('<OverallThemeSetting />', function () {
     {
       name: 'Overall Theme 1',
       val: '',
-      path: 'https://overleaf.com/overalltheme-1.css',
     },
     {
       name: 'Overall Theme 2',
       val: 'light-',
-      path: 'https://overleaf.com/overalltheme-2.css',
     },
   ]
 

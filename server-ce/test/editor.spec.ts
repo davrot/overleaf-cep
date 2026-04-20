@@ -295,6 +295,26 @@ describe('editor', function () {
       })
     })
   })
+
+  describe('theming', function () {
+    it('can change overall theme in settings menu', function () {
+      cy.findByRole('button', { name: 'Settings' }).click()
+      cy.findByRole('dialog').within(() => {
+        cy.findByRole('tab', { name: 'Appearance' }).click()
+        cy.findByLabelText('Overall theme').select('Dark')
+      })
+      cy.get('body').should('have.attr', 'data-theme', 'default')
+      cy.get('body').type('{esc}')
+
+      cy.findByRole('button', { name: 'Settings' }).click()
+      cy.findByRole('dialog').within(() => {
+        cy.findByRole('tab', { name: 'Appearance' }).click()
+        cy.findByLabelText('Overall theme').select('Light')
+      })
+      cy.get('body').should('have.attr', 'data-theme', 'light')
+      cy.get('body').type('{esc}')
+    })
+  })
 })
 
 function createRandomLetterString() {
