@@ -77,7 +77,7 @@ function DefaultPageContentWrapper({ children }: { children: ReactNode }) {
 }
 
 function ProjectListPageContent() {
-  useThemedPage('themed-project-dashboard')
+  useThemedPage()
   const { totalProjectsCount, isLoading, loadProgress } =
     useProjectListContext()
 

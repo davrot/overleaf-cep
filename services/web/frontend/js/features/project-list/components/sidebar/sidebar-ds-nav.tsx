@@ -4,12 +4,8 @@ import NewProjectButton from '../new-project-button'
 import SidebarFilters from './sidebar-filters'
 import AddAffiliation, { useAddAffiliation } from '../add-affiliation'
 import { usePersistedResize } from '@/shared/hooks/use-resize'
-import { UserProvider } from '@/shared/context/user-context'
 import { useScrolled } from '@/features/project-list/components/sidebar/use-scroll'
 import { SurveyWidgetDsNav } from '@/features/project-list/components/survey-widget-ds-nav'
-import { useFeatureFlag } from '@/shared/context/split-test-context'
-import { ThemedProjectDashboardNotification } from './themed-project-dashboard-notification'
-import { useThemedDashboardIntro } from './use-themed-dashboard-intro'
 import { SidebarLowerSection } from '@/shared/components/sidebar/sidebar-lower-section'
 
 function SidebarDsNav() {
@@ -19,13 +15,6 @@ function SidebarDsNav() {
     name: 'project-sidebar',
   })
   const { containerRef, scrolledUp, scrolledDown } = useScrolled()
-  const themedDsNav = useFeatureFlag('themed-project-dashboard')
-  const {
-    completeThemedDashboardIntro,
-    dismissThemedDashboardIntro,
-    targetRef,
-    showingThemedDashboardIntro,
-  } = useThemedDashboardIntro()
 
   return (
     <div
@@ -60,31 +49,11 @@ function SidebarDsNav() {
           scrolledUp && 'show-shadow'
         )}
       >
-        <SidebarLowerSection
-          showThemeToggle={themedDsNav}
-          accountRef={targetRef}
-          onAccountOpen={() => {
-            if (showingThemedDashboardIntro) {
-              completeThemedDashboardIntro({
-                action: 'complete',
-                event: 'promo-click',
-              })
-            }
-          }}
-        >
+        <SidebarLowerSection showThemeToggle>
           <div className="project-list-sidebar-survey-wrapper">
             <SurveyWidgetDsNav />
           </div>
         </SidebarLowerSection>
-        <UserProvider>
-          {themedDsNav && (
-            <ThemedProjectDashboardNotification
-              target={targetRef.current}
-              show={showingThemedDashboardIntro}
-              onDismiss={dismissThemedDashboardIntro}
-            />
-          )}
-        </UserProvider>
       </div>
       <div
         {...getHandleProps({

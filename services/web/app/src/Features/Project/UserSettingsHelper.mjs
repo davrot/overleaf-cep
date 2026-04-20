@@ -1,8 +1,6 @@
-import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
-
 const SYSTEM_THEME_USER_CUTOFF_DATE = new Date(Date.UTC(2026, 2, 2, 12, 0, 0)) // 12pm GMT on March 2, 2026
 
-async function getOverallTheme(req, res, user) {
+function getOverallTheme(user) {
   if (user.ace.overallTheme != null) {
     return user.ace.overallTheme
   }
@@ -12,22 +10,10 @@ async function getOverallTheme(req, res, user) {
     return ''
   }
 
-  const systemOverallSplitTestAssignment =
-    await SplitTestHandler.promises.getAssignment(
-      req,
-      res,
-      'new-user-system-overall-theme'
-    )
-
-  if (systemOverallSplitTestAssignment.variant === 'system') {
-    return 'system'
-  }
-
-  // default / dark
-  return ''
+  return 'system'
 }
 
-async function buildUserSettings(req, res, user) {
+async function buildUserSettings(_req, _res, user) {
   return {
     mode: user.ace.mode,
     editorTheme: user.ace.theme,
@@ -41,7 +27,7 @@ async function buildUserSettings(req, res, user) {
     previewTabs: user.ace.previewTabs ?? false,
     fontFamily: user.ace.fontFamily || 'lucida',
     lineHeight: user.ace.lineHeight || 'normal',
-    overallTheme: await getOverallTheme(req, res, user),
+    overallTheme: getOverallTheme(user),
     mathPreview: user.ace.mathPreview,
     breadcrumbs: user.ace.breadcrumbs,
     nonBlinkingCursor: user.ace.nonBlinkingCursor ?? false,

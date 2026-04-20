@@ -529,7 +529,6 @@ async function projectListPage(req, res, next) {
 
   const splitTests = [
     // Split tests that will be made available to the frontend
-    'themed-project-dashboard',
     'import-docx',
   ].filter(Boolean)
 
