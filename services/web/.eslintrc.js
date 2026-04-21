@@ -10,6 +10,7 @@ module.exports = {
     'plugin:@typescript-eslint/recommended',
     'standard',
     'prettier',
+    'plugin:storybook/recommended',
   ],
   plugins: ['@overleaf'],
   env: {

@@ -1,4 +1,4 @@
-import { Meta } from '@storybook/react'
+import { Meta } from '@storybook/react-webpack5'
 import { OnlineUser } from '@/features/ide-react/context/online-users-context'
 import { OnlineUsersWidget } from '@/features/editor-navigation-toolbar/components/online-users-widget'
 

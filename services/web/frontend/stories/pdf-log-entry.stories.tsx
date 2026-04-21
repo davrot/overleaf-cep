@@ -1,5 +1,5 @@
 import PdfLogEntry from '@/features/pdf-preview/components/pdf-log-entry'
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react-webpack5'
 import { ruleIds } from '@/ide/human-readable-logs/HumanReadableLogsHints'
 import { ScopeDecorator } from './decorators/scope'
 import { useMeta } from './hooks/use-meta'

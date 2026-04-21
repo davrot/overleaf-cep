@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/react'
+import type { Preview } from '@storybook/react-webpack5'
 
 // Storybook does not (currently) support async loading of "stories". Therefore
 // the strategy in frontend/js/i18n.ts does not work (because we cannot wait on

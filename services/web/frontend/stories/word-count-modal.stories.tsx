@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from '@storybook/react'
+import { Meta, StoryObj } from '@storybook/react-webpack5'
 import WordCountModal from '@/features/word-count-modal/components/word-count-modal'
 import { ScopeDecorator } from './decorators/scope'
 import useFetchMock from './hooks/use-fetch-mock'

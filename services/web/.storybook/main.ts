@@ -1,6 +1,13 @@
+// This file has been automatically migrated to valid ESM format by Storybook.
+import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 import type { StorybookConfig } from '@storybook/react-webpack5'
-import path from 'node:path'
+import path, { dirname } from 'node:path'
 import MiniCssExtractPlugin from 'mini-css-extract-plugin'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const require = createRequire(import.meta.url)
 
 const rootDir = path.resolve(__dirname, '..')
 
@@ -20,17 +27,18 @@ const config: StorybookConfig = {
   core: {
     disableTelemetry: true,
   },
+
   staticDirs: [path.join(rootDir, 'public')],
+
   stories: [
     path.join(rootDir, 'frontend/stories/**/*.stories.{js,jsx,ts,tsx}'),
     path.join(rootDir, 'modules/**/stories/**/*.stories.{js,jsx,ts,tsx}'),
     path.join(rootDir, 'frontend/stories/**/*.mdx'),
     path.join(rootDir, 'modules/**/stories/**/*.mdx'),
   ],
+
   addons: [
     getAbsolutePath('@storybook/addon-links'),
-    getAbsolutePath('@storybook/addon-essentials'),
-    getAbsolutePath('@storybook/addon-interactions'),
     getAbsolutePath('@storybook/addon-a11y'),
     getAbsolutePath('@storybook/addon-designs'),
     getAbsolutePath('@storybook/addon-webpack5-compiler-babel'),
@@ -76,14 +84,14 @@ const config: StorybookConfig = {
         plugins: [new MiniCssExtractPlugin()],
       },
     },
+    getAbsolutePath('@storybook/addon-docs'),
   ],
+
   framework: {
     name: getAbsolutePath('@storybook/react-webpack5'),
     options: {},
   },
-  docs: {
-    autodocs: 'tag',
-  },
+
   babel: (options: Record<string, any>) => {
     return {
       ...options,
@@ -95,6 +103,7 @@ const config: StorybookConfig = {
       ],
     }
   },
+
   webpackFinal: storybookConfig => {
     return {
       ...storybookConfig,
