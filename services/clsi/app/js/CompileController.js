@@ -143,6 +143,7 @@ function compile(req, res, next) {
                   rootResourcePath: request.rootResourcePath,
                   stopOnFirstError: request.stopOnFirstError,
                 },
+                metricsOpts: request.metricsOpts,
               })
             }
 
