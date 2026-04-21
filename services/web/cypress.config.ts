@@ -34,7 +34,7 @@ export default defineConfig({
     excludeSpecPattern: process.env.CYPRESS_EXCLUDE_SPEC_PATTERN,
   },
   retries: {
-    runMode: 3,
+    runMode: parseInt(process.env.CYPRESS_RETRIES || '3', 10) || 3,
   },
   ...reporterOptions,
 })
