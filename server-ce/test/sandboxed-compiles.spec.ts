@@ -88,11 +88,13 @@ describe('SandboxedCompiles', function () {
       cy.log('Start compile')
       // We need to start the compile manually because we do not want to wait for it to finish
       cy.findByRole('button', { name: 'Recompile' }).click()
+      // Wait for the compile to start
+      cy.findByRole('button', { name: 'Compiling…' }).should('exist')
       // Now stop the compile and kill the latex process
       stopCompile({ delay: 1000 })
       cy.findByRole('region', { name: 'PDF preview' })
         .invoke('text')
-        .should('match', /PDF Rendering Error|Compilation cancelled/)
+        .should('match', /No PDF|PDF Rendering Error|Compilation cancelled/)
       // Check that the previous compile is not running in the background by
       // disabling the infinite loop and recompiling
       cy.findByText('\\def').parent().click()

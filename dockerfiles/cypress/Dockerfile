@@ -1,4 +1,4 @@
-FROM cypress/included:13.13.2
+FROM cypress/included:15.12.0
 ARG USER_UID=1000
 ARG USER_GID=1000
 

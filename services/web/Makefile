@@ -204,7 +204,7 @@ test_writefull:
 # Note: The below cypress targets are for CI only
 build_test_frontend_ct:
 	$(DOCKER_COMPOSE) build test_frontend_ct
-	docker run --rm --volume /dev/shm:/dev/shm --user root $(IMAGE_CI) bash -ec 'for path in /overleaf/services/web/cypress/results /overleaf/services/web/node_modules/.cache; do mkdir -p $$path; chown -R node:node $$path; done && tar -cC / overleaf | tar -xC /dev/shm'
+	docker run --rm --volume /dev/shm:/dev/shm --user root $(IMAGE_CI) bash -ec 'for path in /overleaf/services/web/cypress/results /overleaf/services/web/cypress/support /overleaf/services/web/node_modules/.cache; do mkdir -p $$path; chown -R node:node $$path; done && tar -cC / overleaf | tar -xC /dev/shm'
 
 test_frontend_ct_core_other: export CYPRESS_DOWNLOADS=./cypress/downloads/core
 test_frontend_ct_core_other: export CYPRESS_RESULTS=./cypress/results/core
