@@ -214,4 +214,88 @@ describe('<PythonOutputPane />', function () {
     cy.findByText('Sushi,Japanese').should('exist')
     cy.findByText('Tacos,Mexican').should('exist')
   })
+
+  it('renders stderr output with the stderr line class', function () {
+    const executablePythonFileContents = [
+      'import sys',
+      "print('hello!')",
+      "sys.stderr.write('boom\\n')",
+    ].join('\n')
+    const projectFiles = {
+      [pythonExecutableScript.filename]: executablePythonFileContents,
+    }
+    const ProjectProvider = makeProjectProvider(projectFiles)
+
+    cy.mount(
+      <EditorProviders
+        scope={{
+          editor: {
+            sharejs_doc: {
+              doc_id: pythonExecutableScript.file_id,
+              getSnapshot: () => executablePythonFileContents,
+            },
+            currentDocumentId: pythonExecutableScript.file_id,
+            openDocName: pythonExecutableScript.filename,
+          },
+        }}
+        providers={{ FileTreePathProvider, ProjectProvider }}
+      >
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
+      </EditorProviders>
+    )
+
+    cy.findByRole('button', { name: 'Run Python code' })
+      .should('not.be.disabled')
+      .click()
+
+    cy.findByText('hello!')
+      .should('have.class', 'ide-redesign-python-output-pane-line-stdout')
+      .and('not.have.class', 'ide-redesign-python-output-pane-line-stderr')
+    cy.findByText('boom').should(
+      'have.class',
+      'ide-redesign-python-output-pane-line-stderr'
+    )
+  })
+
+  it('renders the interrupt message as an info line', function () {
+    const executablePythonFileContents = 'while True:\n    pass\n'
+    const projectFiles = {
+      [pythonExecutableScript.filename]: executablePythonFileContents,
+    }
+    const ProjectProvider = makeProjectProvider(projectFiles)
+
+    cy.mount(
+      <EditorProviders
+        scope={{
+          editor: {
+            sharejs_doc: {
+              doc_id: pythonExecutableScript.file_id,
+              getSnapshot: () => executablePythonFileContents,
+            },
+            currentDocumentId: pythonExecutableScript.file_id,
+            openDocName: pythonExecutableScript.filename,
+          },
+        }}
+        providers={{ FileTreePathProvider, ProjectProvider }}
+      >
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
+      </EditorProviders>
+    )
+
+    cy.findByRole('button', { name: 'Run Python code' })
+      .should('not.be.disabled')
+      .click()
+    cy.findByRole('button', { name: 'Stop Python execution' })
+      .should('not.be.disabled')
+      .click()
+
+    cy.findByText('Execution interrupted').should(
+      'have.class',
+      'ide-redesign-python-output-pane-line-info'
+    )
+  })
 })
