@@ -1,3 +1,5 @@
+export type OutputStream = 'stdout' | 'stderr' | 'info'
+
 export type ProjectFileData = {
   relativePath: string
   content: string
@@ -28,7 +30,7 @@ export type LoadingFailedEvent = { type: 'loading-failed'; error: string }
 
 export type OutputLineEvent = {
   type: 'output-line'
-  stream: 'stdout' | 'stderr' | 'info'
+  stream: OutputStream
   line: string
   fileId: string
   executionId: string

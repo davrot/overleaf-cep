@@ -4,6 +4,7 @@
 import { v4 as uuid } from 'uuid'
 import { debugConsole } from '@/utils/debugging'
 import { PyodideWorkerClient } from './pyodide-worker-client'
+import type { OutputStream } from './pyodide-worker-messages'
 
 const MAX_OUTPUT_LINES = 100
 
@@ -22,7 +23,7 @@ export type ExecutionContext = {
 type Listener = () => void
 
 export type OutputLine = {
-  stream: 'stdout' | 'stderr' | 'info'
+  stream: OutputStream
   line: string
 }
 
@@ -208,10 +209,7 @@ export class PythonRunner {
   }
 }
 
-function appendCapped(
-  existing: OutputLine[],
-  entry: OutputLine
-): OutputLine[] {
+function appendCapped(existing: OutputLine[], entry: OutputLine): OutputLine[] {
   const updated = [...existing, entry]
   return updated.length > MAX_OUTPUT_LINES
     ? updated.slice(-MAX_OUTPUT_LINES)

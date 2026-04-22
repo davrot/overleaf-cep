@@ -1,11 +1,12 @@
 import type {
+  OutputStream,
   ProjectFileData,
   PyodideWorkerRequest,
   PyodideWorkerResponse,
 } from './pyodide-worker-messages'
 
 export type OutputCallback = (
-  stream: 'stdout' | 'stderr' | 'info',
+  stream: OutputStream,
   line: string,
   fileId: string,
   executionId: string
