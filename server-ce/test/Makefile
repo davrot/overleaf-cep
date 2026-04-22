@@ -17,6 +17,10 @@ export USER_UID=$(shell id -u)
 export USER_GID=$(shell id -g)
 IMAGE_TAG_PRO_BASE := $(shell echo $(IMAGE_TAG_PRO) | sed -E s/:.+//)
 
+print-debug-logs:
+	-docker compose logs sharelatex
+	-docker compose exec sharelatex bash -c 'tail -n100 /var/log/overleaf/*.log'
+
 test-e2e-native:
 	docker compose -f docker-compose.yml -f docker-compose.native.yml up --no-log-prefix sharelatex host-admin -d
 	CYPRESS_BASE_URL='http://127.0.0.1:3231' \
