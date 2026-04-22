@@ -135,12 +135,14 @@ async function _updateCustomerIoSubscriptionProperties(user, features) {
     individualSubscription,
     memberGroupSubscriptions,
     managedGroupSubscriptions,
+    currentInstitutionsWithLicence,
   } = await SubscriptionViewModelBuilder.promises.getUsersSubscriptionDetails({
     _id: userId,
   })
 
   const userIsMemberOfGroupSubscription =
     memberGroupSubscriptions.length > 0 || managedGroupSubscriptions.length > 0
+  const hasCommons = (currentInstitutionsWithLicence?.length ?? 0) > 0
 
   let individualPaymentRecord = null
   if (individualSubscription && !individualSubscription.groupPlan) {
@@ -174,6 +176,7 @@ async function _updateCustomerIoSubscriptionProperties(user, features) {
     memberGroupSubscriptions,
     managedGroupSubscriptions,
     userIsMemberOfGroupSubscription,
+    hasCommons,
     writefullData,
   })
 

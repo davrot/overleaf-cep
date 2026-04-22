@@ -25,6 +25,7 @@ const { MEMBERS_LIMIT_ADD_ON_CODE } = PaymentProviderEntities
 /**
  * @import { Subscription } from "../../../../types/project/dashboard/subscription"
  * @import { Subscription as DBSubscription } from "../../models/Subscription"
+ * @import { Institution } from "../../../../types/institution"
  */
 
 function buildHostedLink(type) {
@@ -390,7 +391,7 @@ async function buildUsersSubscriptionViewModel(user, locale = 'en') {
 
 /**
  * @param {{_id: string}} user
- * @returns {Promise<{bestSubscription:Subscription,individualSubscription:DBSubscription|null,memberGroupSubscriptions:DBSubscription[],managedGroupSubscriptions:DBSubscription[]}>}
+ * @returns {Promise<{bestSubscription:Subscription,individualSubscription:DBSubscription|null,memberGroupSubscriptions:DBSubscription[],managedGroupSubscriptions:DBSubscription[],currentInstitutionsWithLicence:Institution[]}>}
  */
 async function getUsersSubscriptionDetails(user) {
   let [
@@ -487,6 +488,7 @@ async function getUsersSubscriptionDetails(user) {
     individualSubscription,
     memberGroupSubscriptions,
     managedGroupSubscriptions,
+    currentInstitutionsWithLicence: currentInstitutionsWithLicence ?? [],
   }
 }
 

@@ -166,6 +166,13 @@ function shouldClearExpiryDate(subscription) {
   return !PENDING_CANCELLATION_STATES.has(getSubscriptionState(subscription))
 }
 
+function getTrialEndDate(individualSubscription) {
+  const trialEndsAt =
+    individualSubscription?.recurlyStatus?.trialEndsAt ||
+    individualSubscription?.paymentProvider?.trialEndsAt
+  return toUnixTimestamp(trialEndsAt)
+}
+
 function hasIndividualAiAssistAddOn(individualSubscription, paymentRecord) {
   if (
     !individualSubscription ||
@@ -310,6 +317,31 @@ function getGroupSize(
   }, 0)
 }
 
+function getPaymentProvider(
+  individualSubscription,
+  memberGroupSubscriptions = [],
+  managedGroupSubscriptions = []
+) {
+  const candidates = [
+    individualSubscription,
+    ...memberGroupSubscriptions,
+    ...managedGroupSubscriptions,
+  ].filter(Boolean)
+
+  if (candidates.length === 0) {
+    return null
+  }
+
+  for (const candidate of candidates) {
+    const service = candidate.paymentProvider?.service
+    if (service) {
+      return service.includes('stripe') ? 'stripe' : 'recurly'
+    }
+  }
+
+  return 'recurly'
+}
+
 function shouldUseCommonsBestSubscription(
   hasCommons,
   bestSubscription,
@@ -339,6 +371,7 @@ function getPlanProperties({
   memberGroupSubscriptions,
   managedGroupSubscriptions,
   userIsMemberOfGroupSubscription,
+  hasCommons,
   writefullData,
 }) {
   const planType = normalizePlanType(bestSubscription)
@@ -378,9 +411,25 @@ function getPlanProperties({
     expiryDate ??
     (shouldClearExpiryDate(individualSubscription) ? '' : undefined)
 
+  const trialEndDate = getTrialEndDate(individualSubscription)
+
   const properties = {
     ai_plan: aiPlan,
+    group: userIsMemberOfGroupSubscription,
+    commons: Boolean(hasCommons),
+    individual_subscription: Boolean(
+      individualSubscription && !individualSubscription.groupPlan
+    ),
   }
+
+  if (trialEndDate != null) properties.trial_end_date = trialEndDate
+
+  const paymentProvider = getPaymentProvider(
+    individualSubscription,
+    memberGroupSubscriptions,
+    managedGroupSubscriptions
+  )
+  if (paymentProvider) properties.payment_provider = paymentProvider
 
   if (planType) properties.plan_type = planType
   if (displayPlanType) properties.display_plan_type = displayPlanType
