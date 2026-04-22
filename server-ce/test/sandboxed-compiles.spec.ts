@@ -83,7 +83,11 @@ describe('SandboxedCompiles', function () {
       cy.findByText('\\maketitle').parent().click()
       cy.findByText('\\maketitle')
         .parent()
-        .type('\n\\def\\x{{}Hello!\\par\\x}\\x')
+        .type(
+          '\nFirst page\\clearpage' +
+            '\nSecond page' +
+            '\\def\\loop{{}\\let\\next\\loop\\next}\\loop'
+        )
       waitForCompileRateLimitCoolOff()
       cy.log('Start compile')
       // We need to start the compile manually because we do not want to wait for it to finish
