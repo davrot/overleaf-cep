@@ -1,5 +1,6 @@
 import Settings from '@overleaf/settings'
 import CompileManager from '../Compile/CompileManager.mjs'
+import ClsiManager from '../Compile/ClsiManager.mjs'
 import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import logger from '@overleaf/logger'
@@ -38,14 +39,7 @@ async function convertDocxToLaTeXZipArchive(path, userId) {
       signal: abortController.signal,
     })
 
-    const contentLengthHeader = response.headers.get('Content-Length')
-    if (contentLengthHeader == null) {
-      logger.warn(
-        'CLSI did not provide Content-Length header for converted document'
-      )
-      throw new OError('CLSI response missing Content-Length header')
-    }
-    const contentLength = parseInt(contentLengthHeader, 10)
+    const contentLength = parseInt(response.headers.get('Content-Length'), 10)
     if (contentLength > Settings.maxUploadSize) {
       abortController.abort()
       stream.destroy()
@@ -77,8 +71,35 @@ async function convertDocxToLaTeXZipArchive(path, userId) {
   return outputPath
 }
 
+async function convertProjectToDocument(projectId, userId, type) {
+  const limits = await CompileManager.promises._getUserCompileLimits(userId)
+  const clsiRequest =
+    await ClsiManager.promises.buildDocumentConversionRequest(projectId)
+
+  const clsiUrl = new URL(Settings.apis.clsi.url)
+  clsiUrl.pathname = `/project/${projectId}/user/${userId}/download/project-to-document`
+  clsiUrl.searchParams.set('type', type)
+  clsiUrl.searchParams.set('compileBackendClass', limits.compileBackendClass)
+  clsiUrl.searchParams.set('compileGroup', limits.compileGroup)
+
+  logger.debug(
+    { clsiUrl: clsiUrl.toString(), projectId, userId, type },
+    'sending project to CLSI for document conversion'
+  )
+
+  const { stream, response } = await fetchStreamWithResponse(clsiUrl, {
+    method: 'POST',
+    json: clsiRequest,
+  })
+
+  const contentLength = parseInt(response.headers.get('Content-Length'), 10)
+
+  return { stream, contentLength }
+}
+
 export default {
   promises: {
     convertDocxToLaTeXZipArchive,
+    convertProjectToDocument,
   },
 }

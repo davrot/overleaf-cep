@@ -10,7 +10,11 @@ import { useTranslation } from 'react-i18next'
 import importOverleafModules from '../../../../../macros/import-overleaf-module.macro'
 import { useEditorContext } from '@/shared/context/editor-context'
 import { useIdeReactContext } from '@/features/ide-react/context/ide-react-context'
-import { DownloadProjectPDF, DownloadProjectZip } from './download-project'
+import {
+  DownloadProjectPDF,
+  DownloadProjectZip,
+  ExportProjectDocx,
+} from './download-project'
 import { useCallback, useState } from 'react'
 import OLDropdownMenuItem from '@/shared/components/ol/ol-dropdown-menu-item'
 import EditableLabel from './editable-label'
@@ -76,6 +80,7 @@ export const ToolbarProjectTitle = () => {
         )}
         <DownloadProjectPDF />
         <DownloadProjectZip />
+        <ExportProjectDocx />
         <DropdownDivider />
         <DuplicateProject />
         <OLDropdownMenuItem

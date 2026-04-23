@@ -250,4 +250,89 @@ describe('ConversionManager', function () {
       })
     })
   })
+
+  describe('convertLaTeXToDocumentInDirWithLock', function () {
+    describe('successfully', function () {
+      beforeEach(async function (ctx) {
+        ctx.compileDir = '/compiles/test-compile-dir'
+        ctx.rootDocPath = 'main.tex'
+        ctx.type = 'docx'
+        ctx.extension = 'docx'
+
+        ctx.result =
+          await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+            ctx.conversionId,
+            ctx.compileDir,
+            ctx.rootDocPath,
+            ctx.type,
+            ctx.extension
+          )
+      })
+
+      it('should acquire a lock on the compile dir', function (ctx) {
+        sinon.assert.calledWith(ctx.LockManager.acquire, ctx.compileDir)
+      })
+
+      it('should release the lock', function (ctx) {
+        sinon.assert.called(ctx.lock.release)
+      })
+
+      it('should run pandoc with correct arguments', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.callCount).toBe(1)
+        expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
+          ctx.conversionId,
+          [
+            'pandoc',
+            ctx.rootDocPath,
+            '--output',
+            `output-uuid.${ctx.extension}`,
+            '--from',
+            'latex',
+            '--to',
+            ctx.type,
+            '--resource-path=.',
+          ],
+          ctx.compileDir,
+          ctx.Settings.pandocImage,
+          60_000,
+          {},
+          'conversions',
+        ])
+      })
+
+      it('should convert conversion timeout to milliseconds', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
+      })
+
+      it('should return path to the output document', function (ctx) {
+        expect(ctx.result).toBe(
+          Path.join(ctx.compileDir, `output-uuid.${ctx.extension}`)
+        )
+      })
+    })
+
+    describe('when pandoc fails (non-zero exit code)', function () {
+      it('should reject with an error and release the lock', async function (ctx) {
+        ctx.compileDir = '/compiles/test-compile-dir'
+
+        ctx.CommandRunner.promises.run.resolves({
+          stdout: 'mock-stdout',
+          stderr: 'mock-stderr',
+          exitCode: 1,
+        })
+
+        await expect(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+            ctx.conversionId,
+            ctx.compileDir,
+            'main.tex',
+            'docx',
+            'docx'
+          )
+        ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
+
+        sinon.assert.called(ctx.lock.release)
+      })
+    })
+  })
 })

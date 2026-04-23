@@ -130,6 +130,11 @@ app.post(
   FileUploadMiddleware.multerMiddleware,
   ConversionController.convertDocxToLaTeX
 )
+app.post(
+  '/project/:project_id/user/:user_id/download/project-to-document',
+  bodyParser.json({ limit: Settings.compileSizeLimit }),
+  ConversionController.convertProjectToDocument
+)
 
 if (process.env.NODE_ENV === 'development' && global.__coverage__) {
   app.get('/coverage', (req, res) => {

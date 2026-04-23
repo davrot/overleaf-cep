@@ -1171,6 +1171,21 @@ function _finaliseRequest(projectId, options, project, docs, files) {
   }
 }
 
+async function buildDocumentConversionRequest(projectId) {
+  const project = await ProjectGetter.promises.getProject(projectId, {
+    compiler: 1,
+    imageName: 1,
+    'overleaf.history.id': 1,
+    rootDoc_id: 1,
+    rootFolder: 1,
+  })
+  if (project == null) {
+    throw new Errors.NotFoundError(`project does not exist: ${projectId}`)
+  }
+  const projectStateHash = ClsiStateManager.computeHash(project, {})
+  return _buildRequestFromMongo(projectId, {}, project, projectStateHash)
+}
+
 async function wordCount(projectId, userId, file, limits, clsiserverid) {
   const { compileBackendClass, compileGroup } = limits
   const req = await _buildRequest(projectId, userId, limits)
@@ -1297,5 +1312,6 @@ export default {
     getOutputFileStream,
     wordCount,
     syncTeX,
+    buildDocumentConversionRequest,
   },
 }

@@ -7,6 +7,7 @@ import importOverleafModules from '../../../../macros/import-overleaf-module.mac
 import { OLToastContainer } from '@/shared/components/ol/ol-toast-container'
 import clipboardToastGenerators from '@/features/source-editor/components/clipboard-toasts'
 import importDocxFeedbackToastGenerators from '@/features/project-list/components/new-project-button/import-docx-feedback-toast'
+import exportDocumentToastGenerators from '@/features/ide-react/components/toolbar/export-document-toasts'
 
 const moduleGeneratorsImport = importOverleafModules('toastGenerators') as {
   import: { default: GlobalToastGeneratorEntry[] }
@@ -29,6 +30,7 @@ const GENERATOR_LIST: GlobalToastGeneratorEntry[] = [
   ...moduleGenerators.flat(),
   ...clipboardToastGenerators,
   ...importDocxFeedbackToastGenerators,
+  ...exportDocumentToastGenerators,
 ]
 const GENERATOR_MAP: Map<string, GlobalToastGenerator> = new Map(
   GENERATOR_LIST.map(({ key, generator }) => [key, generator])

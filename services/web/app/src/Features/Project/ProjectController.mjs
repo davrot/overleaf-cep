@@ -480,6 +480,7 @@ const _ProjectController = {
       'wf-fake-non-english-suggestions',
       'editor-tabs',
       'overleaf-code',
+      'export-docx',
     ].filter(Boolean)
 
     const getUserValues = async userId =>

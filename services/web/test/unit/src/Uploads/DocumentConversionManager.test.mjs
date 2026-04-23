@@ -73,6 +73,18 @@ describe('DocumentConversionManager', function () {
       })
     )
 
+    ctx.ClsiManager = {
+      promises: {
+        buildDocumentConversionRequest: sinon
+          .stub()
+          .resolves({ some: 'clsi-request' }),
+      },
+    }
+
+    vi.doMock('../../../../app/src/Features/Compile/ClsiManager.mjs', () => ({
+      default: ctx.ClsiManager,
+    }))
+
     ctx.DocumentConversionManager = (await import(MODULE_PATH)).default
   })
 
@@ -215,42 +227,63 @@ describe('DocumentConversionManager', function () {
         )
       })
     })
+  })
 
-    describe('when the Content-Length header is missing', function () {
+  describe('convertProjectToDocument', function () {
+    beforeEach(function (ctx) {
+      ctx.projectId = 'test-project-id'
+      ctx.userId = 'test-user-id'
+      ctx.type = 'docx'
+      ctx.mockStream = { destroy: sinon.stub() }
+      ctx.response = {
+        headers: { get: sinon.stub().returns(null) },
+      }
+      ctx.response.headers.get.withArgs('Content-Length').returns('50')
+      ctx.fetchUtils.fetchStreamWithResponse.resolves({
+        stream: ctx.mockStream,
+        response: ctx.response,
+      })
+    })
+
+    describe('successfully', function () {
       beforeEach(async function (ctx) {
-        ctx.path = '/path/to/input.docx'
-        ctx.userId = 'test-user-id'
-        ctx.response = {
-          headers: {
-            get: sinon.stub().returns(null),
-          },
-        }
-
-        ctx.fetchUtils.fetchStreamWithResponse.resolves({
-          stream: 'mocked-fetch-stream',
-          response: ctx.response,
-        })
-
-        await expect(
-          ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
-            ctx.path,
-            ctx.userId
+        ctx.result =
+          await ctx.DocumentConversionManager.promises.convertProjectToDocument(
+            ctx.projectId,
+            ctx.userId,
+            ctx.type
           )
-        ).to.be.rejectedWith('document conversion failed')
       })
 
-      it('should not write the archive to disk', function (ctx) {
-        sinon.assert.notCalled(ctx.fs.createWriteStream)
-        sinon.assert.notCalled(ctx.nodeStream.pipeline)
-      })
-
-      it('should attempt to clean up the output path', function (ctx) {
+      it('should build the CLSI document conversion request', function (ctx) {
         sinon.assert.calledWith(
-          ctx.fsPromises.unlink,
-          sinon.match(
-            /\/path\/to\/dump\/folder\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}_document-conversion\.zip/
-          )
+          ctx.ClsiManager.promises.buildDocumentConversionRequest,
+          ctx.projectId
         )
+      })
+
+      it('should call CLSI with the correct URL', function (ctx) {
+        const expectedUrl = new URL(ctx.Settings.apis.clsi.url)
+        expectedUrl.pathname = `/project/${ctx.projectId}/user/${ctx.userId}/download/project-to-document`
+        expectedUrl.searchParams.set('type', ctx.type)
+        expectedUrl.searchParams.set(
+          'compileBackendClass',
+          'test-backend-class'
+        )
+        expectedUrl.searchParams.set('compileGroup', 'test-compile-group')
+
+        sinon.assert.calledWith(
+          ctx.fetchUtils.fetchStreamWithResponse,
+          sinon.match(url => url.toString() === expectedUrl.toString()),
+          { method: 'POST', json: { some: 'clsi-request' } }
+        )
+      })
+
+      it('should return the stream and content length', function (ctx) {
+        expect(ctx.result).to.deep.equal({
+          stream: ctx.mockStream,
+          contentLength: 50,
+        })
       })
     })
   })

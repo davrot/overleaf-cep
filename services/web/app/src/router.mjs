@@ -193,6 +193,10 @@ const rateLimiters = {
     points: 10,
     duration: 60,
   }),
+  documentExport: new RateLimiter('document-export', {
+    points: 5,
+    duration: 60,
+  }),
 }
 
 async function initialize(webRouter, privateApiRouter, publicApiRouter) {
@@ -763,6 +767,18 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthorizationMiddleware.ensureUserCanWriteProjectContent,
     ExportsController.exportDownload
   )
+
+  if (Settings.enablePandocConversions) {
+    webRouter.get(
+      '/project/:Project_id/download/conversion/:type',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiters.documentExport, {
+        params: ['Project_id'],
+      }),
+      AuthorizationMiddleware.ensureUserCanReadProject,
+      ProjectDownloadsController.exportProjectConversion
+    )
+  }
 
   webRouter.get(
     '/Project/:Project_id/download/zip',

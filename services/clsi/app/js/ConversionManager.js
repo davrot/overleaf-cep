@@ -94,8 +94,77 @@ async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
   return Path.join(conversionDir, outputName)
 }
 
+async function convertLaTeXToDocumentInDirWithLock(
+  conversionId,
+  compileDir,
+  rootDocPath,
+  type,
+  extension
+) {
+  const lock = LockManager.acquire(compileDir)
+  try {
+    return await convertLaTeXToDocumentInDir(
+      conversionId,
+      compileDir,
+      rootDocPath,
+      type,
+      extension
+    )
+  } finally {
+    lock.release()
+  }
+}
+
+async function convertLaTeXToDocumentInDir(
+  conversionId,
+  compileDir,
+  rootDocPath = 'main.tex',
+  type,
+  extension
+) {
+  const outputName = crypto.randomUUID() + '.' + extension
+  const timeoutMs = Settings.conversionTimeoutSeconds * 1000
+
+  logger.debug(
+    { compileDir, rootDocPath, type },
+    'running pandoc latex-to-document in compile dir'
+  )
+
+  const { exitCode, stdout, stderr } = await CommandRunner.promises.run(
+    conversionId,
+    [
+      'pandoc',
+      rootDocPath,
+      '--output',
+      outputName,
+      '--from',
+      'latex',
+      '--to',
+      type,
+      '--resource-path=.',
+    ],
+    compileDir,
+    Settings.pandocImage,
+    timeoutMs,
+    {},
+    'conversions'
+  )
+
+  if (exitCode !== 0) {
+    throw new OError('pandoc latex-to-document conversion failed', {
+      type,
+      exitCode,
+      stdout,
+      stderr,
+    })
+  }
+
+  return Path.join(compileDir, outputName)
+}
+
 export default {
   promises: {
     convertDocxToLaTeXWithLock,
+    convertLaTeXToDocumentInDirWithLock,
   },
 }

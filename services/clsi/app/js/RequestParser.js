@@ -1,3 +1,4 @@
+import { promisify } from 'node:util'
 import settings from '@overleaf/settings'
 import OutputCacheManager from './OutputCacheManager.js'
 
@@ -285,4 +286,4 @@ function _checkPath(path) {
   return path
 }
 
-export default { parse, MAX_TIMEOUT }
+export default { parse, MAX_TIMEOUT, promises: { parse: promisify(parse) } }

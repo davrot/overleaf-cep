@@ -87,7 +87,7 @@ export const ToolbarMenuBar = () => {
       { id: 'submit', children: ['submit-project', 'manage-template'] },
       {
         id: 'file-download',
-        children: ['download-as-source-zip', 'download-pdf'],
+        children: ['download-as-source-zip', 'download-pdf', 'export-as-docx'],
       },
       {
         id: 'settings',

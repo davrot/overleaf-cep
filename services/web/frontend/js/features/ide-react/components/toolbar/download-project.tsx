@@ -7,6 +7,8 @@ import { useProjectContext } from '@/shared/context/project-context'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
+import getMeta from '@/utils/meta'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
 
 export const DownloadProjectZip = () => {
   const { t } = useTranslation()
@@ -99,4 +101,44 @@ export const DownloadProjectPDF = () => {
   } else {
     return button
   }
+}
+
+export const ExportProjectDocx = () => {
+  const { t } = useTranslation()
+  const { projectId } = useProjectContext()
+  const exportDocxEnabled = useFeatureFlag('export-docx')
+  const enablePandocConversions =
+    getMeta('ol-ExposedSettings')?.enablePandocConversions
+  const anonymous = getMeta('ol-anonymous')
+
+  const showExportDocx =
+    exportDocxEnabled && enablePandocConversions && !anonymous
+
+  useCommandProvider(
+    () =>
+      showExportDocx
+        ? [
+            {
+              id: 'export-as-docx',
+              href: `/project/${projectId}/download/conversion/docx`,
+              label: t('export_as_docx'),
+            },
+          ]
+        : [],
+    [t, showExportDocx, projectId]
+  )
+
+  if (!showExportDocx) {
+    return null
+  }
+
+  return (
+    <OLDropdownMenuItem
+      href={`/project/${projectId}/download/conversion/docx`}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {t('export_as_docx')}
+    </OLDropdownMenuItem>
+  )
 }

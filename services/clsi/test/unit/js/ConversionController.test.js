@@ -13,12 +13,29 @@ describe('ConversionController', function () {
     ctx.conversionDir = '/path/to/conversion/result'
     ctx.zipPath = '/path/to/conversion/result/output.zip'
     ctx.zipStat = { size: 1234 }
+    ctx.documentPath = '/compiles/output-uuid/output-uuid.docx'
+    ctx.documentStat = { size: 5678 }
     ctx.Settings = {
       enablePandocConversions: true,
+      path: { compilesDir: '/compiles' },
     }
+    ctx.parsedRequest = { rootResourcePath: 'main.tex' }
     ctx.ConversionManager = {
       promises: {
         convertDocxToLaTeXWithLock: sinon.stub().resolves(ctx.zipPath),
+        convertLaTeXToDocumentInDirWithLock: sinon
+          .stub()
+          .resolves(ctx.documentPath),
+      },
+    }
+    ctx.ResourceWriter = {
+      promises: {
+        syncResourcesToDisk: sinon.stub().resolves(),
+      },
+    }
+    ctx.RequestParser = {
+      promises: {
+        parse: sinon.stub().resolves(ctx.parsedRequest),
       },
     }
 
@@ -52,6 +69,14 @@ describe('ConversionController', function () {
 
     vi.doMock('../../../app/js/ConversionManager', () => ({
       default: ctx.ConversionManager,
+    }))
+
+    vi.doMock('../../../app/js/ResourceWriter', () => ({
+      default: ctx.ResourceWriter,
+    }))
+
+    vi.doMock('../../../app/js/RequestParser', () => ({
+      default: ctx.RequestParser,
     }))
 
     ctx.res = new PassThrough()
@@ -151,6 +176,158 @@ describe('ConversionController', function () {
           ).to.be.rejectedWith('mock stream error')
 
           sinon.assert.calledWith(ctx.fs.rm, ctx.conversionDir)
+        })
+      })
+    })
+  })
+
+  describe('convertProjectToDocument', function () {
+    beforeEach(function (ctx) {
+      ctx.req = {
+        body: {},
+        params: { project_id: 'test-project-id', user_id: 'test-user-id' },
+        query: { type: 'docx' },
+      }
+      ctx.fs.stat.resolves(ctx.documentStat)
+    })
+
+    describe('when conversions are disabled', function () {
+      beforeEach(async function (ctx) {
+        ctx.Settings.enablePandocConversions = false
+        ctx.res.sendStatus = sinon.stub()
+
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          sinon.stub()
+        )
+      })
+
+      it('should return 404', function (ctx) {
+        sinon.assert.calledWith(ctx.res.sendStatus, 404)
+      })
+
+      it('should not sync resources or call the conversion manager', function (ctx) {
+        sinon.assert.notCalled(ctx.ResourceWriter.promises.syncResourcesToDisk)
+        sinon.assert.notCalled(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock
+        )
+      })
+    })
+
+    describe('when an unsupported type is requested', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.query = { type: 'unsupported' }
+        ctx.res.sendStatus = sinon.stub()
+
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          sinon.stub()
+        )
+      })
+
+      it('should return 400', function (ctx) {
+        sinon.assert.calledWith(ctx.res.sendStatus, 400)
+      })
+
+      it('should not sync resources or call the conversion manager', function (ctx) {
+        sinon.assert.notCalled(ctx.ResourceWriter.promises.syncResourcesToDisk)
+        sinon.assert.notCalled(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock
+        )
+      })
+    })
+
+    const uuidDirPattern =
+      /^\/compiles\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+    describe('successfully', function () {
+      beforeEach(async function (ctx) {
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          sinon.stub()
+        )
+      })
+
+      it('should sync resources to a unique conversion directory', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ResourceWriter.promises.syncResourcesToDisk,
+          sinon.match({ rootResourcePath: 'main.tex' }),
+          sinon.match(uuidDirPattern)
+        )
+      })
+
+      it('should call convertLaTeXToDocumentInDirWithLock with docx type and extension', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock,
+          sinon.match(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+          ),
+          sinon.match(uuidDirPattern),
+          'main.tex',
+          'docx',
+          'docx'
+        )
+      })
+
+      it('should set the Content-Length header from the document stat', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.res.setHeader,
+          'Content-Length',
+          ctx.documentStat.size
+        )
+      })
+
+      it('should set the attachment filename', function (ctx) {
+        sinon.assert.calledWith(ctx.res.attachment, 'output.docx')
+      })
+
+      it('should set X-Content-Type-Options header', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.res.setHeader,
+          'X-Content-Type-Options',
+          'nosniff'
+        )
+      })
+
+      it('should stream the document to the response', function (ctx) {
+        sinon.assert.calledWith(ctx.fsSync.createReadStream, ctx.documentPath)
+        sinon.assert.calledWith(ctx.pipeline, ctx.readStream, ctx.res)
+      })
+
+      it('should clean up the conversion directory', function (ctx) {
+        sinon.assert.calledWith(ctx.fs.rm, sinon.match(uuidDirPattern), {
+          recursive: true,
+          force: true,
+        })
+      })
+    })
+
+    describe('when conversion fails', function () {
+      beforeEach(async function (ctx) {
+        ctx.next = sinon.stub()
+        ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock.rejects(
+          new Error('mock conversion error')
+        )
+
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should pass the error to next', function (ctx) {
+        sinon.assert.calledOnce(ctx.next)
+        expect(ctx.next.firstCall.args[0]).to.be.instanceOf(Error)
+      })
+
+      it('should still clean up the conversion directory', function (ctx) {
+        sinon.assert.calledWith(ctx.fs.rm, sinon.match(uuidDirPattern), {
+          recursive: true,
+          force: true,
         })
       })
     })
