@@ -38,6 +38,12 @@ function _emailBodyPlainText(content, opts, ctaEmail) {
     emailBody += settings.email.template.customFooter
   }
 
+  const footerMessage = content.footerMessage(opts, true)
+  if (footerMessage) {
+    emailBody += `\r\n\r\n`
+    emailBody += footerMessage
+  }
+
   return emailBody
 }
 
@@ -62,11 +68,17 @@ function ctaTemplate(content) {
   if (!content.gmailGoToAction) {
     content.gmailGoToAction = () => {}
   }
+  if (!content.footerMessage) {
+    content.footerMessage = () => {}
+  }
   return {
     subject(opts) {
       return content.subject(opts)
     },
     layout: BaseWithHeaderEmailLayout,
+    footerMessage(opts) {
+      return content.footerMessage(opts)
+    },
     plainTextTemplate(opts) {
       return _emailBodyPlainText(content, opts, true)
     },
@@ -127,6 +139,9 @@ function buildEmail(templateName, opts) {
   const template = templates[templateName]
   opts.siteUrl = settings.siteUrl
   opts.body = template.compiledTemplate(opts)
+  opts.footerMessage = template.footerMessage
+    ? template.footerMessage(opts)
+    : ''
   return {
     subject: template.subject(opts),
     html: template.layout(opts),

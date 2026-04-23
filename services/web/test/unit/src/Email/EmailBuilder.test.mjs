@@ -209,6 +209,46 @@ describe('EmailBuilder', function () {
         }).to.throw(Error)
       })
     })
+
+    describe('footerMessage', function () {
+      it('should default footerMessage to undefined when not provided', function (ctx) {
+        const template = ctx.EmailBuilder.ctaTemplate({
+          subject: () => 'Subject',
+          message: () => ['Message'],
+          ctaText: () => 'Click',
+          ctaURL: () => 'https://example.com',
+        })
+        expect(template.footerMessage({})).to.be.undefined
+      })
+
+      it('should use the provided footerMessage callback', function (ctx) {
+        const template = ctx.EmailBuilder.ctaTemplate({
+          subject: () => 'Subject',
+          message: () => ['Message'],
+          ctaText: () => 'Click',
+          ctaURL: () => 'https://example.com',
+          footerMessage: () => 'Custom footer text',
+        })
+        expect(template.footerMessage({})).to.equal('Custom footer text')
+      })
+
+      it('should include footerMessage in plain text output when provided', function (ctx) {
+        ctx.EmailBuilder.templates.testFooterTemplate =
+          ctx.EmailBuilder.ctaTemplate({
+            subject: () => 'Test Subject',
+            message: () => ['Body message'],
+            ctaText: () => 'Go',
+            ctaURL: () => 'https://example.com',
+            footerMessage: (opts, isPlainText) =>
+              isPlainText ? 'Plain footer' : '<b>HTML footer</b>',
+          })
+        const email = ctx.EmailBuilder.buildEmail('testFooterTemplate', {
+          to: 'test@example.com',
+        })
+        expect(email.text).to.contain('Plain footer')
+        delete ctx.EmailBuilder.templates.testFooterTemplate
+      })
+    })
   })
 
   describe('templates', function () {

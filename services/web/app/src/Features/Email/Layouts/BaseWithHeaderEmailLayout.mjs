@@ -380,6 +380,7 @@ export default _.template(`\
                     settings.siteUrl
                   }</a>
 								</small></p>
+							<% if (footerMessage) { %><p class="force-overleaf-style" style="font-size: 12px; text-align: center;"><%= footerMessage %></p><% } %>
 							</td></tr></table>
 						</td></tr></tbody></table>
 
