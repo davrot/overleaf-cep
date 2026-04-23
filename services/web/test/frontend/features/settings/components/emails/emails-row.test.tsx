@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { expect } from 'chai'
 import fetchMock from 'fetch-mock'
 import { cloneDeep } from 'lodash'
@@ -115,6 +115,15 @@ describe('<EmailsRow/>', function () {
         )
         expect(screen.queryByRole('button', { name: 'Link accounts' })).to.be
           .null
+      })
+
+      it('shows unlink button and opens unlink modal', function () {
+        renderEmailsRow(affiliatedEmail)
+
+        fireEvent.click(screen.getByRole('button', { name: 'Unlink SSO' }))
+
+        screen.getByRole('dialog')
+        screen.getByText('Unlink institutional login')
       })
     })
 

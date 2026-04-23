@@ -566,7 +566,7 @@ describe('SAMLIdentityManager', function () {
         }
       )
     })
-    it('should remove the identifier', async function (ctx) {
+    it('should remove the identifier with a single update', async function (ctx) {
       await ctx.SAMLIdentityManager.unlinkAccounts(
         ctx.user._id,
         linkedEmail,
@@ -575,19 +575,21 @@ describe('SAMLIdentityManager', function () {
         'Overleaf University',
         ctx.auditLog
       )
-      const query = {
-        _id: ctx.user._id,
-      }
-      const update = {
-        $pull: {
-          samlIdentifiers: {
-            providerId: '1',
+
+      expect(ctx.User.updateOne).to.have.been.calledOnce
+      expect(ctx.User.updateOne.getCall(0)).to.have.been.calledWithMatch(
+        { _id: ctx.user._id },
+        {
+          $pull: {
+            samlIdentifiers: { providerId: '1' },
+          },
+          $unset: {
+            'emails.$[email].samlProviderId': 1,
           },
         },
-      }
-      expect(ctx.User.updateOne).to.have.been.calledOnce.and.calledWithMatch(
-        query,
-        update
+        {
+          arrayFilters: [{ 'email.samlProviderId': '1' }],
+        }
       )
     })
     it('should send an email notification', async function (ctx) {
