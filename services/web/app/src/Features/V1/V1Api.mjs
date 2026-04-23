@@ -4,6 +4,7 @@ import settings from '@overleaf/settings'
 import Errors from '../Errors/Errors.js'
 import { promisifyMultiResult } from '@overleaf/promise-utils'
 import OError from '@overleaf/o-error'
+import Modules from '../../infrastructure/Modules.mjs'
 
 // TODO: check what happens when these settings aren't defined
 const DEFAULT_V1_PARAMS = {
@@ -14,6 +15,14 @@ const DEFAULT_V1_PARAMS = {
   },
   json: true,
   timeout: settings.apis.v1.timeout,
+}
+
+export async function makeV1Request(options) {
+  const results = await Modules.promises.hooks.fire('makeV1Request', options)
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new Error('No module provides a makeV1Request implementation')
+  }
+  return results[0]
 }
 
 const v1Request = request.defaults(DEFAULT_V1_PARAMS)

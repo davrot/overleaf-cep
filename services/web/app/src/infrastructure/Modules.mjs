@@ -12,12 +12,16 @@ import Metrics from '@overleaf/metrics'
 /** @import { WebModule } from "../../../types/web-module" */
 /** @import { RequestHandler } from "express" */
 
+/**
+ * @import { HookName, HookParameters, HookReturnType } from './Modules'
+ */
+
 const MODULE_BASE_PATH = Path.join(import.meta.dirname, '/../../../modules')
 
 /** @type {WebModule[]} */
 const _modules = []
 let _modulesLoaded = false
-/** @type {Record<string, any>} */
+/** @type {Partial<Record<HookName, Function[]>>} */
 const _hooks = {}
 
 /** @type {Record<string, RequestHandler[]>} */
@@ -46,9 +50,20 @@ async function loadModulesImpl() {
     await import(settingsCheckModule)
   }
   for (const moduleName of Settings.moduleImportSequence || []) {
-    const module = await import(
-      Path.join(MODULE_BASE_PATH, moduleName, 'index.mjs')
+    const typescriptModule = Path.join(
+      MODULE_BASE_PATH,
+      moduleName,
+      'index.mts'
     )
+    let module
+    if (fs.existsSync(typescriptModule)) {
+      module = await import(typescriptModule)
+    } else {
+      module = await import(
+        Path.join(MODULE_BASE_PATH, moduleName, 'index.mjs')
+      )
+    }
+
     /** @type {WebModule & {name: string}} */
     const loadedModule = module.default || module
 
@@ -194,8 +209,9 @@ async function attachHooks() {
 }
 
 /**
- * @param {any} name
- * @param {any} method
+ * @template {HookName} K
+ * @param {K} name
+ * @param {(...args: HookParameters<K>) => HookReturnType<K>| Promise<HookReturnType<K>>} method
  */
 function attachHook(name, method) {
   if (_hooks[name] == null) {
@@ -221,8 +237,10 @@ async function attachMiddleware() {
 }
 
 /**
- * @param {any} name
- * @param {...any} args
+ * @template {HookName} K
+ * @param {K} name
+ * @param {HookParameters<K>} args
+ * @returns {Promise<HookReturnType<K>[]>}
  */
 async function fireHook(name, ...args) {
   // ensure that modules are loaded if we need to fire a hook
@@ -250,6 +268,10 @@ async function getMiddleware(name) {
   return _middleware[name] || []
 }
 
+/**
+ * @typedef {<K extends HookName>(name: K, ...args: [...HookParameters<K>, (err: any, results?: HookReturnType<K>[]) => void]) => void} CallbackFireHook
+ */
+
 export default {
   applyNonCsrfRouter,
   applyRouter,
@@ -261,7 +283,9 @@ export default {
   start,
   hooks: {
     attach: attachHook,
-    fire: callbackify(fireHook),
+    fire: /** @type {CallbackFireHook} */ (
+      /** @type {unknown} */ (callbackify(/** @type {any} */ (fireHook)))
+    ),
   },
   middleware: getMiddleware,
   promises: {
