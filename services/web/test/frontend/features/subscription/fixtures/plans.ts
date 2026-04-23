@@ -3,8 +3,8 @@ import { Features, Plan } from '@ol-types/subscription/plan'
 
 const features = {
   student: {
-    aiUsageQuota: 'unlimited',
-    collaborators: 6,
+    aiUsageQuota: 'basic',
+    collaborators: 10,
     dropbox: true,
     versioning: true,
     github: true,

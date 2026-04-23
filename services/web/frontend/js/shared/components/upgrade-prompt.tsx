@@ -107,7 +107,7 @@ export function UpgradePrompt({
                   {t('24x_more_compile_time')}
                 </IconListItem>
                 <IconListItem icon="group_add">
-                  {t('collabs_per_proj', { collabcount: isStudent ? 6 : 10 })}
+                  {t('collabs_per_proj', { collabcount: 10 })}
                 </IconListItem>
                 <IconListItem icon="history">
                   {t('unlimited_document_history')}
