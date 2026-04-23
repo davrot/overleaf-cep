@@ -30,6 +30,18 @@ const repliesOnlyPreferences = {
   repliesOnParticipatingThread: true,
 }
 
+const globallyMutedPreferences = {
+  trackedChangesOnOwnProject: false,
+  trackedChangesOnInvitedProject: false,
+  commentOnOwnProject: false,
+  commentOnInvitedProject: false,
+  repliesOnOwnProject: false,
+  repliesOnInvitedProject: false,
+  repliesOnAuthoredThread: false,
+  repliesOnParticipatingThread: false,
+  muteAllNotifications: true,
+}
+
 const allNotificationsOff = {
   trackedChangesOnOwnProject: false,
   trackedChangesOnInvitedProject: false,
@@ -54,6 +66,16 @@ function renderComponent() {
 describe('<ProjectNotificationsSetting />', function () {
   afterEach(function () {
     fetchMock.removeRoutes().clearHistory()
+  })
+
+  it('shows loading indicator while preferences are loading', async function () {
+    fetchMock.get(preferencesUrl, new Promise(() => {}))
+
+    renderComponent()
+
+    expect(await screen.findByRole('status')).to.exist
+    expect(screen.queryByLabelText('All project activity', { exact: false })).to
+      .not.exist
   })
 
   it('selects "All project activity" when all notifications are on', async function () {
@@ -138,6 +160,31 @@ describe('<ProjectNotificationsSetting />', function () {
         }) as HTMLInputElement
       ).checked
     ).to.be.false
+  })
+
+  it('shows muted message and hides radio buttons when muteAllNotifications is true', async function () {
+    fetchMock.get(preferencesUrl, globallyMutedPreferences)
+
+    renderComponent()
+
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(
+            'You are not receiving any notifications, as you have disabled all project notifications.',
+            { exact: false }
+          )
+        ).to.exist
+    )
+    expect(
+      screen.getByRole('link', { name: 'Change settings' }).getAttribute('href')
+    ).to.equal('/user/notification-preferences')
+    expect(screen.queryByLabelText('All project activity', { exact: false })).to
+      .not.exist
+    expect(
+      screen.queryByLabelText('Replies to your activity only', { exact: false })
+    ).to.not.exist
+    expect(screen.queryByLabelText('Off', { exact: false })).to.not.exist
   })
 
   it('POSTs "replies" preferences when "Replies to your activity only" is selected', async function () {
