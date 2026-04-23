@@ -1,4 +1,5 @@
 import React from 'react'
+import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 
 export type RadioOption<T extends string = string> = {
   value: T
@@ -26,25 +27,17 @@ export default function RadioButtonSetting<T extends string = string>({
   return (
     <div className="ide-radio-setting-options">
       {options.map(option => (
-        <label key={`${id}-${option.value}`} className="ide-radio-option">
-          <input
-            type="radio"
-            id={`${id}-${option.value}`}
-            name={id}
-            value={option.value}
-            checked={value === option.value}
-            onChange={handleChange}
-            className="ide-radio-input"
-          />
-          <div className="ide-radio-text">
-            <span className="ide-setting-title">{option.label}</span>
-            {option.description && (
-              <span className="ide-setting-description">
-                {option.description}
-              </span>
-            )}
-          </div>
-        </label>
+        <OLFormCheckbox
+          key={`${id}-${option.value}`}
+          type="radio"
+          id={`${id}-${option.value}`}
+          name={id}
+          value={option.value}
+          checked={value === option.value}
+          onChange={handleChange}
+          label={option.label}
+          description={option.description}
+        />
       ))}
     </div>
   )
