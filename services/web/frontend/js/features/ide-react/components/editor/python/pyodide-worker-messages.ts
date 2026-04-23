@@ -5,6 +5,11 @@ export type ProjectFileData = {
   content: string
 }
 
+export type OutputFileData = {
+  relativePath: string
+  content: Uint8Array
+}
+
 // Main thread -> Worker messages
 
 export type InitRequest = {
@@ -48,7 +53,9 @@ export type RunCodeResult = {
   type: 'run-code-result'
   fileId: string
   executionId: string
+  success: boolean
   outputs: string[]
+  outputFiles: OutputFileData[]
 }
 
 export type PyodideWorkerResponse = PyodideWorkerEvent | RunCodeResult

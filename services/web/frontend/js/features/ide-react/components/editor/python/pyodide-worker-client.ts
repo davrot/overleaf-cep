@@ -1,5 +1,6 @@
 import type {
   OutputStream,
+  OutputFileData,
   ProjectFileData,
   PyodideWorkerRequest,
   PyodideWorkerResponse,
@@ -20,7 +21,9 @@ export type LifecycleCallback = (
         type: 'run-finished'
         fileId: string
         executionId: string
+        success: boolean
         outputs: string[]
+        outputFiles: OutputFileData[]
       }
 ) => void
 
@@ -160,7 +163,9 @@ export class PyodideWorkerClient {
           type: 'run-finished',
           fileId: response.fileId,
           executionId: response.executionId,
+          success: response.success,
           outputs: response.outputs,
+          outputFiles: response.outputFiles,
         })
     }
   }

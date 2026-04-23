@@ -1,5 +1,8 @@
 import { expect } from 'chai'
-import { PyodideWorkerClient } from '@/features/ide-react/components/editor/python/pyodide-worker-client'
+import {
+  PyodideWorkerClient,
+  type LifecycleCallback,
+} from '@/features/ide-react/components/editor/python/pyodide-worker-client'
 import { WorkerMock, createWorker } from './worker-mock'
 
 const BASE_ASSET_PATH = 'https://assets.example.test/'
@@ -67,12 +70,7 @@ describe('PyodideWorkerClient', function () {
   })
 
   function setupClientWithLifecycleTracking() {
-    const lifecycleEvents: {
-      type: string
-      fileId?: string
-      executionId?: string
-      outputs?: string[]
-    }[] = []
+    const lifecycleEvents: Parameters<LifecycleCallback>[0][] = []
 
     const client = new PyodideWorkerClient({
       baseAssetPath: BASE_ASSET_PATH,
@@ -99,15 +97,21 @@ describe('PyodideWorkerClient', function () {
       type: 'run-code-result',
       fileId: 'main.py',
       executionId: 'exec-3',
+      success: true,
       outputs: ['/project/output.txt'],
+      outputFiles: [],
     })
 
-    expect(lifecycleEvents).to.deep.include({
-      type: 'run-finished',
-      fileId: 'main.py',
-      executionId: 'exec-3',
-      outputs: ['/project/output.txt'],
-    })
+    expect(lifecycleEvents).to.deep.equal([
+      {
+        type: 'run-finished',
+        fileId: 'main.py',
+        executionId: 'exec-3',
+        success: true,
+        outputs: ['/project/output.txt'],
+        outputFiles: [],
+      },
+    ])
   })
 
   it('surfaces outputs array from run-code-result with multiple files', function () {
@@ -123,15 +127,21 @@ describe('PyodideWorkerClient', function () {
       type: 'run-code-result',
       fileId: 'main.py',
       executionId: 'exec-4',
+      success: true,
       outputs: ['/project/fig1.png', '/project/results/data.csv'],
+      outputFiles: [],
     })
 
-    expect(lifecycleEvents).to.deep.include({
-      type: 'run-finished',
-      fileId: 'main.py',
-      executionId: 'exec-4',
-      outputs: ['/project/fig1.png', '/project/results/data.csv'],
-    })
+    expect(lifecycleEvents).to.deep.equal([
+      {
+        type: 'run-finished',
+        fileId: 'main.py',
+        executionId: 'exec-4',
+        success: true,
+        outputs: ['/project/fig1.png', '/project/results/data.csv'],
+        outputFiles: [],
+      },
+    ])
   })
 
   it('surfaces empty outputs when no project files were written', function () {
@@ -147,19 +157,120 @@ describe('PyodideWorkerClient', function () {
       type: 'run-code-result',
       fileId: 'main.py',
       executionId: 'exec-5',
+      success: true,
       outputs: [],
+      outputFiles: [],
     })
 
-    expect(lifecycleEvents).to.deep.include({
+    expect(lifecycleEvents).to.deep.equal([
+      {
+        type: 'run-finished',
+        fileId: 'main.py',
+        executionId: 'exec-5',
+        success: true,
+        outputs: [],
+        outputFiles: [],
+      },
+    ])
+  })
+
+  it('surfaces success and outputFiles from run-code-result', function () {
+    const { client, worker, lifecycleEvents } =
+      setupClientWithLifecycleTracking()
+
+    client.runCode('write_files()', {
+      fileId: 'main.py',
+      executionId: 'exec-success',
+      files: [],
+    })
+    const csvContent = new Uint8Array([1, 2, 3])
+    const pngContent = new Uint8Array([4, 5, 6, 7])
+    worker.emitMessage({
+      type: 'run-code-result',
+      fileId: 'main.py',
+      executionId: 'exec-success',
+      success: true,
+      outputs: ['/project/data.csv', '/project/plot.png'],
+      outputFiles: [
+        { relativePath: 'data.csv', content: csvContent },
+        { relativePath: 'plot.png', content: pngContent },
+      ],
+    })
+
+    const finished = lifecycleEvents.find(e => e.type === 'run-finished')
+    expect(finished).to.deep.equal({
       type: 'run-finished',
       fileId: 'main.py',
-      executionId: 'exec-5',
+      executionId: 'exec-success',
+      success: true,
+      outputs: ['/project/data.csv', '/project/plot.png'],
+      outputFiles: [
+        { relativePath: 'data.csv', content: csvContent },
+        { relativePath: 'plot.png', content: pngContent },
+      ],
+    })
+  })
+
+  it('surfaces success: false with empty outputFiles on script error', function () {
+    const { client, worker, lifecycleEvents } =
+      setupClientWithLifecycleTracking()
+
+    client.runCode('raise RuntimeError("boom")', {
+      fileId: 'main.py',
+      executionId: 'exec-error',
+      files: [],
+    })
+    worker.emitMessage({
+      type: 'run-code-result',
+      fileId: 'main.py',
+      executionId: 'exec-error',
+      success: false,
       outputs: [],
+      outputFiles: [],
+    })
+
+    const finished = lifecycleEvents.find(e => e.type === 'run-finished')
+    expect(finished).to.deep.equal({
+      type: 'run-finished',
+      fileId: 'main.py',
+      executionId: 'exec-error',
+      success: false,
+      outputs: [],
+      outputFiles: [],
+    })
+  })
+
+  it('surfaces empty outputFiles when success but no files were written', function () {
+    const { client, worker, lifecycleEvents } =
+      setupClientWithLifecycleTracking()
+
+    client.runCode('print("no writes")', {
+      fileId: 'main.py',
+      executionId: 'exec-nowrites',
+      files: [],
+    })
+    worker.emitMessage({
+      type: 'run-code-result',
+      fileId: 'main.py',
+      executionId: 'exec-nowrites',
+      success: true,
+      outputs: [],
+      outputFiles: [],
+    })
+
+    const finished = lifecycleEvents.find(e => e.type === 'run-finished')
+    expect(finished).to.deep.equal({
+      type: 'run-finished',
+      fileId: 'main.py',
+      executionId: 'exec-nowrites',
+      success: true,
+      outputs: [],
+      outputFiles: [],
     })
   })
 
   it('reports lifecycle failure and rejects future run requests when loading fails', function () {
-    const lifecycleEvents: Array<{ type: string; error?: string }> = []
+    const lifecycleEvents: { type: string; error?: string }[] = []
 
     const client = new PyodideWorkerClient({
       baseAssetPath: BASE_ASSET_PATH,

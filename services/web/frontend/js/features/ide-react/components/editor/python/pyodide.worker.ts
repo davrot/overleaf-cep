@@ -1,6 +1,8 @@
+/// <reference lib="webworker" />
 import path from 'path-browserify'
 import type { PyodideInterface } from 'pyodide'
 import type {
+  OutputFileData,
   ProjectFileData,
   PyodideWorkerRequest,
   RunCodeRequest,
@@ -98,7 +100,9 @@ async function handleRunCode(msg: RunCodeRequest) {
       type: 'run-code-result',
       fileId,
       executionId,
+      success: false,
       outputs: [],
+      outputFiles: [],
     })
     return
   }
@@ -134,6 +138,7 @@ async function handleRunCode(msg: RunCodeRequest) {
 
   const fs = instance.FS
   const originalWrite = fs.write as PyodideFS['write']
+  let runError: unknown = null
   try {
     if (msg.files.length > 0) {
       syncProjectFiles(fs, msg.files)
@@ -162,7 +167,14 @@ async function handleRunCode(msg: RunCodeRequest) {
         executionId,
       })
     }
-  } catch (runError) {
+  } catch (e) {
+    runError = e
+  }
+  fs.write = originalWrite
+
+  const paths = [...writtenPaths]
+
+  if (runError) {
     const errorMessage =
       runError instanceof Error ? runError.message : String(runError)
 
@@ -173,16 +185,43 @@ async function handleRunCode(msg: RunCodeRequest) {
       fileId,
       executionId,
     })
-  } finally {
-    fs.write = originalWrite
-    const outputs = [...writtenPaths].sort()
     self.postMessage({
       type: 'run-code-result',
       fileId,
       executionId,
-      outputs,
+      success: false,
+      outputs: paths,
+      outputFiles: [],
     })
+    return
   }
+
+  const outputFiles: OutputFileData[] = []
+  const transferables: Transferable[] = []
+  for (const writtenPath of paths) {
+    const content = fs.readFile(writtenPath)
+    const relativePath = writtenPath.slice(PROJECT_FS_PREFIX.length)
+    outputFiles.push({ relativePath, content })
+    if (content.buffer instanceof ArrayBuffer) {
+      transferables.push(content.buffer)
+    }
+  }
+
+  // The transferables moves ownership of each ArrayBuffer to the main thread
+  // instead of structured-cloning it. The buffers are already referenced from
+  // outputFiles.content; listing them here just swaps copy for move, so file
+  // contents travel through once rather than being allocated on both sides.
+  self.postMessage(
+    {
+      type: 'run-code-result',
+      fileId,
+      executionId,
+      success: true,
+      outputs: paths,
+      outputFiles,
+    },
+    transferables
+  )
 }
 
 self.addEventListener('message', async event => {
