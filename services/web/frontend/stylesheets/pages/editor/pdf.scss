@@ -107,6 +107,15 @@
   justify-content: flex-end;
 }
 
+.toolbar-pdf-orphan {
+  color: var(--toolbar-btn-color);
+}
+
+.toolbar-pdf-orphan-btn,
+.toolbar-pdf-orphan {
+  margin-left: var(--spacing-02);
+}
+
 .btn.pdf-toolbar-btn {
   display: inline-block;
   color: var(--toolbar-btn-color);

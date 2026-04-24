@@ -15,16 +15,17 @@ describe('<PdfPreviewHybridToolbar/>', function () {
       </EditorProviders>
     )
 
-    cy.findByRole('button', { name: 'Recompile' })
+    cy.findByRole('button', { name: 'Recompile' }).should('exist')
   })
 
   describe('orphan mode', function () {
-    // eslint-disable-next-line mocha/no-skipped-tests
-    it.skip('shows connecting message  on load', function () {
+    beforeEach(function () {
       cy.window().then(win => {
         win.metaAttributesCache.set('ol-detachRole', 'detached')
       })
+    })
 
+    it('shows connecting message on load', function () {
       cy.mount(
         <EditorProviders>
           <PdfPreviewHybridToolbar />
@@ -32,13 +33,13 @@ describe('<PdfPreviewHybridToolbar/>', function () {
       )
 
       cy.contains('Connecting with the editor')
+      cy.findByRole('button', { name: 'Recompile' }).should('not.exist')
+      cy.findByRole('button', { name: 'Redirect to editor' }).should(
+        'not.exist'
+      )
     })
 
     it('shows compile UI when connected', function () {
-      cy.window().then(win => {
-        win.metaAttributesCache.set('ol-detachRole', 'detached')
-      })
-
       cy.mount(
         <EditorProviders>
           <PdfPreviewHybridToolbar />
@@ -52,15 +53,11 @@ describe('<PdfPreviewHybridToolbar/>', function () {
         })
       })
 
-      cy.findByRole('button', { name: 'Recompile' })
+      cy.findByRole('button', { name: 'Recompile' }).should('exist')
+      cy.contains('Connecting with the editor').should('not.exist')
     })
 
-    // eslint-disable-next-line mocha/no-skipped-tests
-    it.skip('shows connecting message when disconnected', function () {
-      cy.window().then(win => {
-        win.metaAttributesCache.set('ol-detachRole', 'detached')
-      })
-
+    it('shows connecting message when disconnected', function () {
       cy.mount(
         <EditorProviders>
           <PdfPreviewHybridToolbar />
@@ -72,6 +69,11 @@ describe('<PdfPreviewHybridToolbar/>', function () {
           role: 'detacher',
           event: 'connected',
         })
+      })
+
+      cy.findByRole('button', { name: 'Recompile' }).should('exist')
+
+      cy.wrap(null).then(() => {
         testDetachChannel.postMessage({
           role: 'detacher',
           event: 'closed',
@@ -79,14 +81,27 @@ describe('<PdfPreviewHybridToolbar/>', function () {
       })
 
       cy.contains('Connecting with the editor')
+      cy.findByRole('button', { name: 'Recompile' }).should('not.exist')
     })
 
-    // eslint-disable-next-line mocha/no-skipped-tests
-    it.skip('shows redirect button after timeout', function () {
-      cy.window().then(win => {
-        win.metaAttributesCache.set('ol-detachRole', 'detached')
-      })
+    it('shows redirect button after timeout', function () {
+      cy.clock()
 
+      cy.mount(
+        <EditorProviders>
+          <PdfPreviewHybridToolbar />
+        </EditorProviders>
+      )
+
+      cy.contains('Connecting with the editor')
+
+      cy.tick(6000)
+
+      cy.findByRole('button', { name: 'Redirect to editor' }).should('exist')
+      cy.contains('Connecting with the editor').should('not.exist')
+    })
+
+    it('recovers to compile UI when link is restored after timeout', function () {
       cy.clock()
 
       cy.mount(
@@ -96,8 +111,42 @@ describe('<PdfPreviewHybridToolbar/>', function () {
       )
 
       cy.tick(6000)
+      cy.findByRole('button', { name: 'Redirect to editor' }).should('exist')
 
-      cy.findByRole('button', { name: 'Redirect to editor' })
+      cy.wrap(null).then(() => {
+        testDetachChannel.postMessage({
+          role: 'detacher',
+          event: 'connected',
+        })
+      })
+
+      cy.findByRole('button', { name: 'Recompile' }).should('exist')
+      cy.findByRole('button', { name: 'Redirect to editor' }).should(
+        'not.exist'
+      )
+    })
+  })
+
+  describe('detacher role', function () {
+    it('never shows orphan UI', function () {
+      cy.clock()
+      cy.window().then(win => {
+        win.metaAttributesCache.set('ol-detachRole', 'detacher')
+      })
+
+      cy.mount(
+        <EditorProviders>
+          <PdfPreviewHybridToolbar />
+        </EditorProviders>
+      )
+
+      cy.tick(6000)
+
+      cy.findByRole('button', { name: 'Recompile' }).should('exist')
+      cy.contains('Connecting with the editor').should('not.exist')
+      cy.findByRole('button', { name: 'Redirect to editor' }).should(
+        'not.exist'
+      )
     })
   })
 })
