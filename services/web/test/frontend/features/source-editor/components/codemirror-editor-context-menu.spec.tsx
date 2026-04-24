@@ -609,7 +609,7 @@ describe('editor context menu', { scrollBehavior: false }, function () {
       })
 
       cy.findByRole('dialog').should('be.visible')
-      cy.findByRole('dialog').should('contain.text', 'Upgrade to Review')
+      cy.findByRole('dialog').should('contain.text', 'Upgrade to review')
     })
   })
 

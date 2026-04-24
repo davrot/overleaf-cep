@@ -119,7 +119,7 @@ const CompileTimeout = memo(function CompileTimeout({
                   extraSearchParams={extraSearchParams}
                   handleClick={handleFreeTrialClick}
                 >
-                  {t('start_a_free_trial')}
+                  {t('start_free_trial_without_exclamation')}
                 </StartFreeTrialButton>
               </p>
             )}

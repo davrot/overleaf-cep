@@ -898,7 +898,7 @@ describe('<ReviewPanel /> for free users', function () {
   it('renders modal', function () {
     mountEditor()
     cy.findByRole('dialog').within(() => {
-      cy.findByText('Upgrade to Review').should('exist')
+      cy.findByText('Upgrade to review').should('exist')
     })
   })
 

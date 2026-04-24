@@ -26,7 +26,7 @@ function FreePlan() {
       :
       <ul>
         <li>{t('invite_more_collabs')}</li>
-        {plans2026 && <li>{t('get_unlimited_ai')}</li>}
+        {plans2026 && <li>{t('higher_ai_allowance')}</li>}
         {!plans2026 && <li>{t('realtime_track_changes')}</li>}
         <li>{t('full_doc_history')}</li>
         <li>{t('reference_search')}</li>

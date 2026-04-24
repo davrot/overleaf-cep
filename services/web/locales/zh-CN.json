@@ -1962,7 +1962,6 @@
   "sso_user_explanation_ready_with_admin_email": "您的群组由 <0>__adminEmail__</0> 管理，已启用 SSO，因此您无需记住密码即可登录。 单击<1>__buttonText__</1>开始。",
   "sso_user_explanation_ready_with_group_name": "您的群组 <0>__groupName__</0> 已启用 SSO，因此您无需记住密码即可登录。 单击<1>__buttonText__</1>开始。",
   "standard": "标准版",
-  "start_a_free_trial": "开始免费试用",
   "start_by_adding_your_email": "从添加电子邮件地址开始。",
   "start_free_trial": "开始免费试用",
   "start_free_trial_without_exclamation": "开始免费试用",

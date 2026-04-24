@@ -17,7 +17,7 @@ function UpgradeBenefits({ className }: { className?: string }) {
       <li>
         <Check />
         &nbsp;
-        {plans2026 ? t('unlimited_ai') : t('unlimited_projects')}
+        {plans2026 ? t('higher_ai_allowance') : t('unlimited_projects')}
       </li>
       <li>
         <Check />
