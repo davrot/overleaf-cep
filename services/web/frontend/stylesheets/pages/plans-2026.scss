@@ -14,14 +14,13 @@
   }
 
   .plans-period-label {
-    font-size: var(--font-size-02);
+    @include body-sm;
+
     font-weight: 400;
-    line-height: var(--line-height-02);
     margin: 0;
 
     @include media-breakpoint-up(md) {
-      font-size: var(--font-size-03);
-      line-height: var(--line-height-03);
+      @include body-base;
     }
   }
 
@@ -324,8 +323,8 @@
 
     .plans-price-card-yearly-summary,
     .student-plan-saving-badge {
-      font-size: var(--font-size-02);
-      line-height: var(--line-height-02);
+      @include body-sm;
+
       position: absolute;
     }
 
@@ -431,10 +430,10 @@
     }
 
     .plans-educational-discount-text {
+      @include body-sm;
+
       cursor: help;
-      font-size: var(--font-size-02);
       font-weight: 400;
-      line-height: var(--line-height-02);
       text-decoration: underline dotted;
       text-underline-offset: var(--spacing-01);
     }
@@ -476,11 +475,19 @@
 
   // ─── Organization logos ────────────────────────────────────────────────────────
 
+  .plans-logos-section {
+    background-color: var(--bg-light-secondary);
+  }
+
   .plans-and-pricing-section .plans-new-organizations {
     padding-block: var(--spacing-13);
 
     .plans-new-organizations-logo {
       margin-top: var(--spacing-06);
+
+      img {
+        filter: grayscale(1) opacity(0.54);
+      }
     }
   }
 
@@ -520,10 +527,6 @@
   // Below xl the plan cards already show prices and CTAs — the table
   // just needs plan names so users can compare features.
   @include media-breakpoint-down(xl) {
-    .plans-feature-table-most-popular-badge {
-      display: none;
-    }
-
     .plans-feature-table-col-header-inner .plans-cta {
       display: none;
     }
@@ -540,7 +543,7 @@
     border-collapse: separate;
     border-radius: var(--border-radius-medium);
     border-spacing: 0;
-    min-width: 640px;
+    min-width: 768px;
     table-layout: fixed;
     width: 100%;
 
@@ -579,25 +582,39 @@
     }
   }
 
-  .plans-feature-table-thead .plans-feature-table-header-row th {
-    backdrop-filter: blur(12px);
-    background: rgb($white, 0.7);
-
-    // -1px spread prevents shadow extending past table edges
-    box-shadow: 0 2px 4px -1px rgb($neutral-90, 0.16);
+  .plans-feature-table-thead .plans-feature-table-header-row {
     position: sticky;
     top: 0;
-    z-index: 2;
+
+    // Paints above positioned .plans-feature-table-cell-bool-content spans in
+    // body rows
+    z-index: 1;
+
+    // Negative spread prevents glow on left/right edges; top glow hidden by
+    // top: 0
+    box-shadow: 0 8px 16px -4px rgb($black, 0.08);
+
+    th {
+      backdrop-filter: blur(12px);
+      background: rgb($white, 0.7);
+      border-bottom: 1px solid var(--border-divider);
+    }
   }
 
   .plans-feature-table-col-header {
     overflow: hidden;
     padding: var(--spacing-06);
-
-    // Extra bottom padding reserves space for the absolutely-positioned CTA button
-    padding-bottom: 56px;
     text-align: center;
     vertical-align: top;
+
+    // Reserve space for the absolutely-positioned CTA button — but only when
+    // it's both rendered (hideForLoggedIn suppresses it) and visible at this
+    // breakpoint (prices+CTA hide below xl via .only-show-for-specific-plan-period)
+    @include media-breakpoint-up(xl) {
+      &:has(.plans-cta) {
+        padding-bottom: 56px;
+      }
+    }
   }
 
   .plans-feature-table-col-header-inner .plans-cta {
@@ -615,26 +632,10 @@
     padding: var(--spacing-06);
   }
 
-  .plans-feature-table-most-popular-badge {
-    @extend .mono-text;
-
-    background-color: var(--green-bright-tint-50);
-    border-radius: var(--border-radius-medium);
-    color: var(--content-primary);
-    font-size: var(--font-size-01);
-    left: 50%;
-    padding: var(--spacing-01) var(--spacing-03);
-    position: absolute;
-    top: 0;
-    transform: translate(-50%, -50%);
-    white-space: nowrap;
-    z-index: 1;
-  }
-
   .plans-feature-table-col-name {
     color: var(--green-60);
     display: block;
-    font-size: var(--font-size-03);
+    font-size: var(--font-size-04);
     font-weight: 500;
     margin-bottom: var(--spacing-02);
     text-align: center;
@@ -657,11 +658,14 @@
   .plans-feature-table-col-price-term {
     color: var(--content-primary);
     font-size: var(--font-size-03);
+    font-weight: 400;
   }
 
   .plans-feature-table-col-price-yearly {
+    @include body-xs;
+
     color: var(--neutral-60);
-    font-size: var(--font-size-01);
+    font-weight: 400;
     margin-bottom: var(--spacing-02);
     text-align: center;
   }
@@ -735,6 +739,7 @@
   }
 
   .plans-feature-table-cell {
+    color: var(--neutral-60);
     padding: var(--spacing-06);
     text-align: center;
     vertical-align: middle;
@@ -749,6 +754,10 @@
 
   .plans-feature-table-cell-bool-content {
     display: inline-block;
+
+    // Collapse to the check icon's height so `top: 50%` on the absolutely-
+    // positioned info icon aligns with the check icon's visual centre.
+    line-height: 1;
     position: relative;
 
     &[data-bs-toggle='tooltip'] {
@@ -757,31 +766,40 @@
   }
 
   .plans-feature-table-info-icon {
-    color: var(--content-secondary);
+    color: var(--neutral-60);
     font-size: var(--font-size-03);
     vertical-align: middle;
   }
 
-  // In bool cells the info icon floats beside the check; in text cells it flows inline
-  .plans-feature-table-cell-bool-content .plans-feature-table-info-icon {
-    left: calc(100% + var(--spacing-01));
+  // In bool cells the info icon floats beside the check; in text cells it flows
+  // inline. The wrapper has left padding to bridge the gap, preventing tooltip
+  // flicker on hover.
+  .plans-feature-table-cell-bool-content
+    .plans-feature-table-info-icon-wrapper {
+    left: 100%;
+    padding-left: var(--spacing-01);
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
   }
 
   .plans-feature-table-cell-text-content {
+    @include body-base;
+
     align-items: center;
     color: var(--content-primary);
     display: inline-flex;
-    font-size: var(--font-size-02);
     gap: var(--spacing-02);
+
+    &.plans-feature-table-cell-text-small {
+      @include body-sm;
+    }
   }
 
   // ─── Quotes and FAQs section────────────────────────────────────────────────
 
   .plans-quotes-section {
-    padding-bottom: var(--spacing-13);
+    padding-block: var(--spacing-13);
   }
 
   .plans-faq {
