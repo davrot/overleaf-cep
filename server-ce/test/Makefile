@@ -18,7 +18,15 @@ export USER_GID=$(shell id -g)
 IMAGE_TAG_PRO_BASE := $(shell echo $(IMAGE_TAG_PRO) | sed -E s/:.+//)
 
 print-debug-logs:
-	-docker compose logs sharelatex
+	-docker compose logs --timestamps --tail=100 e2e
+	-docker compose logs --timestamps --tail=100 mongo
+	-docker compose logs --timestamps --tail=100 redis
+	-docker compose logs --timestamps --tail=100 mailtrap
+	-docker compose logs --timestamps --tail=100 saml
+	-docker compose logs --timestamps --tail=100 ldap
+	-docker compose logs --timestamps --tail=100 git-bridge
+	-docker compose logs --timestamps --tail=100 host-admin
+	-docker compose logs --timestamps sharelatex
 	-docker compose exec sharelatex bash -c 'tail -n100 /var/log/overleaf/*.log'
 
 test-e2e-native:
