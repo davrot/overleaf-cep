@@ -176,10 +176,8 @@
         display: none;
       }
 
-      @include media-breakpoint-up(xl) {
+      @include media-breakpoint-up(lg) {
         .plans-cards-row-wrapper {
-          grid-auto-columns: auto;
-          grid-auto-flow: row;
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
@@ -187,37 +185,21 @@
 
     .plans-cards-row-wrapper {
       display: grid;
-      grid-auto-flow: column;
-      grid-auto-columns: 90%;
+      grid-template-columns: 1fr;
       grid-template-rows: 1fr auto auto auto;
-      column-gap: var(--spacing-04);
-      overflow-x: auto;
+      gap: var(--spacing-04) var(--spacing-04);
       padding-top: var(--spacing-08);
-      -webkit-overflow-scrolling: touch;
-
-      // so the scrollbar doesn't overlap the last card's content
-      margin-bottom: calc(-1 * var(--spacing-05));
-      padding-bottom: var(--spacing-05);
 
       @include media-breakpoint-up(md) {
-        grid-auto-columns: 60%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       @include media-breakpoint-up(lg) {
-        grid-auto-columns: 50%;
-      }
-
-      @include media-breakpoint-up(xl) {
-        grid-auto-columns: auto;
-        grid-auto-flow: row;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        overflow-x: visible;
-        padding-bottom: 0;
       }
 
-      // When #32905 lands (responsive card grid), move this breakpoint to lg.
       &.plans-cards-row-auto-fit {
-        @include media-breakpoint-up(xl) {
+        @include media-breakpoint-up(lg) {
           grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         }
       }
@@ -227,11 +209,6 @@
       display: grid;
       grid-row: span 4;
       grid-template-rows: subgrid;
-      min-width: 280px;
-
-      @include media-breakpoint-up(xl) {
-        min-width: 0;
-      }
     }
 
     .price-plan-card {
