@@ -93,6 +93,10 @@
 
   // ─── Plan cards ──────────────────────────────────────────────────────────────
 
+  .plans-interstitial-disclaimer {
+    padding-top: var(--spacing-08);
+  }
+
   .plans-cards-section {
     background-color: var(--bg-light-primary);
     padding-block: var(--spacing-13);
@@ -210,6 +214,13 @@
         overflow-x: visible;
         padding-bottom: 0;
       }
+
+      // When #32905 lands (responsive card grid), move this breakpoint to lg.
+      &.plans-cards-row-auto-fit {
+        @include media-breakpoint-up(xl) {
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+      }
     }
 
     .plans-card-col {
@@ -243,6 +254,10 @@
         border-radius: var(--border-radius-medium);
         outline: var(--spacing-02) solid var(--green-bright-tint-50);
         outline-offset: 0;
+      }
+
+      &.price-plan-card-current-plan {
+        background-color: var(--bg-light-secondary);
       }
 
       .price-plan-card-badge {
@@ -345,6 +360,10 @@
       gap: var(--spacing-03);
       list-style: none;
       padding-left: 0;
+    }
+
+    .card-include-bold {
+      font-weight: 700;
     }
 
     .card-includes-list-item.only-show-for-specific-plan-period {
