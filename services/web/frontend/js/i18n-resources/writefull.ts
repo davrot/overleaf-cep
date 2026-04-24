@@ -100,10 +100,13 @@ const en = {
       'You can wait for your Writefull quota to reset,',
     'language-model.quota-reached.tooltip.3':
       'or upgrade now to keep checking your text.',
+    'language-model.quota-reached.ai-bundle.tooltip':
+      "You've hit your quota! Upgrade for unlimited access to all AI features",
     'language-model.quota-reached.ai-bundle.tooltip.1':
       "You've hit your quota.",
     'language-model.quota-reached.ai-bundle.tooltip.2':
       'Add AI Assist for unlimited access to all Overleaf AI features,',
+
     'language-model.quota-reached.ai-bundle.tooltip.3':
       'including Writefull. Or wait for your quota to reset.',
     'language-model.use-gpt.tooltip.1':
@@ -611,6 +614,8 @@ const es = {
       'Puedes esperar a que se reinicie tu cuota de Writefull,',
     'language-model.quota-reached.tooltip.3':
       'o actualiza ahora para seguir revisando tu texto.',
+    'language-model.quota-reached.ai-bundle.tooltip':
+      'Has alcanzado tu límite de uso! Actualiza para acceso ilimitado a todas las funcionalidades AI.',
     'language-model.quota-reached.ai-bundle.tooltip.1':
       'Has alcanzado tu límite de uso.',
     'language-model.quota-reached.ai-bundle.tooltip.2':
