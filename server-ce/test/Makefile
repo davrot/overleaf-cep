@@ -96,7 +96,6 @@ prefetch_old_4_2:
 
 prefetch_custom: prefetch_old_5_0
 prefetch_old_5_0:
-	docker pull $(IMAGE_TAG_PRO_BASE):5.0.1-RC1
 	docker pull $(IMAGE_TAG_PRO_BASE):5.0
 
 prefetch_custom: build_hotfix_5_5_5
