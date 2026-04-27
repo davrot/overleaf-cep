@@ -160,6 +160,7 @@ const ShareProjectModal = React.memo(function ShareProjectModal({
   // update `error` and `inFlight` while sending a request
   const monitorRequest = useCallback((request: () => any) => {
     setError(undefined)
+    setSuccessActionMessage(undefined)
     setInFlight(true)
 
     const promise = request()

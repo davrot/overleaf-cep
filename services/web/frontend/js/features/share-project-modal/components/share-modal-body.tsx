@@ -134,7 +134,13 @@ export default function ShareModalBody({
             />
           )}
           {isInvitedPeopleScreen || !isProjectOwner ? (
-            <InvitedPeople />
+            <InvitedPeople
+              sortedMembers={sortedMembers}
+              invites={invites}
+              hasExceededCollaboratorLimit={hasExceededCollaboratorLimit}
+              hasTrackChangesFeature={Boolean(features.trackChanges)}
+              canAddCollaborators={canAddCollaborators}
+            />
           ) : (
             <ProjectAccess
               setIsInvitedPeopleScreen={setIsInvitedPeopleScreen}
