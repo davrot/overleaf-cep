@@ -294,3 +294,11 @@ $dropdown-item-min-height: 36px;
 .dropdown-item-wide {
   min-width: 264px;
 }
+
+.dropdown-toggle {
+  &.no-default-caret {
+    &::after {
+      content: none !important;
+    }
+  }
+}
