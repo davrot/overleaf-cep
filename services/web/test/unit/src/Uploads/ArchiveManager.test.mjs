@@ -10,6 +10,7 @@ import { vi, expect } from 'vitest'
 import sinon from 'sinon'
 import ArchiveErrors from '../../../../app/src/Features/Uploads/ArchiveErrors.mjs'
 import events from 'node:events'
+import { PassThrough } from 'node:stream'
 
 vi.mock('../../../../app/src/Features/Uploads/ArchiveErrors.js', () =>
   vi.importActual('../../../../app/src/Features/Uploads/ArchiveErrors.js')
@@ -74,13 +75,13 @@ describe('ArchiveManager', function () {
     describe('successfully', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
-          ctx.readStream = new events.EventEmitter()
-          ctx.readStream.pipe = sinon.stub()
+          ctx.readStream = new PassThrough()
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, null, ctx.readStream)
-          ctx.writeStream = new events.EventEmitter()
+          ctx.writeStream = new PassThrough()
           ctx.fs.createWriteStream = sinon.stub().returns(ctx.writeStream)
+          sinon.spy(ctx.writeStream, 'destroy')
           ctx.ArchiveManager.extractZipArchive(
             ctx.source,
             ctx.destination,
@@ -89,7 +90,7 @@ describe('ArchiveManager', function () {
 
           // entry contains a single file
           ctx.zipfile.emit('entry', { fileName: 'testfile.txt' })
-          ctx.readStream.emit('end')
+          ctx.readStream.end()
           ctx.zipfile.emit('end')
         })
       })
@@ -106,13 +107,13 @@ describe('ArchiveManager', function () {
     describe('with a zipfile containing an empty directory', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
-          ctx.readStream = new events.EventEmitter()
-          ctx.readStream.pipe = sinon.stub()
+          ctx.readStream = new PassThrough()
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, null, ctx.readStream)
-          ctx.writeStream = new events.EventEmitter()
+          ctx.writeStream = new PassThrough()
           ctx.fs.createWriteStream = sinon.stub().returns(ctx.writeStream)
+          sinon.spy(ctx.writeStream, 'destroy')
           ctx.ArchiveManager.extractZipArchive(
             ctx.source,
             ctx.destination,
@@ -124,7 +125,7 @@ describe('ArchiveManager', function () {
 
           // entry contains a single, empty directory
           ctx.zipfile.emit('entry', { fileName: 'testdir/' })
-          ctx.readStream.emit('end')
+          ctx.readStream.end()
           ctx.zipfile.emit('end')
         })
       })
@@ -285,10 +286,10 @@ describe('ArchiveManager', function () {
     describe('with backslashes in the path', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
-          ctx.readStream = new events.EventEmitter()
-          ctx.readStream.pipe = sinon.stub()
-          ctx.writeStream = new events.EventEmitter()
+          ctx.readStream = new PassThrough()
+          ctx.writeStream = new PassThrough()
           ctx.fs.createWriteStream = sinon.stub().returns(ctx.writeStream)
+          sinon.spy(ctx.writeStream, 'destroy')
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, null, ctx.readStream)
@@ -301,7 +302,9 @@ describe('ArchiveManager', function () {
             }
           )
           ctx.zipfile.emit('entry', { fileName: 'wombat\\foo.tex' })
+          ctx.readStream.end()
           ctx.zipfile.emit('entry', { fileName: 'potato\\bar.tex' })
+          ctx.readStream.end()
           return ctx.zipfile.emit('end')
         })
       })
@@ -362,7 +365,7 @@ describe('ArchiveManager', function () {
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, new Error('Something went wrong'))
-          ctx.writeStream = new events.EventEmitter()
+          ctx.writeStream = new PassThrough()
           ctx.ArchiveManager.extractZipArchive(
             ctx.source,
             ctx.destination,
@@ -392,13 +395,13 @@ describe('ArchiveManager', function () {
     describe('with an error in the file read stream', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
-          ctx.readStream = new events.EventEmitter()
-          ctx.readStream.pipe = sinon.stub()
+          ctx.readStream = new PassThrough()
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, null, ctx.readStream)
-          ctx.writeStream = new events.EventEmitter()
+          ctx.writeStream = new PassThrough()
           ctx.fs.createWriteStream = sinon.stub().returns(ctx.writeStream)
+          sinon.spy(ctx.writeStream, 'destroy')
           ctx.ArchiveManager.extractZipArchive(
             ctx.source,
             ctx.destination,
@@ -409,7 +412,6 @@ describe('ArchiveManager', function () {
           )
           ctx.zipfile.emit('entry', { fileName: 'testfile.txt' })
           ctx.readStream.emit('error', new Error('Something went wrong'))
-          ctx.zipfile.emit('end')
         })
       })
 
@@ -429,15 +431,14 @@ describe('ArchiveManager', function () {
     describe('with an error in the file write stream', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
-          ctx.readStream = new events.EventEmitter()
-          ctx.readStream.pipe = sinon.stub()
-          ctx.readStream.unpipe = sinon.stub()
-          ctx.readStream.destroy = sinon.stub()
+          ctx.readStream = new PassThrough()
+          sinon.spy(ctx.readStream, 'destroy')
           ctx.zipfile.openReadStream = sinon
             .stub()
             .callsArgWith(1, null, ctx.readStream)
-          ctx.writeStream = new events.EventEmitter()
+          ctx.writeStream = new PassThrough()
           ctx.fs.createWriteStream = sinon.stub().returns(ctx.writeStream)
+          sinon.spy(ctx.writeStream, 'destroy')
           ctx.ArchiveManager.extractZipArchive(
             ctx.source,
             ctx.destination,
@@ -448,7 +449,6 @@ describe('ArchiveManager', function () {
           )
           ctx.zipfile.emit('entry', { fileName: 'testfile.txt' })
           ctx.writeStream.emit('error', new Error('Something went wrong'))
-          ctx.zipfile.emit('end')
         })
       })
 
@@ -459,11 +459,6 @@ describe('ArchiveManager', function () {
             .and(sinon.match.has('message', 'Something went wrong'))
         )
       })
-
-      it('should unpipe from the readstream', function (ctx) {
-        ctx.readStream.unpipe.called.should.equal(true)
-      })
-
       it('should destroy the readstream', function (ctx) {
         ctx.readStream.destroy.called.should.equal(true)
       })

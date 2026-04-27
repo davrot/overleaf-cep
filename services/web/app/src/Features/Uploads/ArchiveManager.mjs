@@ -18,6 +18,7 @@ import OError from '@overleaf/o-error'
 import metrics from '@overleaf/metrics'
 import fs from 'node:fs'
 import Path from 'node:path'
+import { pipeline } from 'node:stream'
 import yauzl from 'yauzl'
 import Settings from '@overleaf/settings'
 import {
@@ -108,27 +109,16 @@ const ArchiveManager = {
     }
     callback = _.once(callback)
 
-    return zipfile.openReadStream(entry, function (err, readStream) {
+    fs.mkdir(Path.dirname(destFile), { recursive: true }, function (err) {
       if (err != null) {
         return callback(err)
       }
-      readStream.on('error', callback)
-      readStream.on('end', callback)
-
-      const errorHandler = function (err) {
-        // clean up before calling callback
-        readStream.unpipe()
-        readStream.destroy()
-        return callback(err)
-      }
-
-      fs.mkdir(Path.dirname(destFile), { recursive: true }, function (err) {
+      zipfile.openReadStream(entry, function (err, readStream) {
         if (err != null) {
-          return errorHandler(err)
+          return callback(err)
         }
         const writeStream = fs.createWriteStream(destFile)
-        writeStream.on('error', errorHandler)
-        return readStream.pipe(writeStream)
+        pipeline(readStream, writeStream, callback)
       })
     })
   },
