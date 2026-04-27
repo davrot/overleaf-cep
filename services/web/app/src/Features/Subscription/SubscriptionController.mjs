@@ -337,6 +337,7 @@ async function userSubscriptionPage(req, res) {
     groupSettingsAdvertisedFor,
     groupSettingsEnabledFor,
     isManagedAccount: !!req.managedBy,
+    isManagedGroupAdmin: !!req.isManagedGroupAdmin,
     userRestrictions: Array.from(req.userRestrictions || []),
     hasAiAssistViaWritefull,
     aiAssistViaWritefullSource,

@@ -492,6 +492,32 @@ describe('SubscriptionController', function () {
       expect(ctx.data.groupSettingsEnabledFor).to.deep.equal([])
     })
 
+    it('should pass isManagedGroupAdmin as false when not set', function (ctx) {
+      expect(ctx.data.isManagedGroupAdmin).to.equal(false)
+    })
+
+    describe('when user is a managed group admin', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.isManagedGroupAdmin = true
+        await new Promise((resolve, reject) => {
+          ctx.res.render = (view, data) => {
+            ctx.data = data
+            expect(view).to.equal('subscriptions/dashboard-react')
+            resolve()
+          }
+          ctx.SubscriptionController.userSubscriptionPage(
+            ctx.req,
+            ctx.res,
+            ctx.rejectOnError(reject)
+          )
+        })
+      })
+
+      it('should pass isManagedGroupAdmin as true', function (ctx) {
+        expect(ctx.data.isManagedGroupAdmin).to.equal(true)
+      })
+    })
+
     describe('when errorCode query param is present', function () {
       beforeEach(async function (ctx) {
         ctx.req.query.errorCode = 'payment_failed'

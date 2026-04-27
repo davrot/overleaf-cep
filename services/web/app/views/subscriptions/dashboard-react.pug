@@ -84,6 +84,11 @@ block append meta
 		data-type='string'
 		content=aiAssistViaWritefullSource
 	)
+	meta(
+		name='ol-isManagedGroupAdmin'
+		data-type='boolean'
+		content=isManagedGroupAdmin
+	)
 	meta(name='ol-user' data-type='json' content=user)
 	if personalSubscription && personalSubscription.payment
 		meta(name='ol-recurlyApiKey' content=settings.apis.recurly.publicKey)
