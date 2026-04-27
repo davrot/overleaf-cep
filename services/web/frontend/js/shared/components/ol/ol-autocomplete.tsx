@@ -32,6 +32,7 @@ export type OLAutocompleteProps = {
   useFuzzySearch?: boolean
   inputRef?: React.ForwardedRef<HTMLInputElement>
   expandUp?: boolean
+  onClose?: () => void
 }
 
 type OLAutocompleteDisplayItem =
@@ -57,6 +58,7 @@ function OLAutocompleteInternal({
   useFuzzySearch = false,
   inputRef,
   expandUp = false,
+  onClose,
 }: OLAutocompleteProps) {
   const { t } = useTranslation()
 
@@ -177,6 +179,11 @@ function OLAutocompleteInternal({
     },
     onInputValueChange: ({ inputValue = '' }) => {
       setInternalInputValue(inputValue)
+    },
+    onIsOpenChange: ({ isOpen }) => {
+      if (!isOpen) {
+        onClose?.()
+      }
     },
   })
 
