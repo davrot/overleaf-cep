@@ -99,6 +99,14 @@ describe('EmailSender', function () {
       })
     })
 
+    it('should use opts.from as override for settings fromAddress when provided', async function (ctx) {
+      ctx.opts.from = 'no-reply@example.com'
+      await ctx.EmailSender.promises.sendEmail(ctx.opts)
+      expect(ctx.sesClient.sendMail).to.have.been.calledWithMatch({
+        from: 'no-reply@example.com',
+      })
+    })
+
     it('should not send an email when the rate limiter says no', async function (ctx) {
       ctx.opts.sendingUser_id = '12321312321'
       ctx.rateLimiter.consume.rejects({ remainingPoints: 0 })
