@@ -3,7 +3,7 @@ import settings from '@overleaf/settings'
 import moment from 'moment'
 import EmailMessageHelper from './EmailMessageHelper.mjs'
 import StringHelper from '../Helpers/StringHelper.mjs'
-import BaseWithHeaderEmailLayout from './Layouts/BaseWithHeaderEmailLayout.mjs'
+import BaseEmailLayout from './Layouts/BaseEmailLayout.mjs'
 import SpamSafe from './SpamSafe.mjs'
 import ctaEmailBody from './Bodies/cta-email.mjs'
 import NoCTAEmailBody from './Bodies/NoCTAEmailBody.mjs'
@@ -75,7 +75,7 @@ function ctaTemplate(content) {
     subject(opts) {
       return content.subject(opts)
     },
-    layout: BaseWithHeaderEmailLayout,
+    layout: BaseEmailLayout,
     footerMessage(opts) {
       return content.footerMessage(opts)
     },
@@ -108,7 +108,7 @@ function NoCTAEmailTemplate(content) {
     subject(opts) {
       return content.subject(opts)
     },
-    layout: BaseWithHeaderEmailLayout,
+    layout: BaseEmailLayout,
     plainTextTemplate(opts) {
       return `\
 ${content.greeting(opts)}
