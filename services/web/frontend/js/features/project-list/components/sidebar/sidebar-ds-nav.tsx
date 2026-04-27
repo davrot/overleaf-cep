@@ -7,10 +7,15 @@ import { usePersistedResize } from '@/shared/hooks/use-resize'
 import { useScrolled } from '@/features/project-list/components/sidebar/use-scroll'
 import { SurveyWidgetDsNav } from '@/features/project-list/components/survey-widget-ds-nav'
 import { SidebarLowerSection } from '@/shared/components/sidebar/sidebar-lower-section'
+import { isSplitTestEnabled } from '@/utils/splitTestUtils'
+import { DsNavPageSwitcher } from '@/shared/components/sidebar/ds-nav-page-switcher'
+import { useProjectListContext } from '@/features/project-list/context/project-list-context'
 
 function SidebarDsNav() {
   const { t } = useTranslation()
   const { show: showAddAffiliationWidget } = useAddAffiliation()
+  const isLibraryEnabled = isSplitTestEnabled('overleaf-library')
+  const { selectFilter } = useProjectListContext()
   const { mousePos, getHandleProps, getTargetProps } = usePersistedResize({
     name: 'project-sidebar',
   })
@@ -25,14 +30,26 @@ function SidebarDsNav() {
         },
       })}
     >
+      {isLibraryEnabled && (
+        <>
+          <DsNavPageSwitcher
+            activePage="projects"
+            showLogo={false}
+            onProjectsClick={() => selectFilter('all')}
+          />
+          <hr className="ds-nav-page-switcher-divider" />
+        </>
+      )}
       <nav
         className="flex-grow flex-shrink"
         aria-label={t('project_categories_tags')}
       >
-        <NewProjectButton
-          id="new-project-button-sidebar"
-          className={scrolledDown ? 'show-shadow' : undefined}
-        />
+        {!isLibraryEnabled && (
+          <NewProjectButton
+            id="new-project-button-sidebar"
+            className={scrolledDown ? 'show-shadow' : undefined}
+          />
+        )}
         <div
           className="project-list-sidebar-scroll"
           ref={containerRef}

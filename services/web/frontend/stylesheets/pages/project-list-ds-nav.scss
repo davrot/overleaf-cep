@@ -103,6 +103,36 @@ body {
     }
   }
 
+  &.library-enabled {
+    .navbar-default .navbar-header .navbar-logo {
+      @include media-breakpoint-up(md) {
+        top: calc(var(--spacing-05) * 2);
+        left: var(--spacing-05);
+      }
+    }
+
+    .project-list-wrapper .project-list-sidebar-wrapper-react {
+      .ds-nav-page-switcher-divider {
+        margin: var(--spacing-05) 0;
+      }
+
+      .project-list-sidebar-scroll {
+        padding-top: 0;
+      }
+    }
+  }
+
+  &.library-page {
+    .project-list-wrapper
+      .project-ds-nav-content-and-messages
+      .project-ds-nav-content {
+      @include media-breakpoint-up(md) {
+        border-top-left-radius: 0;
+        border-top: none;
+      }
+    }
+  }
+
   .navbar-nav > li > .dropdown-toggle::after {
     display: none;
   }
@@ -154,6 +184,50 @@ body {
         margin: 0 var(--spacing-02) 0 0;
         padding: var(--spacing-05) var(--spacing-07) var(--spacing-05)
           var(--spacing-05);
+      }
+
+      .ds-nav-page-switcher-logo {
+        padding: 0 var(--spacing-08) var(--spacing-07);
+
+        img {
+          width: 130px;
+          height: auto;
+        }
+      }
+
+      .ds-nav-page-switcher-items {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-02);
+        padding: 0 var(--spacing-05);
+        margin: 0;
+
+        &--no-logo {
+          padding-top: var(--spacing-05);
+        }
+      }
+
+      .ds-nav-page-switcher-item {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-05);
+        padding: var(--spacing-05);
+        border-radius: var(--border-radius-medium);
+        color: var(--ds-nav-color);
+        font-size: var(--font-size-03);
+        text-decoration: none;
+
+        &:hover {
+          background-color: var(--ds-nav-hover-bg);
+          color: var(--ds-nav-color);
+          text-decoration: none;
+        }
+
+        &.active {
+          background-color: var(--ds-nav-active-bg);
+          color: var(--ds-nav-active-color);
+          font-weight: bold;
+        }
       }
 
       .ds-nav-sidebar-lower {
