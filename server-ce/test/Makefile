@@ -35,7 +35,7 @@ test-e2e-native:
 	CYPRESS_HOST_ADMIN_URL='http://127.0.0.1:3232' \
 	CYPRESS_SAML_URL='http://127.0.0.1:3233' \
 	CYPRESS_MAILTRAP_URL='http://127.0.0.1:3234' \
-		npm run cypress:open
+		yarn run cypress:open
 
 # For testing "native" on Linux
 test-e2e-native-linux:

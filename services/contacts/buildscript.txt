@@ -4,5 +4,6 @@ contacts
 --env-pass-through=
 --esmock-loader=True
 --node-version=24.14.1
+--package-name=@overleaf/contacts
 --pipeline-owner=52
 --public-repo=False

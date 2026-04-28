@@ -4,7 +4,7 @@ import { webpackConfig } from './cypress/support/webpack.cypress'
 let reporterOptions = {}
 if (process.env.CI) {
   reporterOptions = {
-    reporter: '/overleaf/node_modules/cypress-multi-reporters',
+    reporter: 'cypress-multi-reporters',
     reporterOptions: {
       configFile: 'cypress/cypress-multi-reporters.json',
     },

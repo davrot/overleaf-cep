@@ -72,7 +72,7 @@ services:
         - USER_UID
         - USER_GID
     stop_grace_period: 0s
-    entrypoint: npm
+    entrypoint: yarn
     command: run cypress:run
     # See comment in Makefile regarding matching file paths
     working_dir: $PWD

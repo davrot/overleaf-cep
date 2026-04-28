@@ -217,7 +217,19 @@ module.exports = {
           // Compiles Sass to CSS
           {
             loader: 'sass-loader',
-            options: { sourceMap: true }, // sourceMap: true is required for resolve-url-loader
+            options: {
+              api: 'modern',
+              sourceMap: true, // sourceMap: true is required for resolve-url-loader
+              sassOptions: {
+                silenceDeprecations: [
+                  // TODO: import can't be fixed until we switch to bootstrap 6
+                  'import',
+                  'global-builtin',
+                  'color-functions',
+                  'if-function',
+                ],
+              },
+            },
           },
         ],
       },

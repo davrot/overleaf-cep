@@ -26,7 +26,7 @@ services:
       REDIS_HOST: redis_test
       MONOREPO:
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run --silent test:unit:app
+    command: corepack yarn run --silent test:unit:app
     user: node
     depends_on:
       - mongo
@@ -67,7 +67,7 @@ services:
       - saml
       - ldap
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run --silent test:acceptance:app
+    command: corepack yarn run --silent test:acceptance:app
 
   test_frontend_jsdom:
     build:
@@ -85,7 +85,7 @@ services:
       MOCHA_GREP: ${MOCHA_GREP}
       NODE_OPTIONS: "--unhandled-rejections=strict"
       VERBOSE_LOGGING:
-    command: npm run --silent test:frontend
+    command: corepack yarn run --silent test:frontend
     user: node
 
   test_frontend_ct:
@@ -123,7 +123,7 @@ services:
       JUNIT_ROOT_SUITE_NAME:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       VERBOSE_LOGGING:
-    command: npm run --silent test:writefull
+    command: corepack yarn run --silent test:writefull
     user: node
 
   redis_test:

@@ -5,6 +5,8 @@
 FROM node:24.14.1 AS base
 
 WORKDIR /overleaf/services/clsi
+ENV PATH="/overleaf/node_modules/.bin:$PATH"
+RUN corepack enable
 COPY services/clsi/install_deps.sh /overleaf/services/clsi/
 RUN chmod 0755 ./install_deps.sh && ./install_deps.sh
 ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
@@ -16,7 +18,7 @@ RUN mkdir /home/node/.config && chown node:node /home/node/.config
 
 FROM base AS app
 
-COPY package.json package-lock.json /overleaf/
+COPY package.json yarn.lock .yarnrc.yml /overleaf/
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
 COPY libraries/logger/package.json /overleaf/libraries/logger/package.json
 COPY libraries/metrics/package.json /overleaf/libraries/metrics/package.json
@@ -26,9 +28,9 @@ COPY libraries/promise-utils/package.json /overleaf/libraries/promise-utils/pack
 COPY libraries/settings/package.json /overleaf/libraries/settings/package.json
 COPY libraries/stream-utils/package.json /overleaf/libraries/stream-utils/package.json
 COPY services/clsi/package.json /overleaf/services/clsi/package.json
-COPY patches/ /overleaf/patches/
+COPY .yarn/patches/ /overleaf/.yarn/patches/
 
-RUN cd /overleaf && npm ci --quiet
+RUN cd /overleaf && yarn workspaces focus @overleaf/clsi overleaf
 COPY libraries/fetch-utils/ /overleaf/libraries/fetch-utils/
 COPY libraries/logger/ /overleaf/libraries/logger/
 COPY libraries/metrics/ /overleaf/libraries/metrics/

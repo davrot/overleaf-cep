@@ -4,6 +4,8 @@
 FROM node:24.14.1 AS base
 
 WORKDIR /overleaf/services/web
+ENV PATH="/overleaf/node_modules/.bin:$PATH"
+RUN corepack enable
 
 # Google Cloud Storage needs a writable $HOME/.config for resumable uploads
 # (see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream)
@@ -22,10 +24,10 @@ RUN mkdir -p /overleaf/services/web/data/dumpFolder \
 COPY services/web/certs/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt.pem /usr/local/share/ca-certificates/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt
 RUN update-ca-certificates
 
-# the deps image is used for caching npm ci
+# the deps image is used for caching yarn workspaces focus
 FROM base AS deps-prod
 
-COPY package.json package-lock.json /overleaf/
+COPY package.json yarn.lock .yarnrc.yml /overleaf/
 COPY libraries/access-token-encryptor/package.json /overleaf/libraries/access-token-encryptor/package.json
 COPY libraries/eslint-plugin/package.json /overleaf/libraries/eslint-plugin/package.json
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
@@ -43,16 +45,16 @@ COPY libraries/stream-utils/package.json /overleaf/libraries/stream-utils/packag
 COPY libraries/validation-tools/package.json /overleaf/libraries/validation-tools/package.json
 COPY services/web/package.json /overleaf/services/web/package.json
 COPY tools/migrations/package.json /overleaf/tools/migrations/package.json
-COPY patches/ /overleaf/patches/
+COPY .yarn/patches/ /overleaf/.yarn/patches/
 
-RUN cd /overleaf && NODE_ENV=production npm ci --quiet
+RUN cd /overleaf && NODE_ENV=production yarn workspaces focus --production @overleaf/web
 
 FROM deps-prod AS deps
 
 ENV CYPRESS_INSTALL_BINARY=0
 
 COPY tsconfig.backend.json /overleaf/
-RUN cd /overleaf && npm install
+RUN cd /overleaf && yarn workspaces focus @overleaf/web overleaf
 
 
 # the dev is suitable for running tests
@@ -79,7 +81,7 @@ COPY services/web/ /overleaf/services/web/
 COPY tools/migrations/ /overleaf/tools/migrations/
 
 # Build the latex parser
-RUN cd /overleaf/services/web && npm run 'lezer-latex:generate'
+RUN cd /overleaf/services/web && yarn run 'lezer-latex:generate'
 
 # The module folders are owned as root. The node user cannot create them. Create them in advance.
 RUN cd /overleaf/services/web && make create_module_Makefiles
@@ -90,7 +92,7 @@ USER node
 # the webpack image has deps+src+webpack artifacts
 FROM dev AS webpack
 USER root
-RUN OVERLEAF_CONFIG=/overleaf/services/web/config/settings.webpack.js nice npm run webpack:production
+RUN OVERLEAF_CONFIG=/overleaf/services/web/config/settings.webpack.js nice yarn run webpack:production
 
 
 # intermediate image for removing source maps ahead of copying into final production image
@@ -120,7 +122,7 @@ COPY tools/migrations/ /overleaf/tools/migrations/
 
 # Omit Server Pro/CE specific scripts from SaaS image
 RUN rm /overleaf/services/web/modules/server-ce-scripts -rf
-RUN OVERLEAF_CONFIG=/overleaf/services/web/config/settings.overrides.saas.js nice npm run precompile-pug
+RUN OVERLEAF_CONFIG=/overleaf/services/web/config/settings.overrides.saas.js nice yarn run precompile-pug
 
 
 # the web image with only production dependencies but no webpack production build, for development

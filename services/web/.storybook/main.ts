@@ -130,13 +130,27 @@ const config: StorybookConfig = {
       },
       module: {
         ...storybookConfig.module,
-        rules: (storybookConfig.module?.rules ?? []).concat({
-          test: /\.wasm$/,
-          type: 'asset/resource',
-          generator: {
-            filename: 'js/[name]-[contenthash][ext]',
+        rules: (storybookConfig.module?.rules ?? []).concat(
+          {
+            test: /\.wasm$/,
+            type: 'asset/resource',
+            generator: {
+              filename: 'js/[name]-[contenthash][ext]',
+            },
           },
-        }),
+          {
+            // Disable webpack's `new URL()` processing for pdfjs-dist worker
+            // files, so that webpack does not try to resolve qcms_bg.wasm and
+            // openjpeg.wasm (which live in pdfjs-dist/wasm/, not build/).
+            // The main webpack build relies on a `/* webpackIgnore: true */`
+            // comment (via yarn patch) to achieve the same effect, but
+            // storybook's babel pipeline may strip comments from the 1.9 MB
+            // worker file (babel `compact: "auto"` removes comments for files
+            // > 500 KB), so we disable URL parsing for these files instead.
+            test: /pdfjs-dist.*pdf\.worker.*\.m?js$/,
+            parser: { javascript: { url: false } },
+          }
+        ),
       },
     }
   },

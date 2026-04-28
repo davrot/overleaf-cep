@@ -5,6 +5,8 @@
 FROM node:24.14.1 AS base
 
 WORKDIR /overleaf/services/filestore
+ENV PATH="/overleaf/node_modules/.bin:$PATH"
+RUN corepack enable
 COPY services/filestore/install_deps.sh /overleaf/services/filestore/
 RUN chmod 0755 ./install_deps.sh && ./install_deps.sh
 
@@ -14,7 +16,7 @@ RUN mkdir /home/node/.config && chown node:node /home/node/.config
 
 FROM base AS app
 
-COPY package.json package-lock.json /overleaf/
+COPY package.json yarn.lock .yarnrc.yml /overleaf/
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
 COPY libraries/logger/package.json /overleaf/libraries/logger/package.json
 COPY libraries/metrics/package.json /overleaf/libraries/metrics/package.json
@@ -23,9 +25,9 @@ COPY libraries/object-persistor/package.json /overleaf/libraries/object-persisto
 COPY libraries/settings/package.json /overleaf/libraries/settings/package.json
 COPY libraries/stream-utils/package.json /overleaf/libraries/stream-utils/package.json
 COPY services/filestore/package.json /overleaf/services/filestore/package.json
-COPY patches/ /overleaf/patches/
+COPY .yarn/patches/ /overleaf/.yarn/patches/
 
-RUN cd /overleaf && npm ci --quiet
+RUN cd /overleaf && yarn workspaces focus @overleaf/filestore overleaf
 COPY libraries/fetch-utils/ /overleaf/libraries/fetch-utils/
 COPY libraries/logger/ /overleaf/libraries/logger/
 COPY libraries/metrics/ /overleaf/libraries/metrics/

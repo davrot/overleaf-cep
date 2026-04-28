@@ -13,7 +13,7 @@ services:
       - ./reports:/overleaf/services/history-v1/reports
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run test:unit:_run
+    command: yarn run test:unit:_run
     environment:
       CI:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
@@ -77,7 +77,7 @@ services:
         condition: service_healthy
     user: node
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run test:acceptance
+    command: yarn run test:acceptance
 
   tar:
     build: .

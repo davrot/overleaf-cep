@@ -11,8 +11,8 @@
   },
   "devDependencies": {
     "@isomorphic-git/lightning-fs": "^4.6.0",
-    "@overleaf/promise-utils": "*",
-    "@overleaf/validation-tools": "*",
+    "@overleaf/promise-utils": "workspace:*",
+    "@overleaf/validation-tools": "workspace:*",
     "@testing-library/cypress": "10.1.0",
     "@types/adm-zip": "^0.5.7",
     "@types/uuid": "^9.0.8",

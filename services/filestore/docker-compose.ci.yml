@@ -12,7 +12,7 @@ services:
     volumes:
       - ./reports:/overleaf/services/filestore/reports
       - ../../tsconfig.backend.json:/overleaf/tsconfig.backend.json
-    command: npm run test:unit:_run
+    command: yarn run test:unit:_run
     environment:
       CI:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
@@ -41,8 +41,8 @@ services:
       MOCHA_GREP: ${MOCHA_GREP}
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
-      ENABLE_CONVERSIONS: "true"
-      USE_PROM_METRICS: "true"
+      ENABLE_CONVERSIONS: true
+      USE_PROM_METRICS: true
       AWS_S3_USER_FILES_STORAGE_CLASS: REDUCED_REDUNDANCY
       AWS_S3_USER_FILES_BUCKET_NAME: fake-user-files
       AWS_S3_USER_FILES_DEK_BUCKET_NAME: fake-user-files-dek
@@ -62,7 +62,7 @@ services:
       gcs:
         condition: service_healthy
     user: node
-    command: npm run test:acceptance
+    command: yarn run test:acceptance
 
   tar:
     build: .

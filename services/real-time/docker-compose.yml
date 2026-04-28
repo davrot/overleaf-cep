@@ -9,6 +9,9 @@ services:
       - .:/overleaf/services/real-time
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
       - ../../tsconfig.backend.json:/overleaf/tsconfig.backend.json
     working_dir: /overleaf/services/real-time
     environment:
@@ -22,7 +25,7 @@ services:
       QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
-    command: npm run --silent test:unit
+    command: corepack yarn run --silent test:unit
     user: node
     depends_on:
       redis_test:
@@ -34,6 +37,9 @@ services:
       - .:/overleaf/services/real-time
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
     working_dir: /overleaf/services/real-time
     environment:
       RETRIES:
@@ -52,7 +58,7 @@ services:
     depends_on:
       redis_test:
         condition: service_healthy
-    command: npm run --silent test:acceptance
+    command: corepack yarn run --silent test:acceptance
 
   redis_test:
     image: redis:7.4.8

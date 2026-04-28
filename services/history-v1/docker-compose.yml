@@ -15,6 +15,9 @@ services:
       - .:/overleaf/services/history-v1
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
       - ../../tools/migrations:/overleaf/tools/migrations
     working_dir: /overleaf/services/history-v1
@@ -30,7 +33,7 @@ services:
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run --silent test:unit
+    command: corepack yarn run --silent test:unit
     user: node
     depends_on:
       mongo:
@@ -47,6 +50,9 @@ services:
       - .:/overleaf/services/history-v1
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
       - minio-certs:/certs
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
       - ../../tools/migrations:/overleaf/tools/migrations
@@ -91,7 +97,7 @@ services:
       gcs:
         condition: service_healthy
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run --silent test:acceptance
+    command: corepack yarn run --silent test:acceptance
 
   redis_test:
     image: redis:7.4.8

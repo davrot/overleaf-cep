@@ -9,7 +9,7 @@ services:
     volumes:
       - ./reports:/overleaf/services/real-time/reports
       - ../../tsconfig.backend.json:/overleaf/tsconfig.backend.json
-    command: npm run test:unit:_run
+    command: yarn run test:unit:_run
     environment:
       CI:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
@@ -47,7 +47,7 @@ services:
       redis_test:
         condition: service_healthy
     user: node
-    command: npm run test:acceptance
+    command: yarn run test:acceptance
 
   tar:
     build: .

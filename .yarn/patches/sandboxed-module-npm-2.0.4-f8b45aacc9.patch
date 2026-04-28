@@ -1,0 +1,13 @@
+diff --git a/lib/sandboxed_module.js b/lib/sandboxed_module.js
+index 1cd6743fe221cbe91ea92fea3707ed07a8a2ded3..46889217d96d5534a206549ae7bd97100e41c3e4 100644
+--- a/lib/sandboxed_module.js
++++ b/lib/sandboxed_module.js
+@@ -4,7 +4,7 @@ var Module = require('module');
+ var fs = require('fs');
+ var vm = require('vm');
+ var path = require('path');
+-var builtinModules = require('./builtin_modules.json');
++var builtinModules = Module.builtinModules || require('./builtin_modules.json');
+ var parent = module.parent;
+ var globalOptions = {};
+ var registeredBuiltInSourceTransformers = ['coffee'];

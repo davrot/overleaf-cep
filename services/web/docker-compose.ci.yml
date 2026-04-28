@@ -15,7 +15,7 @@ services:
       - ./data/coverage:/overleaf/services/web/data/coverage
       - ./data/reports:/overleaf/services/web/data/reports
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run test:unit:app
+    command: yarn run test:unit:app
     working_dir: /overleaf/services/web
     env_file: docker-compose.common.env
     environment:
@@ -60,7 +60,7 @@ services:
       - ./data/coverage:/overleaf/services/web/data/coverage
       - ./data/reports:/overleaf/services/web/data/reports
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: npm run test:acceptance:app
+    command: yarn run test:acceptance:app
     depends_on:
       - redis_test
       - mongo
@@ -80,7 +80,7 @@ services:
       driver: local
     user: node
     working_dir: /overleaf/services/web
-    command: npm run test:frontend
+    command: yarn run test:frontend
     environment:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       CI:
@@ -104,7 +104,7 @@ services:
     volumes:
       - /dev/shm/overleaf:/overleaf
       - ./data/reports:/overleaf/services/web/data/reports
-    entrypoint: npm
+    entrypoint: yarn
     command:
       - "run"
       - "cypress:run-ct"
@@ -118,7 +118,7 @@ services:
       driver: local
     user: node
     working_dir: /overleaf/services/web
-    command: npm run test:writefull
+    command: yarn run test:writefull
     volumes:
       - ./data/reports:/overleaf/services/web/data/reports
     environment:

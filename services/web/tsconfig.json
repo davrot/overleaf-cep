@@ -45,5 +45,8 @@
     "cypress",
     "types"
   ],
-  "exclude": ["**/*.min.js"]
+  "exclude": [
+    "**/*.min.js",
+    "modules/writefull/frontend/js/integration/src/vite-env.d.ts"
+  ]
 }

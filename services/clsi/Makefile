@@ -15,7 +15,7 @@ IMAGE_REPO ?= us-east1-docker.pkg.dev/overleaf-ops/ol-docker/$(PROJECT_NAME)
 IMAGE_REPO_FINAL ?= $(IMAGE_REPO):$(BRANCH_NAME_TAG_SAFE)-$(BUILD_NUMBER)
 IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
 	$(MONOREPO)/package.json \
-	$(MONOREPO)/package-lock.json \
+	$(MONOREPO)/yarn.lock \
 	$(MONOREPO)/libraries/fetch-utils/package.json \
 	$(MONOREPO)/libraries/logger/package.json \
 	$(MONOREPO)/libraries/metrics/package.json \
@@ -25,7 +25,7 @@ IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
 	$(MONOREPO)/libraries/settings/package.json \
 	$(MONOREPO)/libraries/stream-utils/package.json \
 	$(MONOREPO)/services/clsi/package.json \
-	$(MONOREPO)/patches/* \
+	$(MONOREPO)/.yarn/patches/* \
 | sha256sum | cut -d '-' -f1)
 
 DOCKER_COMPOSE_FLAGS ?= -f docker-compose.yml
@@ -53,11 +53,11 @@ clean:
 
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
-RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) --user node node:24.14.1 npm run --silent
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.14.1 npm run --silent
+RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) -e PATH=$(MONOREPO)/node_modules/.bin:$$PATH --user node node:24.14.1 corepack yarn run --silent
+RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) -e PATH=$(MONOREPO)/node_modules/.bin:$$PATH --user node node:24.14.1 corepack yarn run --silent
 
-RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/clsi/reports:/overleaf/services/clsi/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache $(IMAGE_CI) npm run --silent
-RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/clsi/reports:/overleaf/services/clsi/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache -w /overleaf $(IMAGE_CI) npm run --silent
+RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/clsi/reports:/overleaf/services/clsi/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache $(IMAGE_CI) corepack yarn run --silent
+RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/clsi/reports:/overleaf/services/clsi/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache -w /overleaf $(IMAGE_CI) corepack yarn run --silent
 
 SHELLCHECK_OPTS = \
 	--shell=bash \
@@ -96,19 +96,19 @@ $(WITH_CACHE_FOLDER): ../../node_modules/.cache/eslint/
 	mkdir -p $@
 
 format:
-	$(RUN_LINTING_MONOREPO) format -- services/clsi
+	$(RUN_LINTING_MONOREPO) format services/clsi
 
 format_ci:
-	$(RUN_LINTING_CI_MONOREPO) format -- services/clsi
+	$(RUN_LINTING_CI_MONOREPO) format services/clsi
 
 format_fix:
-	$(RUN_LINTING_MONOREPO) format:fix -- services/clsi
+	$(RUN_LINTING_MONOREPO) format:fix services/clsi
 
 lint:
 	$(RUN_LINTING) lint
 
 lint_ci:
-	-$(RUN_LINTING_CI) lint -- --format json --output-file reports/eslint.json
+	-$(RUN_LINTING_CI) lint --format json --output-file reports/eslint.json
 	sed -i 's_"filePath":"/overleaf_"filePath":"$(MONOREPO)_g' reports/eslint.json
 
 lint_fix:
@@ -146,7 +146,7 @@ endif
 
 test_acceptance_run_debug:
 ifneq (,$(wildcard test/acceptance))
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run -p 127.0.0.9:19999:19999 --rm test_acceptance npm run test:acceptance -- --inspect=0.0.0.0:19999 --inspect-brk
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run -p 127.0.0.9:19999:19999 --rm test_acceptance corepack yarn run --inspect=0.0.0.0:19999 --inspect-brk test:acceptance
 endif
 
 test_clean: test_acceptance_clean
@@ -161,7 +161,7 @@ ifneq (,$(wildcard test/acceptance/js/scripts/pre-run))
 endif
 
 benchmarks:
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run --rm test_acceptance npm run benchmarks
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run --rm test_acceptance corepack yarn run benchmarks
 
 build:
 	docker build \
