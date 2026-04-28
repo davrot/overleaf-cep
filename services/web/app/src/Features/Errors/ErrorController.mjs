@@ -1,10 +1,11 @@
 import { isZodErrorLike, fromZodError } from 'zod-validation-error'
-import Errors from './Errors.js'
+import Errors, { NotFoundError } from './Errors.js'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import SamlLogHandler from '../SamlLog/SamlLogHandler.mjs'
 import HttpErrorHandler from './HttpErrorHandler.mjs'
 import { plainTextResponse } from '../../infrastructure/Response.mjs'
 import { expressifyErrorHandler } from '@overleaf/promise-utils'
+import { ParamsError } from '@overleaf/validation-tools'
 
 function notFound(req, res) {
   res.status(404)
@@ -40,6 +41,14 @@ async function handleError(error, req, res, next) {
     req.logger.setLevel('warn')
     if (shouldSendErrorResponse) {
       notFound(req, res)
+    }
+  } else if (error instanceof ParamsError) {
+    req.logger.setLevel('warn')
+    if (shouldSendErrorResponse) {
+      notFound(req, res)
+    } else {
+      // convert into a NotFoundError that the default handler understands
+      return next(new NotFoundError('Not found').withCause(error))
     }
   } else if (
     error instanceof URIError &&
@@ -117,7 +126,7 @@ async function handleError(error, req, res, next) {
 
 function handleApiError(err, req, res, next) {
   req.logger.addFields({ err })
-  if (err instanceof Errors.NotFoundError) {
+  if (err instanceof Errors.NotFoundError || err instanceof ParamsError) {
     req.logger.setLevel('warn')
     res.sendStatus(404)
   } else if (
