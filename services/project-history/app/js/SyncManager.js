@@ -8,7 +8,11 @@ import logger from '@overleaf/logger'
 import Metrics from '@overleaf/metrics'
 import OError from '@overleaf/o-error'
 import { File, Range } from 'overleaf-editor-core'
-import { NeedFullProjectStructureResyncError, SyncError } from './Errors.js'
+import {
+  NeedFullProjectStructureResyncError,
+  SYNC_ONGOING_ERROR_MESSAGE,
+  SyncError,
+} from './Errors.js'
 import { db, ObjectId } from './mongodb.js'
 import * as SnapshotManager from './SnapshotManager.js'
 import * as LockManager from './LockManager.js'
@@ -30,6 +34,8 @@ import { isInsert, isDelete } from './Utils.js'
  */
 const MAX_RESYNC_HISTORY_RECORDS = 100 // keep this many records of previous resyncs
 const EXPIRE_RESYNC_HISTORY_INTERVAL_MS = 90 * 24 * 3600 * 1000 // 90 days
+const SYNC_STUCK_TIMEOUT_MS = 4 * 60 * 60 * 1000 // 4 hours
+const MAX_STUCK_CLEAR_ATTEMPTS = 5
 
 const keys = Settings.redis.lock.key_schema
 
@@ -93,7 +99,42 @@ async function startResyncWithoutLock(projectId, options) {
 
   const syncState = await getResyncState(projectId)
   if (syncState.isSyncOngoing()) {
-    throw new OError('sync ongoing')
+    if (syncState.isSyncStuck()) {
+      const stuckDocPaths = Array.from(syncState.resyncDocContents)
+      const stuckClearCount = syncState.stuckClearCount
+
+      if (stuckClearCount >= MAX_STUCK_CLEAR_ATTEMPTS) {
+        await _recordStuckClearInSyncState(projectId, stuckDocPaths)
+        Metrics.inc('project_history_sync_stuck_permanent')
+        // Log error only on first permanent-stuck detection to avoid spam
+        if (stuckClearCount === MAX_STUCK_CLEAR_ATTEMPTS) {
+          logger.error(
+            {
+              projectId,
+              stuckClearCount: stuckClearCount + 1,
+              stuckDocPaths,
+              resyncPendingSince: syncState.resyncPendingSince,
+            },
+            'sync permanently stuck — exceeded auto-clear limit'
+          )
+        }
+        throw new OError('sync permanently stuck')
+      }
+
+      logger.warn(
+        {
+          projectId,
+          stuckClearCount: stuckClearCount + 1,
+          stuckDocPaths,
+          resyncPendingSince: syncState.resyncPendingSince,
+        },
+        'sync stuck, clearing state and restarting'
+      )
+      Metrics.inc('project_history_sync_stuck_cleared')
+      await _recordStuckClearInSyncState(projectId, stuckDocPaths)
+    } else {
+      throw new OError(SYNC_ONGOING_ERROR_MESSAGE)
+    }
   }
   syncState.setOrigin(options.origin || { kind: 'history-resync' })
   syncState.startProjectStructureSync()
@@ -167,7 +208,12 @@ async function setResyncState(projectId, syncState) {
     update.$set.expiresAt = new Date(
       Date.now() + EXPIRE_RESYNC_HISTORY_INTERVAL_MS
     )
-    update.$unset = { resyncPendingSince: 1 }
+    update.$unset = {
+      resyncPendingSince: 1,
+      stuckClearCount: 1,
+      lastStuckClearAt: 1,
+      lastStuckDocPaths: 1,
+    }
   }
 
   // apply the update
@@ -182,6 +228,17 @@ async function clearResyncState(projectId) {
   await db.projectHistorySyncState.deleteOne({
     project_id: new ObjectId(projectId.toString()),
   })
+}
+
+async function _recordStuckClearInSyncState(projectId, stuckDocPaths) {
+  await db.projectHistorySyncState.updateOne(
+    { project_id: new ObjectId(projectId) },
+    {
+      $inc: { stuckClearCount: 1 },
+      $set: { lastStuckClearAt: new Date(), lastStuckDocPaths: stuckDocPaths },
+      $unset: { resyncPendingSince: 1 },
+    }
+  )
 }
 
 /**
@@ -223,6 +280,7 @@ async function skipUpdatesDuringSync(projectId, updates) {
     if (!shouldSkipUpdate) {
       filteredUpdates.push(update)
     } else {
+      Metrics.inc('project_history_sync_update_skipped')
       logger.debug({ projectId, update }, 'skipping update due to resync')
     }
   }
@@ -297,7 +355,10 @@ class SyncState {
     resyncCount,
     resyncPendingSince,
     lastUpdated,
-    history
+    history,
+    stuckClearCount,
+    lastStuckClearAt,
+    lastStuckDocPaths
   ) {
     this.projectId = projectId
     this.resyncProjectStructure = resyncProjectStructure
@@ -307,6 +368,9 @@ class SyncState {
     this.resyncPendingSince = resyncPendingSince
     this.lastUpdated = lastUpdated
     this.history = history
+    this.stuckClearCount = stuckClearCount
+    this.lastStuckClearAt = lastStuckClearAt
+    this.lastStuckDocPaths = lastStuckDocPaths
   }
 
   static fromRaw(projectId, rawSyncState) {
@@ -336,6 +400,9 @@ class SyncState {
       }
     }
     const lastUpdated = rawSyncState.lastUpdated
+    const stuckClearCount = rawSyncState.stuckClearCount ?? 0
+    const lastStuckClearAt = rawSyncState.lastStuckClearAt
+    const lastStuckDocPaths = rawSyncState.lastStuckDocPaths
     return new SyncState(
       projectId,
       resyncProjectStructure,
@@ -344,7 +411,10 @@ class SyncState {
       resyncCount,
       resyncPendingSince,
       lastUpdated,
-      history
+      history,
+      stuckClearCount,
+      lastStuckClearAt,
+      lastStuckDocPaths
     )
   }
 
@@ -458,6 +528,20 @@ class SyncState {
 
   isSyncOngoing() {
     return this.isProjectStructureSyncing() || this.isAnyDocContentSyncing()
+  }
+
+  isSyncStuck() {
+    if (!this.isSyncOngoing()) {
+      return false
+    }
+    if (!this.resyncPendingSince) {
+      // No timestamp recorded — treat long-running syncs without a timestamp
+      // as potentially stuck (legacy state from before this field was added)
+      return true
+    }
+    return (
+      Date.now() - this.resyncPendingSince.getTime() > SYNC_STUCK_TIMEOUT_MS
+    )
   }
 }
 

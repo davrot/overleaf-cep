@@ -2385,6 +2385,204 @@ describe('Syncing with web and doc-updater', function () {
           )
         })
       })
+
+      describe('stuck sync state (missing resyncDocContent updates)', function () {
+        beforeEach(function () {
+          MockHistoryStore()
+            .get(`/api/projects/${historyId}/latest/history`)
+            .reply(200, {
+              chunk: {
+                history: {
+                  snapshot: {
+                    files: {
+                      'main.tex': {
+                        hash: '0a207c060e61f3b88eaee0a8cd0696f46fb155eb',
+                        stringLength: 3,
+                      },
+                    },
+                  },
+                  changes: [],
+                },
+                startVersion: 0,
+              },
+            })
+
+          MockHistoryStore()
+            .get(
+              `/api/projects/${historyId}/blobs/0a207c060e61f3b88eaee0a8cd0696f46fb155eb`
+            )
+            .reply(200, 'a\nb')
+        })
+
+        it('should get stuck when resyncDocContent update is missing', async function () {
+          // Step 1: Start a resync
+          await ProjectHistoryClient.resyncHistory(this.project_id)
+
+          // Step 2: Push resyncProjectStructure update (lists docs to sync)
+          // but do NOT push the corresponding resyncDocContent update
+          const structureUpdate = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(
+            this.project_id,
+            structureUpdate
+          )
+
+          // Step 3: Flush — processes structure update, adds /main.tex to resyncDocContents
+          // This succeeds (204) but leaves sync in an incomplete state
+          await ProjectHistoryClient.flushProject(this.project_id)
+
+          // Step 4: Verify the sync state is stuck
+          const syncState = await ProjectHistoryClient.getSyncState(
+            this.project_id
+          )
+          expect(syncState).to.not.be.null
+          expect(syncState.resyncProjectStructure).to.equal(false)
+          expect(syncState.resyncDocContents).to.deep.equal(['/main.tex'])
+          expect(syncState.resyncPendingSince).to.be.a('date')
+          // Sync thinks it's ongoing because resyncDocContents is not empty
+
+          // Step 5: Push a normal text update (simulating a user edit)
+          const textUpdate = {
+            doc: this.doc_id,
+            op: [{ p: 3, i: '\nc' }],
+            v: 1,
+            meta: {
+              ts: this.timestamp,
+              pathname: '/main.tex',
+              doc_length: 3,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, textUpdate)
+
+          // Step 6: Flush again — the text update should be silently skipped
+          // because the doc is in resyncDocContents (sync "ongoing")
+          await ProjectHistoryClient.flushProject(this.project_id)
+
+          // Step 7: Verify the sync state is STILL stuck (text update was skipped)
+          const syncStateAfter = await ProjectHistoryClient.getSyncState(
+            this.project_id
+          )
+          expect(syncStateAfter.resyncProjectStructure).to.equal(false)
+          expect(syncStateAfter.resyncDocContents).to.deep.equal(['/main.tex'])
+
+          // Step 7b: Verify resync-pending reports ongoing but not yet stuck
+          const pending = await ProjectHistoryClient.getResyncPending(
+            this.project_id
+          )
+          expect(pending.resyncPending).to.equal(true)
+          expect(pending.syncStuck).to.equal(false)
+
+          // Step 8: Verify a normal resync FAILS because sync is "ongoing"
+          try {
+            await fetchNothing(
+              `http://127.0.0.1:3054/project/${this.project_id}/resync`,
+              {
+                method: 'POST',
+                json: { origin: { kind: 'test-origin' } },
+              }
+            )
+            assert.fail('resync should have failed')
+          } catch (error) {
+            if (error instanceof RequestFailedError) {
+              expect(error.response.status).to.equal(500)
+            } else {
+              throw error
+            }
+          }
+        })
+
+        it('should recover with a hard resync (force=true)', async function () {
+          // Set up the stuck state (same as above)
+          await ProjectHistoryClient.resyncHistory(this.project_id)
+
+          const structureUpdate = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(
+            this.project_id,
+            structureUpdate
+          )
+          await ProjectHistoryClient.flushProject(this.project_id)
+
+          // Verify stuck
+          const syncState = await ProjectHistoryClient.getSyncState(
+            this.project_id
+          )
+          expect(syncState.resyncDocContents).to.deep.equal(['/main.tex'])
+
+          // Mock the web resync endpoint for the hard resync
+          MockWeb()
+            .post(`/project/${this.project_id}/history/resync`)
+            .reply(204)
+
+          // Hard resync should clear the stuck state and succeed
+          const response = await fetchNothing(
+            `http://127.0.0.1:3054/project/${this.project_id}/resync?force=true`,
+            {
+              method: 'POST',
+              json: { origin: { kind: 'test-origin' } },
+            }
+          )
+          expect(response.status).to.equal(204)
+
+          // After hard resync, sync state should be cleared or reset
+          const syncStateAfter = await ProjectHistoryClient.getSyncState(
+            this.project_id
+          )
+          // Hard resync clears and restarts — at this point the new resync
+          // should be in progress (resyncProjectStructure = true) or cleared
+          // depending on whether web sent updates
+          if (syncStateAfter) {
+            expect(syncStateAfter.resyncProjectStructure).to.equal(true)
+          }
+        })
+
+        it('should auto-recover when stuck (null resyncPendingSince)', async function () {
+          // Inject a stuck sync state: ongoing but no resyncPendingSince
+          // (legacy state from before the timestamp field was added)
+          await ProjectHistoryClient.injectStuckSyncState(this.project_id, [
+            '/main.tex',
+          ])
+
+          // Verify the state is recognised as stuck
+          const pending = await ProjectHistoryClient.getResyncPending(
+            this.project_id
+          )
+          expect(pending.resyncPending).to.equal(true)
+          expect(pending.syncStuck).to.equal(true)
+
+          // Mock the web callback that requestResync triggers
+          MockWeb()
+            .post(`/project/${this.project_id}/history/resync`)
+            .reply(204)
+
+          // A plain resync (no force) should detect stuck, clear, and restart
+          await ProjectHistoryClient.resyncHistory(this.project_id)
+
+          // stuckClearCount incremented and a new structure sync started
+          const syncState = await ProjectHistoryClient.getSyncState(
+            this.project_id
+          )
+          expect(syncState.stuckClearCount).to.equal(1)
+          expect(syncState.resyncProjectStructure).to.equal(true)
+          expect(syncState.lastStuckDocPaths).to.deep.equal(['/main.tex'])
+        })
+      })
     })
   })
 

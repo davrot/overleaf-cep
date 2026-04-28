@@ -4,6 +4,7 @@ import logger from '@overleaf/logger'
 import OError from '@overleaf/o-error'
 import * as UpdatesProcessor from './UpdatesProcessor.js'
 import * as SyncManager from './SyncManager.js'
+import { SYNC_ONGOING_ERROR_MESSAGE } from './Errors.js'
 import * as WebApiManager from './WebApiManager.js'
 import * as RedisManager from './RedisManager.js'
 import * as ErrorRecorder from './ErrorRecorder.js'
@@ -44,9 +45,11 @@ promises.retryFailures = async (options = {}) => {
   } else if (failureType === 'hard') {
     const batch = await getFailureBatch(hardErrorSelector, limit)
     const result = await retryFailureBatch(batch, timeout, async failure => {
-      await resyncProject(failure.project_id, {
-        hard: failureRequiresHardResync(failure),
-      })
+      // Ongoing-sync failures always use soft resync to preserve sync state.
+      // SyncManager needs existing state to detect and clear stuck syncs.
+      const hard =
+        failureRequiresHardResync(failure) && !isOngoingSyncFailure(failure)
+      await resyncProject(failure.project_id, { hard })
     })
     return result
   }
@@ -62,6 +65,11 @@ function softErrorSelector(failure) {
 }
 
 function hardErrorSelector(failure) {
+  // Ongoing-sync failures are always retried via soft resync.
+  // SyncManager's stuck detection handles the retry limit (stuckClearCount).
+  if (isOngoingSyncFailure(failure)) return true
+
+  // Other failures: retry hard/repeated ones, but stop after MAX_RESYNC_ATTEMPTS
   return (
     (isHardFailure(failure) || isRepeatedFailure(failure)) &&
     !isStuckFailure(failure)
@@ -82,6 +90,10 @@ export function isFirstFailure(failure) {
 
 function isRepeatedFailure(failure) {
   return failure.attempts > 3
+}
+
+export function isOngoingSyncFailure(failure) {
+  return failure.error?.includes(SYNC_ONGOING_ERROR_MESSAGE) ?? false
 }
 
 function isStuckFailure(failure) {

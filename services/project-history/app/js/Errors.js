@@ -1,5 +1,7 @@
 import OError from '@overleaf/o-error'
 
+export const SYNC_ONGOING_ERROR_MESSAGE = 'sync ongoing'
+
 export class NotFoundError extends OError {}
 export class BadRequestError extends OError {}
 export class SyncError extends OError {}
