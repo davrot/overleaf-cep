@@ -75,14 +75,14 @@ const features = {
 const studentAccounts: Array<Plan> = [
   {
     planCode: 'student',
-    name: 'Student',
+    name: 'Student monthly',
     price_in_cents: 1000,
     features: features.student,
     featureDescription: [],
   },
   {
     planCode: 'student-annual',
-    name: 'Student Annual',
+    name: 'Student annual',
     price_in_cents: 9900,
     annual: true,
     features: features.student,
@@ -90,7 +90,7 @@ const studentAccounts: Array<Plan> = [
   },
   {
     planCode: 'student_free_trial',
-    name: 'Student',
+    name: 'Student monthly',
     price_in_cents: 800,
     features: features.student,
     hideFromUsers: true,
@@ -98,7 +98,7 @@ const studentAccounts: Array<Plan> = [
   },
   {
     planCode: 'student_free_trial_7_days',
-    name: 'Student',
+    name: 'Student monthly',
     price_in_cents: 1000,
     features: features.student,
     hideFromUsers: true,
@@ -116,7 +116,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'paid-personal_free_trial_7_days',
-    name: 'Personal (Hidden)',
+    name: 'Personal (hidden)',
     price_in_cents: 1500,
     features: features.personal,
     featureDescription: [],
@@ -124,21 +124,21 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator',
-    name: 'Standard',
+    name: 'Standard monthly',
     price_in_cents: 2300,
     features: features.collaborator,
     featureDescription: [],
   },
   {
     planCode: 'professional',
-    name: 'Professional',
+    name: 'Pro monthly',
     price_in_cents: 4500,
     features: features.professional,
     featureDescription: [],
   },
   {
     planCode: 'collaborator_free_trial',
-    name: 'Standard (Hidden)',
+    name: 'Standard monthly (hidden)',
     price_in_cents: 1900,
     features: features.collaborator,
     hideFromUsers: true,
@@ -146,7 +146,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator_free_trial_14_days',
-    name: 'Standard (Hidden)',
+    name: 'Standard monthly (hidden)',
     price_in_cents: 1900,
     features: features.collaborator,
     hideFromUsers: true,
@@ -154,7 +154,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator_free_trial_7_days',
-    name: 'Standard (Hidden)',
+    name: 'Standard monthly (hidden)',
     price_in_cents: 2300,
     features: features.collaborator,
     hideFromUsers: true,
@@ -162,7 +162,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator-annual_free_trial',
-    name: 'Standard Annual (Hidden)',
+    name: 'Standard annual (hidden)',
     price_in_cents: 18000,
     features: features.collaborator,
     hideFromUsers: true,
@@ -170,7 +170,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'professional_free_trial',
-    name: 'Professional (Hidden)',
+    name: 'Pro monthly (hidden)',
     price_in_cents: 3000,
     features: features.professional,
     hideFromUsers: true,
@@ -178,7 +178,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'professional_free_trial_7_days',
-    name: 'Professional (Hidden)',
+    name: 'Pro monthly (hidden)',
     price_in_cents: 4500,
     features: features.professional,
     hideFromUsers: true,
@@ -189,7 +189,7 @@ const individualMonthlyPlans: Array<Plan> = [
 const individualAnnualPlans: Array<Plan> = [
   {
     planCode: 'paid-personal-annual',
-    name: 'Personal Annual',
+    name: 'Personal annual',
     price_in_cents: 13900,
     annual: true,
     features: features.personal,
@@ -197,7 +197,7 @@ const individualAnnualPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator-annual',
-    name: 'Standard Annual',
+    name: 'Standard annual',
     price_in_cents: 21900,
     annual: true,
     features: features.collaborator,
@@ -205,7 +205,7 @@ const individualAnnualPlans: Array<Plan> = [
   },
   {
     planCode: 'professional-annual',
-    name: 'Professional Annual',
+    name: 'Pro annual',
     price_in_cents: 42900,
     annual: true,
     features: features.professional,

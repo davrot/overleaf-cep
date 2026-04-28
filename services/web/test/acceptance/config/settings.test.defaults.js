@@ -194,13 +194,13 @@ module.exports = {
     },
     {
       planCode: 'collaborator',
-      name: 'Collaborator',
+      name: 'Standard monthly',
       price_in_cents: 1500,
       features: features.collaborator,
     },
     {
       planCode: 'professional',
-      name: 'Professional',
+      name: 'Pro monthly',
       price_in_cents: 3000,
       features: features.professional,
     },
