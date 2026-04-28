@@ -217,19 +217,7 @@ module.exports = {
           // Compiles Sass to CSS
           {
             loader: 'sass-loader',
-            options: {
-              api: 'modern',
-              sourceMap: true, // sourceMap: true is required for resolve-url-loader
-              sassOptions: {
-                silenceDeprecations: [
-                  // TODO: import can't be fixed until we switch to bootstrap 6
-                  'import',
-                  'global-builtin',
-                  'color-functions',
-                  'if-function',
-                ],
-              },
-            },
+            options: { sourceMap: true }, // sourceMap: true is required for resolve-url-loader
           },
         ],
       },
@@ -328,6 +316,9 @@ module.exports = {
         __dirname,
         './modules/writefull/frontend/js/integration/src/'
       ),
+      // Ensure all packages use the same jQuery instance (prevents duplicate
+      // copies from Yarn hoisting breaking jQuery plugins like daterangepicker)
+      jquery: require.resolve('jquery'),
     },
     // symlinks: false, // enable this while using `npm link`
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.json'],
