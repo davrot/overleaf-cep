@@ -99,7 +99,7 @@
 
   .plans-cards-section {
     background-color: var(--bg-light-primary);
-    padding-block: var(--spacing-13);
+    padding-block-end: var(--spacing-13);
 
     .plans-cards-toggles {
       align-items: center;
@@ -339,7 +339,7 @@
       padding-left: 0;
     }
 
-    .card-include-bold {
+    .card-include-strong {
       font-weight: 700;
     }
 
@@ -490,7 +490,7 @@
   // ─── Feature comparison table ──────────────────────────────────────────────
 
   .plans-feature-table-section {
-    padding-top: var(--spacing-15);
+    padding-block: var(--spacing-15);
   }
 
   .plans-feature-table-section .only-show-for-specific-plan-period {
@@ -792,10 +792,14 @@
     }
   }
 
+  .plans-price-disclaimer:last-child {
+    margin-bottom: 0;
+  }
+
   // ─── Quotes and FAQs section────────────────────────────────────────────────
 
   .plans-quotes-section {
-    padding-block: var(--spacing-13);
+    padding-block-end: var(--spacing-13);
   }
 
   .plans-faq {
