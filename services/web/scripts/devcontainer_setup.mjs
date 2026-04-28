@@ -11,6 +11,13 @@ import {
 } from './e2e_test_setup.mjs'
 import { Project } from '../app/src/models/Project.mjs'
 import OError from '@overleaf/o-error'
+import fs from 'node:fs'
+import Path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const MONOREPO = Path.dirname(
+  Path.dirname(Path.dirname(Path.dirname(fileURLToPath(import.meta.url))))
+)
 
 const { email: USER_EMAIL, password: PASSWORD } = minimist(
   process.argv.slice(2),
@@ -146,8 +153,17 @@ async function main() {
   if (process.env.NODE_ENV !== 'development') {
     throw new Error('only available in dev-env')
   }
+  const extraSplitTests = JSON.parse(
+    await fs.promises.readFile(
+      Path.join(MONOREPO, '.devcontainer/extra-split-tests.json'),
+      'utf-8'
+    )
+  )
   await waitForDb()
-  await Promise.all([provisionUsers(), provisionSplitTests(true)])
+  await Promise.all([
+    provisionUsers(),
+    provisionSplitTests(true, extraSplitTests),
+  ])
 }
 
 if (import.meta.main) {
