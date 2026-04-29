@@ -2,6 +2,13 @@
  * Types for module hook events fired across the application
  */
 
+export type TrackChangesAcceptedEvent = {
+  projectId: string
+  docId: string
+  userId: string
+  changeContributors: string[]
+}
+
 export type CommentAddedEvent = {
   projectId: string
   userId: string
