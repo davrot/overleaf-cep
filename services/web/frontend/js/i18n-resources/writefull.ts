@@ -102,8 +102,11 @@ const en = {
       'or upgrade now to keep checking your text.',
     'language-model.quota-reached.ai-bundle.tooltip':
       "You've hit your quota! Upgrade for unlimited access to all AI features",
-    'language-model.quota-reached.ai-bundle.tooltip.1':
-      "You've hit your quota.",
+
+    'language-model.quota-reached.ai-bundle.tooltip.fair-usage':
+      "You've reached the fair usage limit on your plan.",
+
+    'language-model.quota-reached.ai-bundle.tooltip.1': "You've hit your quota",
     'language-model.quota-reached.ai-bundle.tooltip.2':
       'Add AI Assist for unlimited access to all Overleaf AI features,',
 
@@ -502,8 +505,14 @@ const en = {
       'Yes, run citation reviewer',
     'citations-reviewer.chat.non-english-error.no': 'No, return to main menu',
     'paywall.title': 'You’ve hit your Overleaf AI limit',
+    'paywall.title.new-plans': 'You’ve hit your daily AI limit',
+    'paywall.title.new-plans.fair-usage': 'Usage limit reached',
     'paywall.body':
+      'Upgrade for unlimited access to all AI features or check back in __hours__ hours and __minutes__ minutes for your limit to reset.',
+    'paywall.body.legacy':
       'Upgrade for unlimited access to all AI features or check back at __date__, __time__.',
+    'paywall.body.fair-usage':
+      "You've reached the fair usage limit on your plan. You can continue using AI features again in __hours__ hours and __minutes__ minutes.",
     'paywall.upgrade': 'Upgrade',
     'paywall.hide': 'Hide for now',
   },
@@ -616,6 +625,8 @@ const es = {
       'o actualiza ahora para seguir revisando tu texto.',
     'language-model.quota-reached.ai-bundle.tooltip':
       'Has alcanzado tu límite de uso! Actualiza para acceso ilimitado a todas las funcionalidades AI.',
+    'language-model.quota-reached.ai-bundle.tooltip.fair-usage':
+      'Has alcanzado el límite de uso justo en tu plan.',
     'language-model.quota-reached.ai-bundle.tooltip.1':
       'Has alcanzado tu límite de uso.',
     'language-model.quota-reached.ai-bundle.tooltip.2':
@@ -1032,8 +1043,14 @@ const es = {
     'citations-reviewer.chat.non-english-error.no':
       'No, volver al menú principal',
     'paywall.title': 'Has alcanzado tu límite de Overleaf AI',
+    'paywall.title.new-plans': 'Has alcanzado tu límite de AI diario',
+    'paywall.title.new-plans.fair-usage': 'Límite de uso alcanzado',
     'paywall.body':
+      'Actualiza para acceso ilimitado a todas las funciones de AI o espera __hours__ horas y __minutes__ minutos para que se reinicie tu límite.',
+    'paywall.body.legacy':
       'Actualiza para acceso ilimitado a todas las funciones de AI o vuelve a intentar el __date__ a las __time__.',
+    'paywall.body.fair-usage':
+      'Has alcanzado el límite de uso justo en tu plan. Puedes volver a buscar citas en __hours__ horas y __minutes__ minutos.',
     'paywall.upgrade': 'Actualizar',
     'paywall.hide': 'Ocultar por ahora',
   },
