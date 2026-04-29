@@ -349,7 +349,6 @@ describe('PyodideWorkerClient', function () {
         {
           type: 'init',
           baseAssetPath: BASE_ASSET_PATH,
-          packageBaseUrl: undefined,
         },
       ])
     })

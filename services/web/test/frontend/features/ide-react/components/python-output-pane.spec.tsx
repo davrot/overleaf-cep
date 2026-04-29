@@ -325,9 +325,48 @@ describe('<PythonOutputPane />', function () {
         }}
         providers={{ FileTreePathProvider, ProjectProvider }}
       >
-        <PythonExecutionProvider
-          packageBaseUrl={`${window.location.origin}/pyodide-packages/`}
-        >
+        <PythonExecutionProvider>
+          <PythonOutputPane />
+        </PythonExecutionProvider>
+      </EditorProviders>
+    )
+
+    cy.findByRole('button', { name: 'Run Python code' })
+      .should('not.be.disabled')
+      .click()
+    cy.findByText("ModuleNotFoundError: No module named 'tomli'").should(
+      'not.exist'
+    )
+    cy.findByText('hello from tomli').should('exist')
+  })
+
+  it('auto-installs python packages imported by the executing script', function () {
+    const executablePythonFileContents = [
+      'import tomli',
+      '',
+      "print(tomli.loads('greeting = \"hello from tomli\"')['greeting'])",
+    ].join('\n')
+
+    const projectFiles = {
+      [pythonExecutableScript.filename]: executablePythonFileContents,
+    }
+    const ProjectProvider = makeProjectProvider(projectFiles)
+
+    cy.mount(
+      <EditorProviders
+        scope={{
+          editor: {
+            sharejs_doc: {
+              doc_id: pythonExecutableScript.file_id,
+              getSnapshot: () => executablePythonFileContents,
+            },
+            currentDocumentId: pythonExecutableScript.file_id,
+            openDocName: pythonExecutableScript.filename,
+          },
+        }}
+        providers={{ FileTreePathProvider, ProjectProvider }}
+      >
+        <PythonExecutionProvider>
           <PythonOutputPane />
         </PythonExecutionProvider>
       </EditorProviders>

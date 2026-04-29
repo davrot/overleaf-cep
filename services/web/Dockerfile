@@ -27,6 +27,11 @@ RUN update-ca-certificates
 # the deps image is used for caching yarn workspaces focus
 FROM base AS deps-prod
 
+# Pyodide wheel bundle (~370 MB). Version + SHA-256 are pinned in the fetch
+# script; keep that in sync with the pyodide dep in services/web/package.json.
+COPY services/web/scripts/fetch-pyodide-packages.mjs /overleaf/services/web/scripts/fetch-pyodide-packages.mjs
+RUN cd /overleaf/services/web && node scripts/fetch-pyodide-packages.mjs
+
 COPY package.json yarn.lock .yarnrc.yml /overleaf/
 COPY libraries/access-token-encryptor/package.json /overleaf/libraries/access-token-encryptor/package.json
 COPY libraries/eslint-plugin/package.json /overleaf/libraries/eslint-plugin/package.json

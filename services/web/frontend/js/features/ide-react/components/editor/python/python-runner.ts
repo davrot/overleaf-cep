@@ -43,7 +43,6 @@ export class PythonRunner {
   readonly fileId: string
   private client: PyodideWorkerClient | null = null
   private readonly baseAssetPath: string
-  private readonly packageBaseUrl: string | undefined
   private readonly createWorker: () => Worker
   private readonly getExecutionContext: () => Promise<ExecutionContext | null>
   private listeners = new Set<Listener>()
@@ -55,12 +54,10 @@ export class PythonRunner {
     fileId: string,
     baseAssetPath: string,
     getExecutionContext: () => Promise<ExecutionContext | null>,
-    createWorker: () => Worker,
-    packageBaseUrl?: string
+    createWorker: () => Worker
   ) {
     this.fileId = fileId
     this.baseAssetPath = baseAssetPath
-    this.packageBaseUrl = packageBaseUrl
     this.createWorker = createWorker
     this.getExecutionContext = getExecutionContext
   }
@@ -102,7 +99,6 @@ export class PythonRunner {
 
     this.client = new PyodideWorkerClient({
       baseAssetPath: this.baseAssetPath,
-      packageBaseUrl: this.packageBaseUrl,
       createWorker: this.createWorker,
       onLifecycle: event => {
         switch (event.type) {

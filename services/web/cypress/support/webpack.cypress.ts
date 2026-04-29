@@ -16,8 +16,8 @@ const buildConfig = () => {
           watch: false,
         },
         {
-          directory: path.join(__dirname, '../fixtures/pyodide-packages'),
-          publicPath: '/pyodide-packages/',
+          directory: path.join(__dirname, '../../public/js/libs/pyodide'),
+          publicPath: '/__cypress/src/js/libs/pyodide/',
           watch: false,
         },
       ],

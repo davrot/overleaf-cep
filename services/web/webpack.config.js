@@ -411,7 +411,9 @@ module.exports = {
           toType: 'dir',
           context: `${dictionariesDir}/dictionaries`,
         },
-        // Copy Pyodide runtime assets from npm package for local serving.
+        // Copy Pyodide runtime assets from the npm package so the loader is
+        // always available. Python package wheels are fetched separately by
+        // scripts/fetch-pyodide-packages.mjs into the same directory on disk.
         {
           from: 'pyodide.mjs',
           to: 'js/libs/pyodide',

@@ -7437,7 +7437,7 @@ __metadata:
     prop-types: "npm:^15.7.2"
     pug: "npm:^3.0.3"
     pug-runtime: "npm:^3.0.1"
-    pyodide: "npm:^0.29.0"
+    pyodide: "npm:0.29.3"
     qrcode: "npm:^1.4.4"
     rate-limiter-flexible: "npm:^2.4.1"
     react: "npm:^18.3.1"
@@ -28272,7 +28272,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pyodide@npm:^0.29.0":
+"pyodide@npm:0.29.3":
   version: 0.29.3
   resolution: "pyodide@npm:0.29.3"
   dependencies:

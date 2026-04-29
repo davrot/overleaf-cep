@@ -15,7 +15,6 @@ export type OutputFileData = {
 export type InitRequest = {
   type: 'init'
   baseAssetPath: string
-  packageBaseUrl?: string
 }
 
 export type RunCodeRequest = {

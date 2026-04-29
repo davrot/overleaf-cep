@@ -649,6 +649,7 @@ IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
   $(MONOREPO)/libraries/stream-utils/package.json \
   $(MONOREPO)/libraries/validation-tools/package.json \
 	$(MONOREPO)/services/web/package.json \
+	$(MONOREPO)/services/web/scripts/fetch-pyodide-packages.mjs \
 	$(MONOREPO)/patches/* \
 | sha256sum | cut -d '-' -f1)
 
