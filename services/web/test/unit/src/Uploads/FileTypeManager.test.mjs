@@ -337,7 +337,7 @@ describe('FileTypeManager', function () {
 
       it('should recognise new binary files as binary', async function (ctx) {
         const { binary } = await ctx.FileTypeManager.promises.getType(
-          '/file.py',
+          '/file.eps',
           'latin1.tex',
           null
         )
@@ -347,7 +347,7 @@ describe('FileTypeManager', function () {
 
       it('should recognise existing binary files as binary', async function (ctx) {
         const { binary } = await ctx.FileTypeManager.promises.getType(
-          '/file.py',
+          '/file.eps',
           'latin1.tex',
           'file'
         )
@@ -357,7 +357,7 @@ describe('FileTypeManager', function () {
 
       it('should preserve existing non-binary files as non-binary', async function (ctx) {
         const { binary } = await ctx.FileTypeManager.promises.getType(
-          '/file.py',
+          '/file.eps',
           'latin1.tex',
           'doc'
         )

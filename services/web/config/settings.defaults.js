@@ -55,6 +55,7 @@ const defaultTextExtensions = [
   'ldf',
   'rmd',
   'lua',
+  'py',
   'gv',
   'mf',
   'yml',
