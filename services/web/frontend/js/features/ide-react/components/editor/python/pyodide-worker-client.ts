@@ -30,6 +30,7 @@ export type LifecycleCallback = (
 export class PyodideWorkerClient {
   private worker: Worker
   private baseAssetPath: string
+  private packageBaseUrl: string | undefined
   private createWorker: () => Worker
   private listening = false
   private destroyed = false
@@ -40,11 +41,13 @@ export class PyodideWorkerClient {
 
   constructor(options: {
     baseAssetPath: string
+    packageBaseUrl?: string
     createWorker: () => Worker
     onOutput?: OutputCallback
     onLifecycle?: LifecycleCallback
   }) {
     this.baseAssetPath = options.baseAssetPath
+    this.packageBaseUrl = options.packageBaseUrl
     this.createWorker = options.createWorker
     this.outputCallback = options.onOutput ?? null
     this.lifecycleCallback = options.onLifecycle ?? null
@@ -54,6 +57,7 @@ export class PyodideWorkerClient {
     this.queueMessage({
       type: 'init',
       baseAssetPath: this.baseAssetPath,
+      packageBaseUrl: this.packageBaseUrl,
     })
   }
 
@@ -97,6 +101,7 @@ export class PyodideWorkerClient {
     this.queueMessage({
       type: 'init',
       baseAssetPath: this.baseAssetPath,
+      packageBaseUrl: this.packageBaseUrl,
     })
   }
 

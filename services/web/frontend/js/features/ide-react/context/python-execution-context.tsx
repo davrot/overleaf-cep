@@ -37,9 +37,9 @@ export const PythonExecutionContext = createContext<
   PythonExecutionContextValue | undefined
 >(undefined)
 
-export const PythonExecutionProvider: FC<PropsWithChildren> = ({
-  children,
-}) => {
+export const PythonExecutionProvider: FC<
+  PropsWithChildren<{ packageBaseUrl?: string }>
+> = ({ children, packageBaseUrl }) => {
   const { openDocs } = useEditorManagerContext()
   const { projectSnapshot } = useProjectContext()
   const { pathInFolder } = useFileTreePathContext()
@@ -99,13 +99,14 @@ export const PythonExecutionProvider: FC<PropsWithChildren> = ({
         fileId,
         baseAssetPathRef.current,
         () => getExecutionContext(fileId),
-        createPyodideWorker
+        createPyodideWorker,
+        packageBaseUrl
       )
       runner.init()
       runnersRef.current.set(fileId, runner)
       return runner
     },
-    [getExecutionContext]
+    [getExecutionContext, packageBaseUrl]
   )
 
   useEffect(() => {

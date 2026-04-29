@@ -10,10 +10,17 @@ const buildConfig = () => {
       workerPublicPath: '/__cypress/src/',
     },
     devServer: {
-      static: {
-        directory: path.join(__dirname, '../../public'),
-        watch: false,
-      },
+      static: [
+        {
+          directory: path.join(__dirname, '../../public'),
+          watch: false,
+        },
+        {
+          directory: path.join(__dirname, '../fixtures/pyodide-packages'),
+          publicPath: '/pyodide-packages/',
+          watch: false,
+        },
+      ],
       port: 3200,
     },
     stats: 'none',

@@ -3,6 +3,7 @@ import path from 'path-browserify'
 import type { PyodideInterface } from 'pyodide'
 import type {
   OutputFileData,
+  InitRequest,
   ProjectFileData,
   PyodideWorkerRequest,
   RunCodeRequest,
@@ -14,6 +15,7 @@ type PyodideModule = typeof import('pyodide')
 const PROJECT_FS_ROOT = '/project'
 const PROJECT_FS_PREFIX = `${PROJECT_FS_ROOT}/`
 const PYODIDE_INDEX_PATH = 'js/libs/pyodide/'
+const PYODIDE_CDN_URL = 'https://cdn.jsdelivr.net/pyodide/v'
 
 function ensureDirectoryExists(fs: PyodideFS, filePath: string) {
   const directory = path.dirname(filePath)
@@ -49,6 +51,7 @@ function syncProjectFiles(fs: PyodideFS, files: ProjectFileData[]) {
 }
 
 let pyodideModule: PyodideModule | null = null
+let packageBaseUrlOverride: string | undefined
 
 async function loadPyodideModule(pyodideIndexUrl: string) {
   const runtimeModuleUrl = `${pyodideIndexUrl}pyodide.mjs`
@@ -66,11 +69,13 @@ async function loadPyodideModule(pyodideIndexUrl: string) {
   }
 }
 
-async function handleInit(msg: { baseAssetPath: string }) {
+async function handleInit(msg: InitRequest) {
   const pyodideIndexUrl = new URL(
     PYODIDE_INDEX_PATH,
     msg.baseAssetPath
   ).toString()
+
+  packageBaseUrlOverride = msg.packageBaseUrl
 
   try {
     pyodideModule = await loadPyodideModule(pyodideIndexUrl)
@@ -109,6 +114,9 @@ async function handleRunCode(msg: RunCodeRequest) {
 
   const instance = await pyodideModule.loadPyodide({
     env: { MPLBACKEND: 'Agg' },
+    packageBaseUrl:
+      packageBaseUrlOverride ??
+      `${PYODIDE_CDN_URL}${pyodideModule.version}/full/`,
   })
 
   const writtenPaths = new Set<string>()
@@ -157,6 +165,7 @@ async function handleRunCode(msg: RunCodeRequest) {
       return originalWrite.call(fs, ...args)
     }) as PyodideFS['write']
 
+    await instance.loadPackagesFromImports(msg.code)
     const result = await instance.runPythonAsync(msg.code)
     if (result !== undefined) {
       self.postMessage({
