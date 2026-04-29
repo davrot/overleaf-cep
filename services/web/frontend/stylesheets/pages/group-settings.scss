@@ -320,9 +320,19 @@ h4.group-settings-title {
 }
 
 .group-domains-table {
+  table-layout: fixed;
+
   thead {
-    td {
+    th {
       border-bottom-width: var(--bs-border-width) !important;
+    }
+
+    th:first-child {
+      width: 60px;
+    }
+
+    th:last-child {
+      width: 100px;
     }
   }
 
@@ -340,12 +350,20 @@ h4.group-settings-title {
     }
   }
 
+  td {
+    overflow-wrap: break-word;
+  }
+
   .domain-verification-status-table-cell {
     text-wrap: nowrap;
   }
 
   .domain-verification-failure-reason {
     margin-bottom: var(--spacing-05);
+  }
+
+  .domain-verification-token-container {
+    margin-bottom: var(--spacing-03);
   }
 }
 
