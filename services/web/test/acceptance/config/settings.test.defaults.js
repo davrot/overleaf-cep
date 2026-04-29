@@ -206,7 +206,7 @@ module.exports = {
     },
     {
       planCode: 'group_professional',
-      name: 'Professional - Group Account - Enterprise',
+      name: 'Pro group',
       hideFromUsers: true,
       price_in_cents: 0,
       annual: true,
@@ -218,7 +218,7 @@ module.exports = {
     },
     {
       planCode: 'group_collaborator',
-      name: 'Collaborator - Group Account - Enterprise',
+      name: 'Standard group',
       hideFromUsers: true,
       price_in_cents: 0,
       annual: true,

@@ -77,7 +77,7 @@ describe('SubscriptionController', function () {
           },
           immediateCharge: { amount: 0 },
           nextPlanCode: 'professional',
-          nextPlanName: 'Professional',
+          nextPlanName: 'Pro',
           nextPlanPrice: 2000,
           nextAddOns: [],
           subtotal: 2000,

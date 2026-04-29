@@ -1170,10 +1170,10 @@ function getPlanNameForDisplay(planName, planCode) {
   if (!match) return planName
 
   const [, type, category] = match
-  const prefix = type === 'collaborator' ? 'Standard' : 'Professional'
-  const suffix = category === 'educational' ? ' Educational' : ''
+  const prefix = type === 'collaborator' ? 'Standard' : 'Pro'
+  const suffix = category === 'educational' ? ' with edu discount' : ''
 
-  return `Overleaf ${prefix} Group${suffix}`
+  return `${prefix} group${suffix}`
 }
 
 /**

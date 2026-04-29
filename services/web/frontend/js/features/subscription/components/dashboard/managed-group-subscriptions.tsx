@@ -151,7 +151,7 @@ export default function ManagedGroupSubscriptions() {
               {isAdmin && (
                 <>
                   {isSharingUpdatesEnabled &&
-                    subscription.planLevelName === 'Professional' && (
+                    subscription.planLevelName === 'Pro' && (
                       <RowLink
                         href={`/manage/groups/${subscription._id}/sharing-permissions`}
                         heading={t('sharing_permissions')}

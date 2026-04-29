@@ -762,7 +762,7 @@ describe('PaymentProviderEntities', function () {
             new PaymentProviderSubscriptionChange({
               subscription: ctx.subscription,
               nextPlanCode: 'group_professional_10_educational',
-              nextPlanName: 'Group Professional Educational',
+              nextPlanName: 'Pro group with edu discount',
               nextPlanPrice: 100,
               nextAddOns: [additionalLicenseAddOn],
             })
@@ -805,7 +805,7 @@ describe('PaymentProviderEntities', function () {
             new PaymentProviderSubscriptionChange({
               subscription: ctx.subscription,
               nextPlanCode: 'group_professional_10_educational',
-              nextPlanName: 'Group Professional Educational',
+              nextPlanName: 'Pro group with edu discount',
               nextPlanPrice: 100,
               nextAddOns: [aiAddOn, additionalLicenseAddOn],
             })

@@ -572,7 +572,7 @@ function buildGroupSubscriptionForView(groupSubscription) {
   // most group plans in Recurly should be in form "group_plancode_size_usage"
   const planLevelFromGroupPlanCode = groupSubscription.planCode.substr(6, 12)
   if (planLevelFromGroupPlanCode === 'professional') {
-    groupSubscription.planLevelName = 'Professional'
+    groupSubscription.planLevelName = 'Pro'
   } else if (planLevelFromGroupPlanCode === 'collaborator') {
     groupSubscription.planLevelName = 'Standard'
   }
@@ -580,7 +580,7 @@ function buildGroupSubscriptionForView(groupSubscription) {
   // this fallback tries to still show the right thing in these cases:
   if (!groupSubscription.planLevelName) {
     if (groupSubscription.planCode.startsWith('professional')) {
-      groupSubscription.planLevelName = 'Professional'
+      groupSubscription.planLevelName = 'Pro'
     } else if (groupSubscription.planCode.startsWith('collaborator')) {
       groupSubscription.planLevelName = 'Standard'
     } else {

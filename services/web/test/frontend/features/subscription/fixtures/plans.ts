@@ -226,7 +226,7 @@ export const groupPlans: GroupPlans = {
       code: 'collaborator',
     },
     {
-      display: 'Professional',
+      display: 'Pro',
       code: 'professional',
     },
   ],

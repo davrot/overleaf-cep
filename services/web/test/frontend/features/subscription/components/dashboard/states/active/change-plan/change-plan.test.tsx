@@ -410,8 +410,7 @@ describe('<ChangePlanModal />', function () {
       renderActiveSubscription(annualActiveSubscription)
       await openModal()
 
-      const professionalPlanOption =
-        within(modal).getByLabelText('Professional')
+      const professionalPlanOption = within(modal).getByLabelText('Pro')
       fireEvent.click(professionalPlanOption)
 
       await within(modal).findByText(professionalPlanCollaboratorText)
@@ -461,7 +460,7 @@ describe('<ChangePlanModal />', function () {
       ) as HTMLInputElement
       expect(standardPlanRadioInput.checked).to.be.true
       let professionalPlanRadioInput = within(modal).getByLabelText(
-        'Professional'
+        'Pro'
       ) as HTMLInputElement
       expect(professionalPlanRadioInput.checked).to.be.false
 
@@ -472,7 +471,7 @@ describe('<ChangePlanModal />', function () {
       ) as HTMLInputElement
       expect(standardPlanRadioInput.checked).to.be.false
       professionalPlanRadioInput = within(modal).getByLabelText(
-        'Professional'
+        'Pro'
       ) as HTMLInputElement
       expect(professionalPlanRadioInput.checked).to.be.true
 
@@ -516,7 +515,7 @@ describe('<ChangePlanModal />', function () {
       await openModal()
 
       const standardPlanRadioInput = within(modal).getByLabelText(
-        'Professional'
+        'Pro'
       ) as HTMLInputElement
       expect(standardPlanRadioInput.checked).to.be.true
     })

@@ -540,7 +540,7 @@ export const groupActiveSubscription: GroupSubscription = {
   planCode: 'group_collaborator_10_enterprise',
   plan: {
     planCode: 'group_collaborator_10_enterprise',
-    name: 'Overleaf Standard - Group Account (10 licenses) - Enterprise',
+    name: 'Standard group (10 licenses)',
     hideFromUsers: true,
     price_in_cents: 129000,
     annual: true,
@@ -588,7 +588,7 @@ export const groupProfessionalActiveSubscription: GroupSubscription = {
   planCode: 'group_professional_2_enterprise',
   plan: {
     planCode: 'group_professional_2_enterprise',
-    name: 'Group Professional Plan (2 licenses)',
+    name: 'Pro group (2 licenses)',
     hideFromUsers: true,
     price_in_cents: 129000,
     annual: true,
@@ -637,7 +637,7 @@ export const groupActiveSubscriptionWithPendingLicenseChange: GroupSubscription 
     planCode: 'group_collaborator_10_enterprise',
     plan: {
       planCode: 'group_collaborator_10_enterprise',
-      name: 'Overleaf Standard - Group Account (10 licenses) - Enterprise',
+      name: 'Standard group (10 licenses)',
       hideFromUsers: true,
       price_in_cents: 129000,
       annual: true,
@@ -674,7 +674,7 @@ export const groupActiveSubscriptionWithPendingLicenseChange: GroupSubscription 
     },
     pendingPlan: {
       planCode: 'group_collaborator_10_enterprise',
-      name: 'Overleaf Standard - Group Account (10 licenses) - Enterprise',
+      name: 'Standard group (10 licenses)',
       hideFromUsers: true,
       price_in_cents: 129000,
       annual: true,

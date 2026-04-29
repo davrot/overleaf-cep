@@ -836,10 +836,10 @@ describe('<UserNotifications />', function () {
         const alert = await screen.findByRole('alert')
         const email = unconfirmedCommonsUserData.email
         expect(alert.textContent).to.contain(
-          'You are one step away from accessing Overleaf Professional features'
+          'You are one step away from accessing Overleaf Pro features'
         )
         expect(alert.textContent).to.contain(
-          `Overleaf has an Overleaf subscription. Click the confirmation link sent to ${email} to upgrade to Overleaf Professional`
+          `Overleaf has an Overleaf subscription. Click the confirmation link sent to ${email} to upgrade to Overleaf Pro`
         )
       })
     }

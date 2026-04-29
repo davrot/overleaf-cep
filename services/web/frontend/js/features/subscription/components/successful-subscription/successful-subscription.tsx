@@ -72,7 +72,7 @@ function SuccessfulSubscription() {
                   href={`/manage/groups/${subscription._id}/members`}
                   className="btn btn-primary btn-large"
                 >
-                  {t('add_your_first_group_member_now')}
+                  {t('invite_group_members')}
                 </a>
               </p>
             )}
