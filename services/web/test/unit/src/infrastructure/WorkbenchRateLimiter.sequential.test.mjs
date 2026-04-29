@@ -292,6 +292,42 @@ describe('WorkbenchRateLimiter', function () {
     })
   })
 
+  describe('resetTokenUsage', function () {
+    beforeEach(async function () {
+      await UserFeatureUsage.deleteMany({}).exec()
+    })
+
+    it('resets usage to 0 and refreshes periodStart when existing usage is present', async function (ctx) {
+      const usageRecord = new UserFeatureUsage({
+        _id: ctx.alphaUserId,
+        features: {
+          aiWorkbench: {
+            usage: 5000000,
+            periodStart: new Date(new Date().getTime() - 1 * 60 * 60 * 1000),
+          },
+        },
+      })
+      await usageRecord.save()
+
+      const before = Date.now()
+      await ctx.WorkbenchRateLimiter.resetTokenUsage(ctx.alphaUserId)
+
+      const updated = await UserFeatureUsage.findById(ctx.alphaUserId).exec()
+      expect(updated.features.aiWorkbench.usage).to.equal(0)
+      expect(updated.features.aiWorkbench.periodStart.getTime()).to.be.at.least(
+        before
+      )
+    })
+
+    it('upserts a fresh usage record with zero usage when none exists', async function (ctx) {
+      await ctx.WorkbenchRateLimiter.resetTokenUsage(ctx.alphaUserId)
+
+      const created = await UserFeatureUsage.findById(ctx.alphaUserId).exec()
+      expect(created).to.exist
+      expect(created.features.aiWorkbench.usage).to.equal(0)
+    })
+  })
+
   describe('recordUsage', function () {
     beforeEach(async function (ctx) {
       await UserFeatureUsage.deleteMany({}).exec()

@@ -18,7 +18,7 @@ export default class TokenUsageRateLimiter {
     this.featureName = featureName
   }
 
-  _resetFeatureUsagePipelineSection() {
+  resetTokenUsagePipelineSection() {
     return {
       $set: {
         features: {
@@ -69,7 +69,7 @@ export default class TokenUsageRateLimiter {
     const featureUsages = await UserFeatureUsage.findOneAndUpdate(
       { _id: userId },
       [
-        this._resetFeatureUsagePipelineSection(),
+        this.resetTokenUsagePipelineSection(),
         {
           $set: {
             features: {
@@ -90,6 +90,24 @@ export default class TokenUsageRateLimiter {
 
     const featureUsage = featureUsages.features?.[this.featureName] ?? {}
     this.setRateLimitHeaders(res, featureUsage, allowance)
+  }
+
+  /**
+   * @param {string} userId
+   */
+  async resetTokenUsage(userId) {
+    await UserFeatureUsage.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          [`features.${this.featureName}`]: {
+            usage: 0,
+            periodStart: new Date(),
+          },
+        },
+      },
+      { upsert: true }
+    ).exec()
   }
 
   /**

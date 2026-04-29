@@ -20,7 +20,7 @@ export default class FeatureUsageRateLimiter {
     this.featureName = featureName
   }
 
-  _resetFeatureUsagePipelineSection() {
+  resetFeatureUsagePipelineSection() {
     return {
       $set: {
         features: {
@@ -62,7 +62,7 @@ export default class FeatureUsageRateLimiter {
     const featureUsages = await UserFeatureUsage.findOneAndUpdate(
       { _id: userId },
       [
-        this._resetFeatureUsagePipelineSection(),
+        this.resetFeatureUsagePipelineSection(),
         {
           $set: {
             features: {
@@ -108,7 +108,7 @@ export default class FeatureUsageRateLimiter {
     const featureUsages = await UserFeatureUsage.findOneAndUpdate(
       { _id: userId },
       [
-        this._resetFeatureUsagePipelineSection(),
+        this.resetFeatureUsagePipelineSection(),
         {
           $set: {
             [`features.${this.featureName}.usage`]: {
@@ -128,6 +128,24 @@ export default class FeatureUsageRateLimiter {
         this.featureName
       ] ?? {}
     setRateLimitHeaders(res, featureUsage, allowance)
+  }
+
+  /**
+   * @param {string} userId
+   */
+  async resetFeatureUsage(userId) {
+    await UserFeatureUsage.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          [`features.${this.featureName}`]: {
+            usage: 0,
+            periodStart: new Date(),
+          },
+        },
+      },
+      { upsert: true }
+    ).exec()
   }
 
   /**

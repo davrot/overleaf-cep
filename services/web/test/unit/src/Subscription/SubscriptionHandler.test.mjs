@@ -145,6 +145,14 @@ describe('SubscriptionHandler', function () {
       },
     }
 
+    ctx.WorkbenchRateLimiter = {
+      resetTokenUsage: sinon.stub().resolves(),
+    }
+
+    ctx.AiFeatureUsageRateLimiter = {
+      resetFeatureUsage: sinon.stub().resolves(),
+    }
+
     vi.doMock(
       '../../../../app/src/Features/Subscription/RecurlyWrapper',
       () => ({
@@ -226,6 +234,20 @@ describe('SubscriptionHandler', function () {
         },
       }),
     }))
+
+    vi.doMock(
+      '../../../../app/src/infrastructure/rate-limiters/WorkbenchRateLimiter',
+      () => ({
+        default: ctx.WorkbenchRateLimiter,
+      })
+    )
+
+    vi.doMock(
+      '../../../../app/src/infrastructure/rate-limiters/AiFeatureUsageRateLimiter',
+      () => ({
+        default: ctx.AiFeatureUsageRateLimiter,
+      })
+    )
 
     ctx.SubscriptionHandler = (await import(MODULE_PATH)).default
   })
@@ -378,6 +400,37 @@ describe('SubscriptionHandler', function () {
         ctx.plan_code,
         ctx.user._id
       )
+    })
+
+    it('should reset the ai rate limiter usages on a successful update', async function (ctx) {
+      ctx.LimitationsManager.promises.userHasSubscription.resolves({
+        hasSubscription: true,
+        subscription: ctx.subscription,
+      })
+      await ctx.SubscriptionHandler.promises.updateSubscription(
+        ctx.user,
+        ctx.plan_code
+      )
+      expect(ctx.WorkbenchRateLimiter.resetTokenUsage).to.have.been.calledWith(
+        ctx.user._id
+      )
+      expect(
+        ctx.AiFeatureUsageRateLimiter.resetFeatureUsage
+      ).to.have.been.calledWith(ctx.user._id)
+    })
+
+    it('should not reset the ai rate limiter usages when no subscription exists', async function (ctx) {
+      ctx.LimitationsManager.promises.userHasSubscription.resolves({
+        hasSubscription: false,
+        subscription: null,
+      })
+      await ctx.SubscriptionHandler.promises.updateSubscription(
+        ctx.user,
+        ctx.plan_code
+      )
+      expect(ctx.WorkbenchRateLimiter.resetTokenUsage).to.not.have.been.called
+      expect(ctx.AiFeatureUsageRateLimiter.resetFeatureUsage).to.not.have.been
+        .called
     })
   })
 

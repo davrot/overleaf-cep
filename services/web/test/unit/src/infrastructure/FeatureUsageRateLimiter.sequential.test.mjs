@@ -174,6 +174,48 @@ describe('FeatureUsageRateLimiter', function () {
     })
   })
 
+  describe('resetFeatureUsage', function () {
+    beforeEach(function (ctx) {
+      ctx._getAllowanceStub.resolves(100)
+    })
+
+    describe('with some usage', function () {
+      beforeEach(async function (ctx) {
+        await UserFeatureUsage.create({
+          _id: ctx.userId,
+          features: {
+            [MOCKED_FEATURE_NAME]: { usage: 75, periodStart: new Date(0) },
+          },
+        })
+      })
+
+      it('should reset usage back to the full allowance', async function (ctx) {
+        await ctx.FeatureUsageRateLimiter.resetFeatureUsage(ctx.userId)
+        const usages =
+          await ctx.FeatureUsageRateLimiter.getRemainingFeatureUses(ctx.userId)
+        expect(usages[MOCKED_FEATURE_NAME].remainingUsage).to.equal(100)
+      })
+
+      it('should set periodStart to roughly the current time', async function (ctx) {
+        const before = Date.now()
+        await ctx.FeatureUsageRateLimiter.resetFeatureUsage(ctx.userId)
+        const doc = await UserFeatureUsage.findOne({ _id: ctx.userId }).exec()
+        const periodStart = doc.features[MOCKED_FEATURE_NAME].periodStart
+        expect(periodStart.getTime()).to.be.at.least(before)
+        expect(periodStart.getTime()).to.be.at.most(Date.now())
+      })
+    })
+
+    describe('when no usage record exists', function () {
+      it('should upsert a fresh usage record with zero usage', async function (ctx) {
+        await ctx.FeatureUsageRateLimiter.resetFeatureUsage(ctx.userId)
+        const doc = await UserFeatureUsage.findOne({ _id: ctx.userId }).exec()
+        expect(doc).to.not.be.null
+        expect(doc.features[MOCKED_FEATURE_NAME].usage).to.equal(0)
+      })
+    })
+  })
+
   describe('decrementFeatureUsage', function () {
     describe('with some usage', function () {
       beforeEach(async function (ctx) {

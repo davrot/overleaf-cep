@@ -13,6 +13,8 @@ import UserUpdater from '../User/UserUpdater.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import { AI_ADD_ON_CODE } from './AiHelper.mjs'
 import CustomerIoPlanHelpers from './CustomerIoPlanHelpers.mjs'
+import WorkbenchRateLimiter from '../../infrastructure/rate-limiters/WorkbenchRateLimiter.mjs'
+import AiFeatureUsageRateLimiter from '../../infrastructure/rate-limiters/AiFeatureUsageRateLimiter.mjs'
 
 /**
  * @import { PaymentProviderSubscriptionChange } from './PaymentProviderEntities.mjs'
@@ -129,6 +131,13 @@ async function updateSubscription(user, planCode) {
     planCode,
     user._id
   )
+
+  try {
+    await WorkbenchRateLimiter.resetTokenUsage(user._id)
+    await AiFeatureUsageRateLimiter.resetFeatureUsage(user._id)
+  } catch (err) {
+    logger.error({ err, userId: user._id }, 'failed to reset AI usage limits')
+  }
 
   if (previousPlanType) {
     Modules.promises.hooks
