@@ -532,6 +532,18 @@ async function previewAddonPurchase(req, res) {
     return HttpErrorHandler.notFound(req, res, `Unknown add-on: ${addOnCode}`)
   }
 
+  const { variant: plans2026Phase1Variant } =
+    await SplitTestHandler.promises.getAssignment(
+      req,
+      res,
+      'plans-2026-phase-1'
+    )
+  if (plans2026Phase1Variant === 'enabled') {
+    return res.redirect(
+      '/user/subscription?redirect-reason=ai-assist-unavailable'
+    )
+  }
+
   const canUseAi = await PermissionsManager.promises.checkUserPermissions(
     user,
     ['use-ai']
@@ -653,6 +665,16 @@ async function purchaseAddon(req, res, next) {
   const quantity = 1
   // currently we only support one add-on, the Ai add-on
   if (addOnCode !== AI_ADD_ON_CODE) {
+    return res.sendStatus(404)
+  }
+
+  const { variant: plans2026Phase1Variant } =
+    await SplitTestHandler.promises.getAssignment(
+      req,
+      res,
+      'plans-2026-phase-1'
+    )
+  if (plans2026Phase1Variant === 'enabled') {
     return res.sendStatus(404)
   }
 

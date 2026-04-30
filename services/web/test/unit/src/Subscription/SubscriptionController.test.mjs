@@ -932,6 +932,19 @@ describe('SubscriptionController', function () {
       expect(ctx.res.sendStatus).to.have.been.calledWith(404)
     })
 
+    it('should return 404 when plans-2026-phase-1 split test is enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment.resolves({
+        variant: 'enabled',
+      })
+      ctx.res.sendStatus = sinon.spy()
+
+      await ctx.SubscriptionController.purchaseAddon(ctx.req, ctx.res, ctx.next)
+
+      expect(ctx.SubscriptionHandler.promises.purchaseAddon).to.not.have.been
+        .called
+      expect(ctx.res.sendStatus).to.have.been.calledWith(404)
+    })
+
     it('should handle DuplicateAddOnError and send badRequest while sending 200', async function (ctx) {
       ctx.req.params.addOnCode = AI_ADD_ON_CODE
       ctx.SubscriptionHandler.promises.purchaseAddon.rejects(
@@ -1426,6 +1439,19 @@ describe('SubscriptionController', function () {
         .withArgs('getPaymentMethod')
         .resolves(['fake-method'])
       ctx.SubscriptionLocator.promises.getUsersSubscription.resolves(null)
+    })
+
+    it('should redirect with ai-assist-unavailable when plans-2026-phase-1 is enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment.resolves({
+        variant: 'enabled',
+      })
+      ctx.res.redirect = sinon.stub()
+
+      await ctx.SubscriptionController.previewAddonPurchase(ctx.req, ctx.res)
+
+      expect(ctx.res.redirect).to.have.been.calledWith(
+        '/user/subscription?redirect-reason=ai-assist-unavailable'
+      )
     })
 
     describe('when user has manual or custom subscription', function () {
