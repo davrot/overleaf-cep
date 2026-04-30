@@ -28,7 +28,7 @@ describe('BackFillUsersAnalyticsId', function () {
 
   beforeEach('run migration', function (done) {
     exec(
-      'cd ../../tools/migrations && east migrate -t saas --force 20260424120000_back_fill_users_analyticsId',
+      'cd ../../tools/migrations && yarn run migrations migrate -t saas --force 20260424120000_back_fill_users_analyticsId',
       done
     )
   })
@@ -65,7 +65,7 @@ describe('BackFillUsersAnalyticsId', function () {
   describe('after rolling back', function () {
     beforeEach(function (done) {
       exec(
-        'cd ../../tools/migrations && east rollback -t saas --force 20260424120000_back_fill_users_analyticsId',
+        'cd ../../tools/migrations && yarn run migrations rollback -t saas --force 20260424120000_back_fill_users_analyticsId',
         done
       )
     })
