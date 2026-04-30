@@ -508,7 +508,7 @@ const en = {
     'paywall.title.new-plans': 'You’ve hit your daily AI limit',
     'paywall.title.new-plans.fair-usage': 'Usage limit reached',
     'paywall.body':
-      'Upgrade for unlimited access to all AI features or check back in __hours__ hours and __minutes__ minutes for your limit to reset.',
+      'Upgrade to keep using AI features or wait __hours__ hours and __minutes__ minutes for your limit to reset.',
     'paywall.body.legacy':
       'Upgrade for unlimited access to all AI features or check back at __date__, __time__.',
     'paywall.body.fair-usage':
@@ -1046,7 +1046,7 @@ const es = {
     'paywall.title.new-plans': 'Has alcanzado tu límite de AI diario',
     'paywall.title.new-plans.fair-usage': 'Límite de uso alcanzado',
     'paywall.body':
-      'Actualiza para acceso ilimitado a todas las funciones de AI o espera __hours__ horas y __minutes__ minutos para que se reinicie tu límite.',
+      'Has alcanzado tu límite de AI diario. Actualiza para continuar usando las funciones de AI o espera __hours__ horas y __minutes__ minutos para que se reinicie tu límite.',
     'paywall.body.legacy':
       'Actualiza para acceso ilimitado a todas las funciones de AI o vuelve a intentar el __date__ a las __time__.',
     'paywall.body.fair-usage':
