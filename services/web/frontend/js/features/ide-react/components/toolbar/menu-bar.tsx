@@ -87,14 +87,24 @@ export const ToolbarMenuBar = () => {
       { id: 'submit', children: ['submit-project', 'manage-template'] },
       {
         id: 'file-download',
-        children: ['download-as-source-zip', 'download-pdf', 'export-as-docx'],
+        children: [
+          {
+            id: 'file-download-group',
+            title: t('download'),
+            children: [
+              'download-as-source-zip',
+              'download-pdf',
+              'export-as-docx',
+            ],
+          },
+        ],
       },
       {
         id: 'settings',
         children: ['open-settings'],
       },
     ],
-    []
+    [t]
   )
 
   const editMenuStructure: MenuStructure = useMemo(
