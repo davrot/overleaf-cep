@@ -131,7 +131,6 @@ export interface Meta {
   'ol-featureUsage': FeatureUsage
   'ol-features': Features
   'ol-footer': FooterMetadata
-  'ol-fromPlansPage': boolean
   'ol-galleryTagName': string
   'ol-gitBridgeEnabled': boolean
   'ol-gitBridgePublicBaseUrl': string

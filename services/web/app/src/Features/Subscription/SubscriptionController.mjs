@@ -217,7 +217,6 @@ async function userSubscriptionPage(req, res) {
   const userCanExtendTrial = (
     await Modules.promises.hooks.fire('userCanExtendTrial', user)
   )?.[0]
-  const fromPlansPage = req.query.hasSubscription
   const redirectedPaymentErrorCode = req.query.errorCode
   const isInTrial = SubscriptionHelper.isInTrial(
     personalSubscription?.payment?.trialEndsAt
@@ -321,7 +320,6 @@ async function userSubscriptionPage(req, res) {
     planCodesChangingAtTermEnd: plansData?.planCodesChangingAtTermEnd,
     user,
     hasSubscription,
-    fromPlansPage,
     redirectedPaymentErrorCode,
     personalSubscription,
     userCanExtendTrial,

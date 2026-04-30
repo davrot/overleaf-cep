@@ -27,6 +27,7 @@ describe('<ChangePlanModal />', function () {
   beforeEach(function () {
     this.locationWrapperSandbox = sinon.createSandbox()
     this.locationWrapperStub = this.locationWrapperSandbox.stub(location)
+    this.locationWrapperStub.toString.returns('https://www.test-overleaf.com/')
   })
 
   afterEach(function () {
@@ -214,9 +215,9 @@ describe('<ChangePlanModal />', function () {
       screen.getByRole('button', { name: 'Processing…' })
 
       // page is reloaded on success
-      const reloadStub = this.locationWrapperStub.reload
+      const replaceStub = this.locationWrapperStub.replace
       await waitFor(() => {
-        expect(reloadStub).to.have.been.called
+        expect(replaceStub).to.have.been.called
       })
     })
 
@@ -304,9 +305,9 @@ describe('<ChangePlanModal />', function () {
       screen.getByRole('button', { name: 'Processing…' })
 
       // page is reloaded on success
-      const reloadStub = this.locationWrapperStub.reload
+      const replaceStub = this.locationWrapperStub.replace
       await waitFor(() => {
-        expect(reloadStub).to.have.been.called
+        expect(replaceStub).to.have.been.called
       })
     })
 
@@ -536,9 +537,9 @@ describe('<ChangePlanModal />', function () {
       screen.getByRole('button', { name: 'Processing…' })
 
       // page is reloaded on success
-      const reloadStub = this.locationWrapperStub.reload
+      const replaceStub = this.locationWrapperStub.replace
       await waitFor(() => {
-        expect(reloadStub).to.have.been.called
+        expect(replaceStub).to.have.been.called
       })
     })
 
