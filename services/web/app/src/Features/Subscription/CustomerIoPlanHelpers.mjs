@@ -250,7 +250,8 @@ function hasPlanAiEnabled(plan) {
 function getGroupAiEnabled(
   memberGroupSubscriptions = [],
   managedGroupSubscriptions = [],
-  userIsMemberOfGroupSubscription
+  userIsMemberOfGroupSubscription,
+  aiBlockedByPolicyId = new Map()
 ) {
   if (!userIsMemberOfGroupSubscription) {
     return null
@@ -261,12 +262,12 @@ function getGroupAiEnabled(
     ...managedGroupSubscriptions,
   ]
 
-  return allGroupSubscriptions.some(subscription => {
-    const plan = Settings.plans.find(
-      candidate => candidate.planCode === subscription.planCode
-    )
-    return hasPlanAiEnabled(plan)
+  const someBlocked = allGroupSubscriptions.some(subscription => {
+    const policyId = subscription.groupPolicy?.toString()
+    return policyId ? aiBlockedByPolicyId.get(policyId) : false
   })
+
+  return !someBlocked
 }
 
 function getGroupSize(
@@ -373,6 +374,7 @@ function getPlanProperties({
   userIsMemberOfGroupSubscription,
   hasCommons,
   writefullData,
+  aiBlockedByPolicyId,
 }) {
   const planType = normalizePlanType(bestSubscription)
   const displayPlanType = getFriendlyPlanName(planType)
@@ -392,7 +394,8 @@ function getPlanProperties({
   const groupAiEnabled = getGroupAiEnabled(
     memberGroupSubscriptions,
     managedGroupSubscriptions,
-    userIsMemberOfGroupSubscription
+    userIsMemberOfGroupSubscription,
+    aiBlockedByPolicyId
   )
   const nextRenewalDate = getNextRenewalDateFromPaymentRecord(
     individualPaymentRecord

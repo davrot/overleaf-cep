@@ -167,6 +167,10 @@ describe('FeaturesUpdater', function () {
       },
     }
 
+    ctx.GroupPolicy = {
+      find: sinon.stub().returns({ exec: sinon.stub().resolves([]) }),
+    }
+
     vi.doMock(
       '../../../../app/src/Features/Subscription/UserFeaturesUpdater',
       () => ({
@@ -230,6 +234,10 @@ describe('FeaturesUpdater', function () {
     }))
 
     vi.doMock('../../../../app/src/models/Subscription', () => ({}))
+
+    vi.doMock('../../../../app/src/models/GroupPolicy', () => ({
+      GroupPolicy: ctx.GroupPolicy,
+    }))
 
     vi.doMock('@overleaf/fetch-utils', () => ({
       fetchNothing: sinon.stub().resolves(),
@@ -730,7 +738,7 @@ describe('FeaturesUpdater', function () {
             display_plan_type: 'Group Standard',
             plan_term_label: 'monthly',
             ai_plan: 'none',
-            group_ai_enabled: false,
+            group_ai_enabled: true,
             group_size: 8,
             next_renewal_date: '',
             expiry_date: '',
@@ -741,6 +749,49 @@ describe('FeaturesUpdater', function () {
             features: sinon.match.object,
             overleaf_id: ctx.user._id,
           })
+        )
+      })
+    })
+
+    describe('when the group subscription has a policy that blocks AI', function () {
+      beforeEach(async function (ctx) {
+        const policyId = new ObjectId()
+        ctx.SubscriptionViewModelBuilder.promises.getUsersSubscriptionDetails.resolves(
+          {
+            bestSubscription: {
+              type: 'group',
+              plan: {
+                planCode: 'group-plan-1',
+                groupPlan: true,
+                membersLimit: 5,
+              },
+              subscription: { teamName: 'Team Alpha' },
+            },
+            memberGroupSubscriptions: [
+              {
+                planCode: 'group-plan-1',
+                teamName: 'Team Alpha',
+                membersLimit: 8,
+                groupPolicy: policyId,
+              },
+            ],
+            managedGroupSubscriptions: [],
+            individualSubscription: null,
+          }
+        )
+        ctx.GroupPolicy.find.returns({
+          exec: sinon
+            .stub()
+            .resolves([{ _id: policyId, userCannotUseAIFeatures: true }]),
+        })
+        await ctx.FeaturesUpdater.promises.refreshFeatures(ctx.user._id, 'test')
+      })
+
+      it('should set group_ai_enabled to false', function (ctx) {
+        expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+          'setUserProperties',
+          ctx.user._id,
+          sinon.match({ group_ai_enabled: false })
         )
       })
     })

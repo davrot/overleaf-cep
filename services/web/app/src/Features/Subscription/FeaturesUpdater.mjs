@@ -17,6 +17,7 @@ import Queues from '../../infrastructure/Queues.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import SubscriptionViewModelBuilder from './SubscriptionViewModelBuilder.mjs'
 import CustomerIoPlanHelpers from './CustomerIoPlanHelpers.mjs'
+import { GroupPolicy } from '../../models/GroupPolicy.mjs'
 import { AI_ADD_ON_CODE } from './AiHelper.mjs'
 import { fetchNothing } from '@overleaf/fetch-utils'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
@@ -169,6 +170,11 @@ async function _updateCustomerIoSubscriptionProperties(user, features) {
     )
   }
 
+  const aiBlockedByPolicyId = await _loadAiBlockedByPolicyId([
+    ...memberGroupSubscriptions,
+    ...managedGroupSubscriptions,
+  ])
+
   const planProperties = CustomerIoPlanHelpers.getPlanProperties({
     bestSubscription,
     individualSubscription,
@@ -178,6 +184,7 @@ async function _updateCustomerIoSubscriptionProperties(user, features) {
     userIsMemberOfGroupSubscription,
     hasCommons,
     writefullData,
+    aiBlockedByPolicyId,
   })
 
   await Modules.promises.hooks.fire('setUserProperties', userId, {
@@ -186,6 +193,29 @@ async function _updateCustomerIoSubscriptionProperties(user, features) {
     overleaf_id: userId,
     ...(user.email && { email: user.email }),
   })
+}
+
+async function _loadAiBlockedByPolicyId(groupSubscriptions) {
+  const policyIds = [
+    ...new Set(
+      groupSubscriptions.map(sub => sub.groupPolicy?.toString()).filter(Boolean)
+    ),
+  ]
+
+  if (policyIds.length === 0) {
+    return new Map()
+  }
+
+  const policies = await GroupPolicy.find(
+    { _id: { $in: policyIds } },
+    { _id: 1, userCannotUseAIFeatures: 1 }
+  ).exec()
+  return new Map(
+    policies.map(policy => [
+      policy._id.toString(),
+      Boolean(policy.userCannotUseAIFeatures),
+    ])
+  )
 }
 
 /**
