@@ -8,6 +8,10 @@ import type {
   PyodideWorkerRequest,
   RunCodeRequest,
 } from './pyodide-worker-messages'
+import {
+  checkOutputCount,
+  checkOutputLimits,
+} from './pyodide-worker-output-limits'
 
 type PyodideFS = PyodideInterface['FS']
 type PyodideModule = typeof import('pyodide')
@@ -87,11 +91,11 @@ async function handleInit(msg: InitRequest) {
 async function handleRunCode(msg: RunCodeRequest) {
   const { fileId, executionId } = msg
 
-  if (!pyodideModule || !pyodideIndexUrl) {
+  const postFailure = (stream: 'stderr' | 'info', line: string) => {
     self.postMessage({
       type: 'output-line',
-      stream: 'stderr',
-      line: 'Pyodide is not initialized',
+      stream,
+      line,
       fileId,
       executionId,
     })
@@ -103,6 +107,10 @@ async function handleRunCode(msg: RunCodeRequest) {
       outputs: [],
       outputFiles: [],
     })
+  }
+
+  if (!pyodideModule || !pyodideIndexUrl) {
+    postFailure('stderr', 'Pyodide is not initialized')
     return
   }
 
@@ -179,27 +187,39 @@ async function handleRunCode(msg: RunCodeRequest) {
     const errorMessage =
       runError instanceof Error ? runError.message : String(runError)
 
-    self.postMessage({
-      type: 'output-line',
-      stream: 'stderr',
-      line: errorMessage,
-      fileId,
-      executionId,
-    })
-    self.postMessage({
-      type: 'run-code-result',
-      fileId,
-      executionId,
-      success: false,
-      outputs: paths,
-      outputFiles: [],
-    })
+    postFailure('stderr', errorMessage)
+    return
+  }
+
+  const countViolation = checkOutputCount(paths.length)
+  if (countViolation) {
+    postFailure('info', countViolation.message)
+    return
+  }
+
+  const filesWithSizes: { path: string; size: number }[] = []
+  for (const writtenPath of paths) {
+    try {
+      filesWithSizes.push({
+        path: writtenPath,
+        size: fs.stat(writtenPath).size,
+      })
+    } catch {
+      // A script can write a file and later delete or rename it before the run
+      // finishes; fs.stat would then throw and we'd never post a
+      // run-code-result, leaving the UI stuck. Skip paths we can't stat.
+    }
+  }
+
+  const sizeViolation = checkOutputLimits(filesWithSizes)
+  if (sizeViolation) {
+    postFailure('info', sizeViolation.message)
     return
   }
 
   const outputFiles: OutputFileData[] = []
   const transferables: Transferable[] = []
-  for (const writtenPath of paths) {
+  for (const { path: writtenPath } of filesWithSizes) {
     const content = fs.readFile(writtenPath)
     const relativePath = writtenPath.slice(PROJECT_FS_PREFIX.length)
     outputFiles.push({ relativePath, content })
@@ -218,7 +238,7 @@ async function handleRunCode(msg: RunCodeRequest) {
       fileId,
       executionId,
       success: true,
-      outputs: paths,
+      outputs: filesWithSizes.map(f => f.path),
       outputFiles,
     },
     transferables
