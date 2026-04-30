@@ -73,6 +73,9 @@ describe('SyncManager', function () {
         findOne: sinon.stub().resolves(this.syncState),
         updateOne: sinon.stub().resolves(),
       },
+      projects: {
+        updateOne: sinon.stub().resolves(),
+      },
     }
     this.extendLock = sinon.stub().resolves()
 

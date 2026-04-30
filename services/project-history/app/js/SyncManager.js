@@ -222,6 +222,17 @@ async function setResyncState(projectId, syncState) {
     update,
     { upsert: true }
   )
+
+  if (!syncState.isSyncOngoing()) {
+    await db.projects.updateOne(
+      { _id: new ObjectId(projectId) },
+      {
+        $max: {
+          'overleaf.history.lastResyncedAt': new Date(),
+        },
+      }
+    )
+  }
 }
 
 async function clearResyncState(projectId) {

@@ -24,6 +24,7 @@ Options:
     --max-id               Migrate projects to this id
     --last-updated-after   Migrate projects last updated after this date
     --last-updated-before  Migrate projects last updated before this date
+    --skip-resynced-after  Skip projects that have already been resynced after this date
     --commit               Actually perform the resync, instead of just checking which projects would be resynced
     --skip-metadata-checks Skip doing Mongo/Redis-level only checks to determine if the projects needs resyncing (has ranges or linked file data)
     --concurrency          How many jobs to run in parallel
@@ -32,7 +33,7 @@ Options:
 
 /**
  *
- * @returns {{ projectIds?: string[]; minId?: string; maxId?: string; concurrency: number; commit: boolean; skipMetadataChecks: boolean; lastUpdatedAfter?: string; lastUpdatedBefore?: string; }}
+ * @returns {{ projectIds?: string[]; minId?: string; maxId?: string; concurrency: number; commit: boolean; skipMetadataChecks: boolean; lastUpdatedAfter?: string; lastUpdatedBefore?: string; skipResyncedAfter?: string; }}
  */
 function parseArgs() {
   const args = minimist(process.argv.slice(2), {
@@ -43,6 +44,7 @@ function parseArgs() {
       'max-id',
       'last-updated-after',
       'last-updated-before',
+      'skip-resynced-after',
     ],
   })
 
@@ -59,13 +61,15 @@ function parseArgs() {
   const concurrency = parseInt(args.concurrency, 10) || 1
   const commit = args.commit
   const skipMetadataChecks = args['skip-metadata-checks']
+  const skipResyncedAfter = args['skip-resynced-after']
 
   if (
     projectIds == null &&
     minId == null &&
     maxId == null &&
     lastUpdatedAfter == null &&
-    lastUpdatedBefore == null
+    lastUpdatedBefore == null &&
+    skipResyncedAfter == null
   ) {
     console.error('Please specify at least one filter\n')
     usage()
@@ -81,6 +85,7 @@ function parseArgs() {
     skipMetadataChecks,
     lastUpdatedAfter,
     lastUpdatedBefore,
+    skipResyncedAfter,
   }
 }
 
@@ -94,6 +99,7 @@ async function main() {
     skipMetadataChecks,
     lastUpdatedAfter,
     lastUpdatedBefore,
+    skipResyncedAfter,
   } = parseArgs()
 
   // skip projects that don't have full project history
@@ -114,6 +120,13 @@ async function main() {
   }
   if (lastUpdatedBefore) {
     clauses.push({ lastUpdated: { $lt: new Date(lastUpdatedBefore) } })
+  }
+  if (skipResyncedAfter) {
+    clauses.push({
+      'overleaf.history.lastResyncedAt': {
+        $not: { $gt: new Date(skipResyncedAfter) },
+      },
+    })
   }
   const filter = { $and: clauses }
 

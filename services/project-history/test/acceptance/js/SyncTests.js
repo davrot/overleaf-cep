@@ -1,7 +1,6 @@
 import nock from 'nock'
 import { expect } from 'chai'
 import assert from 'node:assert'
-import mongodb from 'mongodb-legacy'
 import logger from '@overleaf/logger'
 import Settings from '@overleaf/settings'
 import {
@@ -17,7 +16,7 @@ import sinon from 'sinon'
 import { getFailure } from './helpers/ProjectHistoryClient.js'
 import { fetchNothing, RequestFailedError } from '@overleaf/fetch-utils'
 import { _getBlobHashFromString } from '../../../app/js/HashManager.js'
-const { ObjectId } = mongodb
+import { db, ObjectId } from '../../../app/js/mongodb.js'
 
 const EMPTY_FILE_HASH = 'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'
 
@@ -44,6 +43,8 @@ describe('Syncing with web and doc-updater', function () {
     this.project_id = new ObjectId().toString()
     this.doc_id = new ObjectId().toString()
     this.file_id = new ObjectId().toString()
+
+    await db.projects.insertOne({ _id: new ObjectId(this.project_id) })
 
     MockHistoryStore().post('/api/projects').reply(200, {
       projectId: historyId,
@@ -954,6 +955,7 @@ describe('Syncing with web and doc-updater', function () {
         })
 
         it('should send test updates to the history store', async function () {
+          const beforeResync = new Date()
           const addFile = MockHistoryStore()
             .post(`/api/projects/${historyId}/legacy_changes`, body => {
               expect(body).to.deep.equal([
@@ -1007,6 +1009,14 @@ describe('Syncing with web and doc-updater', function () {
           assert(
             addFile.isDone(),
             `/api/projects/${historyId}/changes should have been called`
+          )
+
+          const project = await db.projects.findOne({
+            _id: new ObjectId(this.project_id),
+          })
+          assert(
+            project.overleaf.history.lastResyncedAt > beforeResync,
+            'lastResyncedAt should have been updated when resync finished'
           )
         })
 

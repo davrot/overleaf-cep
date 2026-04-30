@@ -88,6 +88,7 @@ export const ProjectSchema = new Schema(
         zipFileArchivedInProject: { type: Boolean },
         rangesSupportEnabled: { type: Boolean },
         otMigrationStage: { type: Number },
+        lastResyncedAt: { type: Date },
       },
       isDebugCopyOf: { type: ObjectId },
     },
