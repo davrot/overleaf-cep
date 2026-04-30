@@ -22,6 +22,7 @@
       "@overleaf/ranges-tracker": ["../../libraries/ranges-tracker"],
       /* can't make this entry @types because that conflicts with the "types" entry below */
       "@ol-types/*": ["./types/*"],
+      "@ol-storybook/*": ["./.storybook/*"],
       "@wf/*": ["./modules/writefull/frontend/js/integration/src/*"],
       "@wf-tests/*": ["./modules/writefull/frontend/js/integration/tests/*"]
     },

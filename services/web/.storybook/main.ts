@@ -1,7 +1,7 @@
 // This file has been automatically migrated to valid ESM format by Storybook.
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
-import type { StorybookConfig } from '@storybook/react-webpack5'
+import { defineMain } from '@storybook/react-webpack5/node'
 import path, { dirname } from 'node:path'
 import MiniCssExtractPlugin from 'mini-css-extract-plugin'
 
@@ -23,7 +23,7 @@ function getAbsolutePath(value: string): any {
 const invalidateBabelCacheIfNeeded = require('../frontend/macros/invalidate-babel-cache-if-needed')
 invalidateBabelCacheIfNeeded()
 
-const config: StorybookConfig = {
+export default defineMain({
   core: {
     disableTelemetry: true,
   },
@@ -122,6 +122,7 @@ const config: StorybookConfig = {
           // custom prefixes for import paths
           '@': path.join(rootDir, 'frontend/js/'),
           '@ol-types': path.join(rootDir, 'types/'),
+          '@ol-storybook': path.join(rootDir, '.storybook/'),
           '@wf': path.join(
             rootDir,
             'modules/writefull/frontend/js/integration/src/'
@@ -154,5 +155,4 @@ const config: StorybookConfig = {
       },
     }
   },
-}
-export default config
+})
