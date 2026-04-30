@@ -284,19 +284,28 @@
         padding-top: calc(var(--secondary-cta-top-padding) - var(--spacing-03));
       }
 
-      // Plain-link and edu discount occupy row 4 of the PAGE subgrid.
-      // Edu discount lives inside the annual period wrapper (a subgrid child),
-      // so two levels of '>' are needed. Plain-link is a direct card-cta child.
-      > .plans-cta-plain-link {
+      .plans-cta-plain-link {
         align-self: start;
         grid-row: 4;
         padding-top: var(--secondary-cta-top-padding);
+        text-align: center;
+
+        a {
+          color: var(--content-secondary);
+          font-size: var(--font-size-02);
+          text-decoration: underline;
+
+          &:hover {
+            color: var(--content-primary);
+          }
+        }
       }
 
       > .only-show-for-specific-plan-period > .plans-educational-discount {
         align-self: center;
         grid-row: 4;
         padding-top: var(--spacing-04);
+        text-align: center;
       }
     }
 
@@ -372,17 +381,6 @@
       cursor: help;
     }
 
-    .plans-cta-plain-link {
-      color: var(--content-secondary);
-      font-size: var(--font-size-02);
-      text-align: center;
-      text-decoration: underline;
-
-      &:hover {
-        color: var(--content-primary);
-      }
-    }
-
     .card-footer {
       background-color: transparent;
       border: none;
@@ -397,7 +395,7 @@
       align-items: center;
       color: var(--content-primary);
       cursor: pointer;
-      display: flex;
+      display: inline-flex;
       gap: var(--spacing-03);
       justify-content: center;
       margin: 0;
