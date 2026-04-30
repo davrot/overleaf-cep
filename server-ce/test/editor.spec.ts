@@ -140,7 +140,7 @@ describe('editor', function () {
   describe('file menu', function () {
     it('can download project sources', function () {
       cy.findByRole('button', { name: 'File' }).click()
-      cy.findByRole('link', { name: 'Download' }).click()
+      cy.findByRole('menuitem', { name: 'Download' }).click()
       cy.findByRole('menuitem', { name: 'Download as source (.zip)' }).click()
       const zipName = projectName.replaceAll('-', '_')
       cy.task('readFileInZip', {
@@ -157,7 +157,7 @@ describe('editor', function () {
       )
 
       cy.findByRole('button', { name: 'File' }).click()
-      cy.findByRole('link', { name: 'Download' }).click()
+      cy.findByRole('menuitem', { name: 'Download' }).click()
       cy.findByRole('menuitem', { name: 'Download as PDF' }).click()
       const pdfName = projectName.replaceAll('-', '_')
       cy.task('readPdf', `cypress/downloads/${pdfName}.pdf`).should(

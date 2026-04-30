@@ -1,4 +1,4 @@
-import type { ElementType, ReactNode, PropsWithChildren } from 'react'
+import type { ElementType, ReactNode, PropsWithChildren, AriaRole } from 'react'
 import type { ButtonProps } from '@/shared/components/types/button-props'
 import type { DropdownMenuProps as BS5DropdownMenuProps } from 'react-bootstrap'
 
@@ -26,6 +26,7 @@ export type DropdownProps = {
   drop?: 'up' | 'up-centered' | 'start' | 'end' | 'down' | 'down-centered'
   focusFirstItemOnShow?: false | true | 'keyboard'
   onKeyDown?: (event: React.KeyboardEvent) => void
+  role?: AriaRole
 }
 
 export type DropdownItemProps = PropsWithChildren<{
