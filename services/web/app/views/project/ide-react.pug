@@ -32,3 +32,6 @@ block prepend foot-scripts
 		src=(wsUrl || '/socket.io') + '/socket.io.js'
 		defer=deferScripts
 	)
+
+block append head-scripts
+	include ./_mixpanel_autocapture.pug
