@@ -112,7 +112,7 @@ describe('ProjectUploadController', function () {
       })
     )
 
-    vi.doMock('fs', () => ({
+    vi.doMock('node:fs', () => ({
       default: (ctx.fs = {}),
     }))
 
@@ -141,6 +141,7 @@ describe('ProjectUploadController', function () {
       ctx.project = { _id: (ctx.project_id = 'project-id-123') }
 
       ctx.fs.unlink = sinon.stub()
+      ctx.fsPromises.unlink = sinon.stub().resolves()
     })
 
     describe('successfully', function () {
@@ -200,6 +201,10 @@ describe('ProjectUploadController', function () {
           JSON.stringify({ success: false, error: 'upload_failed' })
         )
       })
+
+      it('should remove the uploaded file', function (ctx) {
+        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
+      })
     })
 
     describe('when ProjectUploadManager.createProjectFromZipArchive reports the file as invalid', function () {
@@ -224,6 +229,10 @@ describe('ProjectUploadController', function () {
       it("should return an 'unprocessable entity' status code", function (ctx) {
         expect(ctx.res.statusCode).to.equal(422)
       })
+
+      it('should remove the uploaded file', function (ctx) {
+        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
+      })
     })
   })
 
@@ -247,6 +256,7 @@ describe('ProjectUploadController', function () {
       ctx.req.params = { Project_id: ctx.project_id }
       ctx.req.query = { folder_id: ctx.folder_id }
       ctx.fs.unlink = sinon.stub()
+      ctx.fsPromises.unlink = sinon.stub().resolves()
     })
 
     describe('successfully', function () {
@@ -361,7 +371,7 @@ describe('ProjectUploadController', function () {
       })
 
       it('should unlink the file', function (ctx) {
-        ctx.fs.unlink.should.have.been.calledWith(ctx.path)
+        ctx.fsPromises.unlink.should.have.been.calledWith(ctx.path)
       })
 
       it('should call next with the error', function (ctx) {
@@ -384,6 +394,10 @@ describe('ProjectUploadController', function () {
           })
         )
       })
+
+      it('should remove the uploaded file', function (ctx) {
+        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
+      })
     })
 
     describe('when FileSystemImportManager.addEntity returns a too many files error', function () {
@@ -401,6 +415,10 @@ describe('ProjectUploadController', function () {
             error: 'project_has_too_many_files',
           })
         )
+      })
+
+      it('should remove the uploaded file', function (ctx) {
+        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
       })
     })
 
@@ -420,7 +438,7 @@ describe('ProjectUploadController', function () {
       })
 
       it('should remove the uploaded file', function (ctx) {
-        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
+        ctx.fsPromises.unlink.calledWith(ctx.path).should.equal(true)
       })
     })
 
@@ -440,7 +458,7 @@ describe('ProjectUploadController', function () {
       })
 
       it('should remove the uploaded file', function (ctx) {
-        ctx.fs.unlink.calledWith(ctx.path).should.equal(true)
+        ctx.fsPromises.unlink.calledWith(ctx.path).should.equal(true)
       })
     })
   })

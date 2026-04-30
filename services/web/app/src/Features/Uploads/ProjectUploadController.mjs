@@ -84,7 +84,9 @@ async function uploadFile(req, res, next) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   let { folder_id: folderId } = req.query
   if (name == null || name.length === 0 || name.length > 150) {
-    fs.unlink(path, function () {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn({ err: unlinkErr, path }, 'error unlinking uploaded file')
+    })
     return res.status(422).json({
       success: false,
       error: 'invalid_filename',
@@ -109,7 +111,9 @@ async function uploadFile(req, res, next) {
       folderId = lastFolder._id
     }
   } catch (error) {
-    fs.unlink(path, function () {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn({ err: unlinkErr, path }, 'error unlinking uploaded file')
+    })
     throw error
   }
 
@@ -195,7 +199,12 @@ async function importDocx(req, res, next) {
       await ProjectOptionsHandler.promises.setCompiler(project._id, 'lualatex')
       res.json({ success: true, project_id: project._id })
     } finally {
-      await fsPromises.unlink(archivePath).catch(() => {})
+      await fsPromises.unlink(archivePath).catch(unlinkErr => {
+        logger.warn(
+          { err: unlinkErr, archivePath },
+          'error unlinking after docx conversion'
+        )
+      })
     }
   } catch (error) {
     logger.error({ error }, 'error importing docx file')
@@ -213,7 +222,12 @@ async function importDocx(req, res, next) {
       error: req.i18n.translate('upload_failed'),
     })
   } finally {
-    await fsPromises.unlink(path).catch(() => {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn(
+        { err: unlinkErr, path },
+        'error unlinking uploaded file in importDocx'
+      )
+    })
   }
 }
 
