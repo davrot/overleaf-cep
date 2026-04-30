@@ -37,6 +37,13 @@ create_module_Makefiles: $(MODULE_MAKEFILES)
 $(MODULE_MAKEFILES): Makefile.module
 	cp Makefile.module $@ || diff Makefile.module $@
 
+MODULE_APP_SRC_DIRS := $(shell find modules -mindepth 3 -maxdepth 3 -type d -path '*/app/src')
+MODULE_TSCONFIGS := $(MODULE_APP_SRC_DIRS:=/tsconfig.json)
+
+create_module_tsconfigs: $(MODULE_TSCONFIGS)
+$(MODULE_TSCONFIGS): tsconfig.module.json
+	cp tsconfig.module.json $@ || diff tsconfig.module.json $@
+
 #
 # Clean
 #
