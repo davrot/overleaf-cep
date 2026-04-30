@@ -359,6 +359,7 @@ async function successfulSubscription(req, res) {
     )
 
   const postCheckoutRedirect = req.session?.postCheckoutRedirect
+  const isUpgrade = req.query.upgrade === 'true'
 
   if (!personalSubscription) {
     res.redirect('/user/subscription/plans')
@@ -376,6 +377,7 @@ async function successfulSubscription(req, res) {
       title: 'thank_you',
       personalSubscription,
       postCheckoutRedirect,
+      isUpgrade,
       user: {
         _id: user._id,
         features: userInDb.features,

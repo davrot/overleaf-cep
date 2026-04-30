@@ -405,6 +405,7 @@ describe('SubscriptionController', function () {
             title: 'thank_you',
             personalSubscription: 'foo',
             postCheckoutRedirect: undefined,
+            isUpgrade: false,
             user: {
               _id: ctx.user._id,
               features: ctx.user.features,
