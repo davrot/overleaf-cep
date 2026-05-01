@@ -24,14 +24,27 @@ const useTutorial = (
   const {
     deactivateTutorial,
     currentPopup,
+    currentPopupRef,
     setCurrentPopup,
     inactiveTutorials,
   } = useTutorialContext()
 
   const checkCompletion = useCallback(
     () => inactiveTutorials.includes(tutorialKey),
-    [inactiveTutorials, tutorialKey]
+    // currentPopup is a dependency so consumers re-run their effect when the
+    // popup slot frees up and can retry tryShowingPopup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inactiveTutorials, tutorialKey, currentPopup]
   )
+
+  const clearPopup = useCallback(() => {
+    // popups should only clear themselves, in cases they need to cleanup or shouldnt show anymore
+    // allow forcing the clear if needed, eg: higher prio alert needs to show
+    if (currentPopupRef.current === tutorialKey) {
+      setCurrentPopup(null)
+      setShowPopup(false)
+    }
+  }, [currentPopupRef, setCurrentPopup, setShowPopup, tutorialKey])
 
   const completeTutorial = useCallback(
     async (
@@ -52,10 +65,10 @@ const useTutorial = (
         }
         debugConsole.error(err)
       }
-      setShowPopup(false)
       deactivateTutorial(tutorialKey)
+      clearPopup()
     },
-    [deactivateTutorial, eventData, tutorialKey]
+    [deactivateTutorial, eventData, tutorialKey, clearPopup]
   )
 
   const dismissTutorial = useCallback(
@@ -79,25 +92,18 @@ const useTutorial = (
   // try to show the popup if we don't already have one showing, returns true if it can show, false if it can't
   const tryShowingPopup = useCallback(
     (eventName: string = 'promo-prompt') => {
-      if (currentPopup === null) {
-        setCurrentPopup(tutorialKey)
-        setShowPopup(true)
-        eventTracking.sendMB(eventName, eventData)
-        return true
+      // Check the lock via ref so concurrent callers in the same render see
+      // each other's claim; useState would batch and both would read stale null.
+      if (currentPopupRef.current !== null) {
+        return false
       }
-      return false
+      setCurrentPopup(tutorialKey)
+      setShowPopup(true)
+      eventTracking.sendMB(eventName, eventData)
+      return true
     },
-    [currentPopup, setCurrentPopup, tutorialKey, eventData]
+    [currentPopupRef, setCurrentPopup, tutorialKey, eventData]
   )
-
-  const clearPopup = useCallback(() => {
-    // popups should only clear themselves, in cases they need to cleanup or shouldnt show anymore
-    // allow forcing the clear if needed, eg: higher prio alert needs to show
-    if (currentPopup === tutorialKey) {
-      setCurrentPopup(null)
-      setShowPopup(false)
-    }
-  }, [setCurrentPopup, setShowPopup, currentPopup, tutorialKey])
 
   const clearAndShow = useCallback(
     (eventName: string = 'promo-prompt') => {

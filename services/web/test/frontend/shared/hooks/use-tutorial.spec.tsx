@@ -145,9 +145,16 @@ describe('useTutorial', function () {
   })
 
   describe('for two tutorials at the same time', function () {
-    // FIXME: This should work, but doesn't.
-    // eslint-disable-next-line mocha/no-skipped-tests
-    it.skip('only shows one popup at a time', function () {
+    beforeEach(function () {
+      cy.intercept('POST', '/tutorial/test-tutorial-1/complete', {
+        statusCode: 200,
+      }).as('completeTutorial1')
+      cy.intercept('POST', '/tutorial/test-tutorial-2/complete', {
+        statusCode: 200,
+      }).as('completeTutorial2')
+    })
+
+    it('only shows one popup at a time', function () {
       cy.mount(
         <EditorProviders>
           <TutorialTester tutorial="test-tutorial-1" />
@@ -156,6 +163,24 @@ describe('useTutorial', function () {
       )
 
       cy.findAllByText(/active/).should('have.length', 1)
+    })
+
+    it('shows the second popup after the first is completed', function () {
+      cy.mount(
+        <EditorProviders>
+          <TutorialTester tutorial="test-tutorial-1" />
+          <TutorialTester tutorial="test-tutorial-2" />
+        </EditorProviders>
+      )
+
+      cy.findByText('test-tutorial-1 active').should('be.visible')
+      cy.findByText('test-tutorial-2 active').should('not.exist')
+
+      cy.findByRole('button', { name: 'Complete' }).click()
+      cy.wait('@completeTutorial1')
+
+      cy.findByText('test-tutorial-1 active').should('not.exist')
+      cy.findByText('test-tutorial-2 active').should('be.visible')
     })
   })
 })

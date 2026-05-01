@@ -2,6 +2,7 @@ import React, {
   type FC,
   type PropsWithChildren,
   useCallback,
+  useRef,
   useState,
 } from 'react'
 import { TutorialContext } from '@/shared/context/tutorial-context'
@@ -13,6 +14,7 @@ export const makeTutorialProvider = (opts?: {
     const [inactiveTutorials, setInactiveTutorials] = useState<string[]>(
       opts?.inactiveTutorials ?? []
     )
+    const currentPopupRef = useRef<string | null>(null)
     const deactivateTutorial = useCallback((key: string) => {
       setInactiveTutorials(prev => (prev.includes(key) ? prev : [...prev, key]))
     }, [])
@@ -20,6 +22,7 @@ export const makeTutorialProvider = (opts?: {
       deactivateTutorial,
       inactiveTutorials,
       currentPopup: null,
+      currentPopupRef,
       setCurrentPopup: () => {},
     }
     return (

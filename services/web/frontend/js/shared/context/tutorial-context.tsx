@@ -1,12 +1,12 @@
 import getMeta from '@/utils/meta'
 import {
   createContext,
-  Dispatch,
   FC,
-  SetStateAction,
+  MutableRefObject,
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -15,7 +15,8 @@ export const TutorialContext = createContext<
       deactivateTutorial: (tutorial: string) => void
       inactiveTutorials: string[]
       currentPopup: string | null
-      setCurrentPopup: Dispatch<SetStateAction<string | null>>
+      currentPopupRef: MutableRefObject<string | null>
+      setCurrentPopup: (value: string | null) => void
     }
   | undefined
 >(undefined)
@@ -25,7 +26,13 @@ export const TutorialProvider: FC<React.PropsWithChildren> = ({ children }) => {
     () => getMeta('ol-inactiveTutorials') || []
   )
 
-  const [currentPopup, setCurrentPopup] = useState<string | null>(null)
+  const [currentPopup, setCurrentPopupState] = useState<string | null>(null)
+  const currentPopupRef = useRef<string | null>(null)
+
+  const setCurrentPopup = useCallback((value: string | null) => {
+    currentPopupRef.current = value
+    setCurrentPopupState(value)
+  }, [])
 
   const deactivateTutorial = useCallback(
     (tutorialKey: string) => {
@@ -39,6 +46,7 @@ export const TutorialProvider: FC<React.PropsWithChildren> = ({ children }) => {
       deactivateTutorial,
       inactiveTutorials,
       currentPopup,
+      currentPopupRef,
       setCurrentPopup,
     }),
     [deactivateTutorial, inactiveTutorials, currentPopup, setCurrentPopup]
