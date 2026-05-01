@@ -1,8 +1,8 @@
 // @ts-check
 
 /**
- * This script creates new Products and Prices in Stripe from a CSV file.
- * Use this when adding entirely new plans that don't exist in Stripe yet.
+ * This script creates custom Prices in Stripe from a CSV file.
+ * It does not create products; each row must include an existing Stripe productId.
  *
  * Usage:
  * node scripts/stripe/create_custom_prices_from_csv.mjs -f <file> --region <us|uk> --version <v> [options]
@@ -11,13 +11,12 @@
  * -f           Path to the prices CSV file.
  * --region     Stripe region (us or uk).
  * --version    Version string for the lookup_key (e.g., 'v1', 'jan2026').
- * --productDescription Description to use for newly created products (default: blank).
  * --commit     Apply changes to Stripe (default is dry-run).
  *
  * CSV Format:
- * planCode,productName,priceDescription,interval,USD,GBP,EUR
- * essentials,Essentials Monthly,"Historical custom price",month,21,17,19
- * essentials-annual,Essentials Annual,"Historical custom price",year,199,159,179
+ * planCode,productId,productName,priceDescription,interval,USD,GBP,EUR
+ * essentials,prod_123,Essentials Monthly,"Historical custom price",month,21,17,19
+ * essentials-annual,prod_456,Essentials Annual,"Historical custom price",year,199,159,179
  */
 
 import minimist from 'minimist'
@@ -33,6 +32,7 @@ import { convertToMinorUnits, rateLimitSleep } from './helpers.mjs'
 /**
  * @typedef {object} PriceRecord
  * @property {string} planCode
+ * @property {string} productId - Optional expected Stripe Product ID to validate against
  * @property {string} productName - Optional, can be derived from planCode if not provided
  * @property {string} priceDescription - Optional
  * @property {string} interval - 'month' or 'year'
@@ -50,7 +50,6 @@ const paramsSchema = z.object({
   f: z.string(),
   region: z.enum(['us', 'uk']),
   version: z.string(),
-  productDescription: z.string().default(''),
   commit: z.boolean().default(false),
 })
 
@@ -109,25 +108,12 @@ async function getExistingProducts(stripe) {
 }
 
 /**
- * @param {unknown} err
- * @returns {boolean}
- */
-function isAlreadyExistsError(err) {
-  const maybeErr = /** @type {any} */ (err)
-  const code = maybeErr?.code || maybeErr?.raw?.code
-  if (code === 'resource_already_exists') return true
-
-  const message = err instanceof Error ? err.message : String(err)
-  return /already exists/i.test(message)
-}
-
-/**
  * @param {any} trackProgress
  */
 export async function main(trackProgress) {
   const args = minimist(process.argv.slice(2), {
     boolean: ['commit'],
-    string: ['region', 'f', 'version', 'productDescription'],
+    string: ['region', 'f', 'version'],
   })
 
   const parseResult = paramsSchema.safeParse(args)
@@ -135,13 +121,7 @@ export async function main(trackProgress) {
     throw new Error(`Invalid parameters: ${parseResult.error.message}`)
   }
 
-  const {
-    f: inputFile,
-    region,
-    version,
-    productDescription: defaultProductDescription,
-    commit,
-  } = parseResult.data
+  const { f: inputFile, region, version, commit } = parseResult.data
   const mode = commit ? 'COMMIT MODE' : 'DRY RUN MODE'
 
   const log = (message = '') =>
@@ -162,6 +142,7 @@ export async function main(trackProgress) {
   // Identify currency columns (everything except the known non-currency columns)
   const nonCurrencyKeys = new Set([
     'planCode',
+    'productId',
     'productName',
     'priceDescription',
     'interval',
@@ -174,6 +155,11 @@ export async function main(trackProgress) {
   await log('Fetching existing Stripe data...')
   const existingPrices = await getExistingPrices(stripe)
   const existingProducts = await getExistingProducts(stripe)
+  /** @type {Record<string, Product>} */
+  const existingProductsById = {}
+  for (const product of Object.values(existingProducts)) {
+    existingProductsById[product.id] = product
+  }
 
   const summary = {
     productsCreated: 0,
@@ -186,7 +172,9 @@ export async function main(trackProgress) {
   let rowNumber = 0 // For logging purposes, starting after header
   for (const /** @type {PriceRecord} */ record of records) {
     ++rowNumber
-    const { planCode, priceDescription, interval } = record
+    const { planCode, productId, priceDescription, interval } = record
+    const expectedProductId = String(productId || '').trim()
+
     if (!planCode) {
       await log(`✗ No plan code in row ${rowNumber}`)
       ++summary.invalidRows
@@ -200,64 +188,55 @@ export async function main(trackProgress) {
       continue
     }
 
+    // If productId is provided, treat it as an assertion that the product already
+    // exists and matches the planCode mapping. Skip the row before product-create.
+    if (expectedProductId) {
+      const existingProduct = existingProducts[planCode]
+      if (!existingProduct) {
+        await log(
+          `✗ CSV productId '${expectedProductId}' provided for plan '${planCode}', but no existing product was found for that planCode. Skipping row.`
+        )
+        summary.errors++
+        continue
+      }
+
+      if (existingProduct.id !== expectedProductId) {
+        await log(
+          `✗ CSV productId '${expectedProductId}' does not match existing product id '${existingProduct.id}' for plan '${planCode}'. Skipping row.`
+        )
+        summary.errors++
+        continue
+      }
+    }
+
     await log()
     await log(`--- Processing Plan: ${planCode} ---`)
 
-    // 1. Handle product
-    // Keep in-memory caches in sync so repeated plan rows are idempotent
-    // within a single run.
-    if (!existingProducts[planCode]) {
-      let productCreated = false
-      const productName =
-        record.productName ||
-        planCode
-          .split(/[_-]/) // Handle underscores or hyphens
-          .map(
-            /** @param {any} word */
-            word => word.charAt(0).toUpperCase() + word.slice(1)
-          )
-          .join(' ')
+    // 1. Validate required existing productId from CSV.
+    const productIdForPrice = String(productId || '').trim()
+    if (!productIdForPrice) {
+      await log(`✗ No productId in row ${rowNumber}. Skipping row.`)
+      summary.invalidRows++
+      continue
+    }
 
-      if (commit) {
-        try {
-          await stripe.products.create({
-            id: planCode,
-            name: productName,
-            description: defaultProductDescription || undefined, // Don't pass an empty string, Stripe thinks we're trying to unset it and doesn't like it
-            tax_code: 'txcd_10103000', // "Software as a service (SaaS) - personal use", which is what existing products have
-            metadata: { planCode },
-          })
-          await rateLimitSleep()
-          productCreated = true
-        } catch (err) {
-          if (isAlreadyExistsError(err)) {
-            await log(
-              `- Product '${planCode}' already exists (detected during create). Continuing.`
-            )
-          } else {
-            const errorMessage =
-              err instanceof Error ? err.message : String(err)
-            await log(`✗ Error creating product ${planCode}: ${errorMessage}`)
-            summary.errors++
-            continue // Skip prices if product creation failed
-          }
-        }
-      } else {
-        productCreated = true
-      }
+    if (!existingProductsById[productIdForPrice]) {
+      await log(
+        `✗ Product '${productIdForPrice}' from CSV row ${rowNumber} was not found in Stripe. Skipping row.`
+      )
+      summary.errors++
+      continue
+    }
 
-      // Keep in-memory cache in sync so later rows in this run are idempotent.
-      existingProducts[planCode] = /** @type {any} */ ({
-        id: planCode,
-        metadata: { planCode },
-      })
-
-      if (productCreated) {
-        await log(`✓ Created product: ${planCode} ("${productName}")`)
-        summary.productsCreated++
-      }
-    } else {
-      await log(`- Product '${planCode}' already exists.`)
+    if (
+      existingProducts[planCode]?.id &&
+      existingProducts[planCode].id !== productIdForPrice
+    ) {
+      await log(
+        `  ✗ productId mismatch for plan '${planCode}': CSV has '${productIdForPrice}', planCode resolves to '${existingProducts[planCode].id}'. Skipping row.`
+      )
+      summary.errors++
+      continue
     }
 
     // 2. Handle Prices for each currency column
@@ -280,7 +259,7 @@ export async function main(trackProgress) {
 
       /** @type {PriceCreateParams} */
       const priceParams = {
-        product: planCode,
+        product: productIdForPrice,
         currency: currencyLower,
         unit_amount: unitAmount,
         recurring: { interval },
