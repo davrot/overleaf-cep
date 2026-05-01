@@ -64,6 +64,7 @@ SHARD_PROJECT_NAMES = \
 	acceptance_test_modules_merged_saas_2_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_saas_3_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_saas_4_$(BUILD_DIR_NAME) \
+	acceptance_test_modules_merged_saas_5_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_server_ce_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_server_pro_$(BUILD_DIR_NAME) \
 	frontend_test_$(BUILD_DIR_NAME) \
@@ -378,16 +379,18 @@ test_acceptance_modules_merged_inner:
 # inner loop for running saas tests in parallel
 no_more_targets:
 
-# If we ever have more than 40 modules, we need to add _5 targets to all the places and have it START at 41.
+# If we ever have more than 50 modules, we need to add _6 targets to all the places and have it START at 51.
 test_acceptance_modules_merged_inner_1: export START=1
 test_acceptance_modules_merged_inner_2: export START=11
 test_acceptance_modules_merged_inner_3: export START=21
 test_acceptance_modules_merged_inner_4: export START=31
+test_acceptance_modules_merged_inner_5: export START=41
 TEST_ACCEPTANCE_MODULES_MERGED_INNER_SPLIT = \
 	test_acceptance_modules_merged_inner_1 \
 	test_acceptance_modules_merged_inner_2 \
 	test_acceptance_modules_merged_inner_3 \
 	test_acceptance_modules_merged_inner_4 \
+	test_acceptance_modules_merged_inner_5 \
 
 # The node script prints one module per line.
 # Using tail and head we skip over the first n=START entries and print the last 10.
@@ -433,6 +436,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS = \
 	test_acceptance_modules_merged_saas_2 \
 	test_acceptance_modules_merged_saas_3 \
 	test_acceptance_modules_merged_saas_4 \
+	test_acceptance_modules_merged_saas_5 \
 
 test_acceptance_modules_merged_saas_1: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_1_$(BUILD_DIR_NAME)
@@ -442,6 +446,8 @@ test_acceptance_modules_merged_saas_3: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_3_$(BUILD_DIR_NAME)
 test_acceptance_modules_merged_saas_4: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_4_$(BUILD_DIR_NAME)
+test_acceptance_modules_merged_saas_5: export COMPOSE_PROJECT_NAME = \
+	acceptance_test_modules_merged_saas_5_$(BUILD_DIR_NAME)
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export BASE_CONFIG = $(CFG_SAAS)
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export JUNIT_ROOT_SUITE_NAME = SaaS modules acceptance tests
 
