@@ -2065,7 +2065,6 @@
   "you_can_now_enable_sso": "Du kan nu aktivere SSO i dine gruppeindstillinger",
   "you_can_now_log_in_sso": "Du kan nu logge ind gennem din institution of hvis du er kvalificeret får du <0>__appName__ Professionel-funktioner</0>.",
   "you_can_opt_in_and_out_of_the_program_at_any_time_on_this_page": "Du kan på denne side til enhver tid <0>til- og framelde dig</0> programmet",
-  "you_can_request_a_maximum_of_limit_fixes_per_day": "Du kan anmode om maksimalt __limit__ rettelser om dagen. Prøv venligst igen i morgen.",
   "you_cant_add_or_change_password_due_to_sso": "Du kan ikke tilføje eller ændre dit kodeord fordi din gruppe eller organisation bruger <0>single sign-on (SSO)</0>.",
   "you_cant_join_this_group_subscription": "Du kan ikke tilslutte dig dette gruppeabonnement",
   "you_cant_reset_password_due_to_sso": "Du kan ikke nulstille dit kodeord, da din gruppe eller organisation bruger SSO. <0>Log ind med SSO</0>.",
