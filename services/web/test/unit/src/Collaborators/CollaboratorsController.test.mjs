@@ -274,6 +274,14 @@ describe('CollaboratorsController', function () {
       ctx.res.sendStatus.calledWith(204).should.equal(true)
     })
 
+    it('should emit a project:membership:changed event to the project', function (ctx) {
+      expect(ctx.EditorRealTimeController.emitToRoom).to.have.been.calledWith(
+        ctx.projectId,
+        'project:membership:changed',
+        { members: true }
+      )
+    })
+
     it('should write a project audit log', function (ctx) {
       ctx.ProjectAuditLogHandler.addEntryInBackground.should.have.been.calledWith(
         ctx.projectId,

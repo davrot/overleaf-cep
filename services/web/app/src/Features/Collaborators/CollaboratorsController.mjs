@@ -63,6 +63,9 @@ async function removeSelfFromProject(req, res, next) {
   const projectId = req.params.Project_id
   const userId = SessionManager.getLoggedInUserId(req.session)
   await _removeUserIdFromProject(projectId, userId)
+  EditorRealTimeController.emitToRoom(projectId, 'project:membership:changed', {
+    members: true,
+  })
 
   ProjectAuditLogHandler.addEntryInBackground(
     projectId,
