@@ -1419,7 +1419,6 @@
   "loading_prices": "loading prices",
   "loading_python_runtime": "Loading Python runtime...",
   "loading_recent_github_commits": "Loading recent commits",
-  "loading_references": "Loading references",
   "log_entry_description": "Log entry with level: __level__",
   "log_entry_maximum_entries": "Maximum log entries limit hit",
   "log_entry_maximum_entries_enable_stop_on_first_error": "Try to fix the first error and recompile. Often one error causes many later error messages. You can <0>Enable “Stop on first error”</0> to focus on fixing errors. We recommend fixing errors as soon as possible; letting them accumulate may lead to hard-to-debug and fatal errors. <1>Learn more</1>",
