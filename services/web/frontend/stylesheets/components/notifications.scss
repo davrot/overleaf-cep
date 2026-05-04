@@ -161,7 +161,12 @@
   .notification-content {
     flex-grow: 1;
     padding: $spacing-06 0;
+    text-align: left;
     width: 100%;
+  }
+
+  &.text-center .notification-content {
+    text-align: center;
   }
 
   .notification-cta {
