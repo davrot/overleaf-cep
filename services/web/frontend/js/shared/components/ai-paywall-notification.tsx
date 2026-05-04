@@ -28,6 +28,10 @@ function AiPaywallNotification({
   const { t } = useTranslation()
   const features = useUserFeaturesContext()
   const inQuotaRollout = useFeatureFlag('plans-2026-phase-1')
+  const user = getMeta('ol-user')
+
+  const isCommons = user.hasInstitutionLicence
+  const isGroupUser = user.isMemberOfGroupSubscription
 
   if (!getMeta('ol-showAiFeatures')) {
     return null
@@ -78,7 +82,7 @@ function AiPaywallNotification({
         time: formatSecondsToHoursAndMinutes(t, secondsTillReset),
       }
     )
-    const assistMessage = t('youve_reached_the_ai_fair_usage')
+    const assistMessage = t('youve_reached_the_fair_usage')
     return (
       <Notification
         type="info"
@@ -99,6 +103,25 @@ function AiPaywallNotification({
       />
     )
   }
+
+  if (isGroupUser) {
+    return (
+      <GroupsPaywall
+        secondsTillReset={secondsTillReset}
+        featureLocation={featureLocation}
+      />
+    )
+  }
+
+  if (isCommons) {
+    return (
+      <CommonsPaywall
+        secondsTillReset={secondsTillReset}
+        featureLocation={featureLocation}
+      />
+    )
+  }
+
   const message = t('upgrade_for_unlimited_access_to_ai', {
     time: formatSecondsToHoursAndMinutes(t, secondsTillReset),
   })
@@ -106,7 +129,7 @@ function AiPaywallNotification({
     <>
       <Notification
         type="info"
-        title={t('youve_hit_your_overleaf_ai_limit')}
+        title={t('youve_hit_your_daily_ai_limit')}
         content={message}
         isDismissible={false}
         customIcon={null}
@@ -124,6 +147,68 @@ function AiPaywallNotification({
   )
 }
 
+function GroupsPaywall({
+  secondsTillReset,
+  featureLocation,
+}: {
+  secondsTillReset: number
+  featureLocation: aiFeatureLocations
+}) {
+  const { t } = useTranslation()
+
+  const message = t('your_limit_will_reset_in_time_or_speak_to_admin', {
+    time: formatSecondsToHoursAndMinutes(t, secondsTillReset),
+  })
+
+  const title =
+    featureLocation === 'workbench'
+      ? t('youve_reached_your_daily_ai_limit')
+      : t('youve_hit_your_daily_ai_limit')
+
+  return (
+    <>
+      <Notification
+        type="info"
+        title={title}
+        content={message}
+        isDismissible={false}
+        customIcon={null}
+      />
+    </>
+  )
+}
+
+function CommonsPaywall({
+  secondsTillReset,
+  featureLocation,
+}: {
+  secondsTillReset: number
+  featureLocation: aiFeatureLocations
+}) {
+  const { t } = useTranslation()
+
+  // workbench isnt available on commons plans, so dont show it here and let upgrade-notification handle it
+  if (featureLocation === 'workbench') {
+    return null
+  }
+
+  const message = t('this_will_reset_in', {
+    time: formatSecondsToHoursAndMinutes(t, secondsTillReset),
+  })
+
+  return (
+    <>
+      <Notification
+        type="info"
+        title={t('youve_reached_your_ai_usage_limit')}
+        content={message}
+        isDismissible={false}
+        customIcon={null}
+      />
+    </>
+  )
+}
+
 function FairUseLimit({
   secondsTillReset,
   featureLocation,
@@ -136,7 +221,7 @@ function FairUseLimit({
   const title =
     featureLocation === 'workbench'
       ? t('usage_limit_reached')
-      : t('youve_reached_the_ai_fair_usage')
+      : t('youve_reached_the_fair_usage')
 
   const workbenchMessage = t(
     'youve_reached_the_fair_usage_limit_on_your_plan_you_can_start_chatting_again_in_time',
