@@ -33,23 +33,13 @@ describe('checkOutputLimits', function () {
     expect(checkOutputLimits(files)).to.equal(null)
   })
 
-  it('returns a count violation when the file count exceeds the limit', function () {
-    const files = makeFiles(MAX_OUTPUT_FILES + 1, 1)
+  it('returns a count violation reporting the actual file count when the file count exceeds the limit', function () {
+    const files = makeFiles(73, 1)
     const violation = checkOutputLimits(files)
     expect(violation).to.deep.equal({
       kind: 'count',
-      message: `Output limit exceeded: ${MAX_OUTPUT_FILES + 1} files generated (max ${MAX_OUTPUT_FILES})`,
+      message: 'Output limit exceeded: 73 files generated (max 50)',
     })
-  })
-
-  it('reports the actual file count in the count violation message', function () {
-    const files = makeFiles(73, 1)
-    const violation = checkOutputLimits(files)
-    expect(violation).to.not.equal(null)
-    expect(violation!.kind).to.equal('count')
-    expect(violation!.message).to.equal(
-      'Output limit exceeded: 73 files generated (max 50)'
-    )
   })
 
   it('returns null at exactly the per-file size limit', function () {
@@ -57,19 +47,7 @@ describe('checkOutputLimits', function () {
     expect(checkOutputLimits(files)).to.equal(null)
   })
 
-  it('returns a single-file-size violation when one file exceeds the per-file limit', function () {
-    const files = [
-      { path: '/project/big.bin', size: MAX_OUTPUT_FILE_BYTES + 1 },
-    ]
-    const violation = checkOutputLimits(files)
-    expect(violation).to.not.equal(null)
-    expect(violation!.kind).to.equal('single-file-size')
-    expect(violation!.message).to.equal(
-      'Output limit exceeded: /project/big.bin is 51MB (max 50MB per file)'
-    )
-  })
-
-  it('reports the offending file path and rounded size in the single-file-size message', function () {
+  it('returns a single-file-size violation reporting the offending file path and size when one file exceeds the per-file limit', function () {
     const files = [
       { path: '/project/small.bin', size: 1 * BYTES_PER_MB },
       { path: '/project/huge.bin', size: 80 * BYTES_PER_MB },
