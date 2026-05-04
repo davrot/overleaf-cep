@@ -453,11 +453,16 @@ async function analyticsIdMiddleware(req, res, next) {
   const sessionUser = SessionManager.getSessionUser(session)
 
   if (sessionUser) {
-    session.analyticsId = await UserAnalyticsIdCache.getWithMetrics(
-      sessionUser._id,
-      // Do not drill down further, this middleware is on all endpoints.
-      'analyticsIdMiddleware'
-    )
+    // For old sessions, session.analyticsId is the anon id immediately after login. Do not use it!
+    session.analyticsId = sessionUser.analyticsId
+    if (!session.analyticsId) {
+      session.analyticsId = sessionUser.analyticsId =
+        await UserAnalyticsIdCache.getWithMetrics(
+          sessionUser._id,
+          // Do not drill down further, this middleware is on all endpoints.
+          'analyticsIdMiddleware'
+        )
+    }
   } else if (!session.analyticsId) {
     // generate an `analyticsId` if needed
     session.analyticsId = crypto.randomUUID()

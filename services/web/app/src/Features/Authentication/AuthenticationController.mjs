@@ -614,6 +614,10 @@ function _afterLoginSessionSetup(req, user, callback) {
     }
     delete req.session.__tmp
     delete req.session.csrfSecret
+
+    // Populate the analyticsId cache in the session AFTER switching it into logged-in mode.
+    req.session.analyticsId = user.analyticsId
+
     req.session.save(function (err) {
       if (err) {
         OError.tag(err, 'error saving regenerated session after login', {

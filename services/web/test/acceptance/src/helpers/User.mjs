@@ -1,3 +1,4 @@
+import Crypto from 'node:crypto'
 import OError from '@overleaf/o-error'
 import request from './request.js'
 import settings from '@overleaf/settings'
@@ -37,6 +38,7 @@ class User {
     })
     this.signUpDate = options.signUpDate ?? new Date()
     this.labsProgram = options.labsProgram || false
+    this.analyticsId = options.analyticsId || Crypto.randomUUID()
   }
 
   getSession(options, callback) {
@@ -249,6 +251,7 @@ class User {
     this.first_name = user.first_name
     this.referal_id = user.referal_id
     this.enrollment = user.enrollment
+    this.analyticsId = user.analyticsId
   }
 
   get(callback) {
@@ -444,6 +447,7 @@ class User {
               emails: this.emails,
               signUpDate: this.signUpDate,
               labsProgram: this.labsProgram,
+              analyticsId: this.analyticsId,
             },
           },
           options
