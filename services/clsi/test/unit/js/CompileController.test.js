@@ -82,12 +82,12 @@ describe('CompileController', () => {
           path: 'output.pdf',
           type: 'pdf',
           size: 1337,
-          build: 1234,
+          build: '1234-5678',
         },
         {
           path: 'output.log',
           type: 'log',
-          build: 1234,
+          build: '1234-5678',
         },
       ]
       ctx.RequestParser.parse = sinon.stub().callsArgWith(1, null, ctx.request)
@@ -190,12 +190,12 @@ describe('CompileController', () => {
           {
             path: 'fake_output.pdf',
             type: 'pdf',
-            build: 1234,
+            build: '1234-5678',
           },
           {
             path: 'output.log',
             type: 'log',
-            build: 1234,
+            build: '1234-5678',
           },
         ]
         ctx.CompileManager.doCompileWithLock = sinon
@@ -239,12 +239,12 @@ describe('CompileController', () => {
             path: 'output.pdf',
             type: 'pdf',
             size: 0,
-            build: 1234,
+            build: '1234-5678',
           },
           {
             path: 'output.log',
             type: 'log',
-            build: 1234,
+            build: '1234-5678',
           },
         ]
         ctx.CompileManager.doCompileWithLock = sinon

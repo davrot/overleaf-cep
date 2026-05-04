@@ -8,16 +8,16 @@ class MockClsiApi extends AbstractMockApi {
         error: null,
         outputFiles: [
           {
-            url: `http://clsi:8080/project/${req.params.project_id}/build/1234/output/output.pdf`,
+            url: `http://clsi:8080/project/${req.params.project_id}/build/1234-5678/output/output.pdf`,
             path: 'output.pdf',
             type: 'pdf',
-            build: 1234,
+            build: '1234-5678',
           },
           {
-            url: `http://clsi:8080/project/${req.params.project_id}/build/1234/output/output.log`,
+            url: `http://clsi:8080/project/${req.params.project_id}/build/1234-5678/output/output.log`,
             path: 'output.log',
             type: 'log',
-            build: 1234,
+            build: '1234-5678',
           },
         ],
       },

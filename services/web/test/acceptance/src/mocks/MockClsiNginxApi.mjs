@@ -11,6 +11,8 @@ class MockClsiNginxApi extends AbstractMockApi {
           plainTextResponse(res, 'mock-pdf')
         } else if (filename === 'output.log') {
           plainTextResponse(res, 'mock-log')
+        } else if (filename.endsWith('nested.txt')) {
+          plainTextResponse(res, `nested.txt: ${req.originalUrl}`)
         } else {
           res.sendStatus(404)
         }

@@ -24,6 +24,7 @@ import HistoryManager from '../History/HistoryManager.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 import RedisWrapper from '../../infrastructure/RedisWrapper.mjs'
+import { getOutputFileURL } from './ClsiURLHelpers.mjs'
 
 // use the redis db with eviction policy enabled
 const rclient = RedisWrapper.client('clsi_cookie')
@@ -850,17 +851,17 @@ async function getContentFromDocUpdaterIfMatch(projectId, project, options) {
 async function getOutputFileStream(
   projectId,
   userId,
-  options,
   clsiServerId,
   buildId,
   outputFilePath
 ) {
-  const { compileBackendClass, compileGroup } = options
-  const url = new URL(Settings.apis.clsi.downloadHost)
-  url.pathname = `/project/${projectId}/user/${userId}/build/${buildId}/output/${outputFilePath}`
-  url.searchParams.set('compileBackendClass', compileBackendClass)
-  url.searchParams.set('compileGroup', compileGroup)
-  url.searchParams.set('clsiserverid', clsiServerId)
+  const url = getOutputFileURL(
+    projectId,
+    userId,
+    buildId,
+    outputFilePath,
+    clsiServerId
+  )
   try {
     const stream = await fetchStream(url, {
       signal: AbortSignal.timeout(OUTPUT_FILE_TIMEOUT_MS),

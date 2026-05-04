@@ -289,13 +289,13 @@ describe('ClsiManager', function () {
       beforeEach(async function (ctx) {
         ctx.outputFiles = [
           {
-            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/1234/output/output.pdf`,
+            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/${buildId}/output/output.pdf`,
             path: 'output.pdf',
             type: 'pdf',
             build: buildId,
           },
           {
-            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/1234/output/output.log`,
+            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/${buildId}/output/output.log`,
             path: 'output.log',
             type: 'log',
             build: buildId,
@@ -419,13 +419,13 @@ describe('ClsiManager', function () {
       beforeEach(async function (ctx) {
         ctx.outputFiles = [
           {
-            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/1234/output/output.pdf`,
+            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/${buildId}/output/output.pdf`,
             path: 'output.pdf',
             type: 'pdf',
             build: buildId,
           },
           {
-            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/1234/output/output.log`,
+            url: `/project/${ctx.project_id}/user/${ctx.user_id}/build/${buildId}/output/output.log`,
             path: 'output.log',
             type: 'log',
             build: buildId,
@@ -570,20 +570,20 @@ describe('ClsiManager', function () {
         ctx.contentId = '123-321'
         ctx.outputFiles = [
           {
-            url: `/project/${ctx.project._id}/user/${ctx.user_id}/build/1234/output/output.pdf`,
+            url: `/project/${ctx.project._id}/user/${ctx.user_id}/build/1234-5678/output/output.pdf`,
             path: 'output.pdf',
             type: 'pdf',
-            build: 1234,
+            build: '1234-5678',
             contentId: ctx.contentId,
             ranges: ctx.ranges,
             startXRefTable: ctx.startXRefTable,
             size: ctx.size,
           },
           {
-            url: `/project/${ctx.project._id}/user/${ctx.user_id}/build/1234/output/output.log`,
+            url: `/project/${ctx.project._id}/user/${ctx.user_id}/build/1234-5678/output/output.log`,
             path: 'output.log',
             type: 'log',
-            build: 1234,
+            build: '1234-5678',
           },
         ]
         ctx.stats = { fooStat: 1 }
@@ -1097,16 +1097,16 @@ describe('ClsiManager', function () {
       beforeEach(async function (ctx) {
         ctx.outputFiles = [
           {
-            url: `/project/${ctx.submissionId}/build/1234/output/output.pdf`,
+            url: `/project/${ctx.submissionId}/build/1234-5678/output/output.pdf`,
             path: 'output.pdf',
             type: 'pdf',
-            build: 1234,
+            build: '1234-5678',
           },
           {
-            url: `/project/${ctx.submissionId}/build/1234/output/output.log`,
+            url: `/project/${ctx.submissionId}/build/1234-5678/output/output.log`,
             path: 'output.log',
             type: 'log',
-            build: 1234,
+            build: '1234-5678',
           },
         ]
         ctx.responseBody.compile.outputFiles = ctx.outputFiles.map(

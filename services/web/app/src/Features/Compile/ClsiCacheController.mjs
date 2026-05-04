@@ -13,6 +13,18 @@ import ClsiCacheHandler from './ClsiCacheHandler.mjs'
 import ProjectGetter from '../Project/ProjectGetter.mjs'
 import { MeteredStream } from '@overleaf/stream-utils'
 import Metrics from '@overleaf/metrics'
+import { z, zz } from '@overleaf/validation-tools'
+import { parseReq } from '../../infrastructure/Validation.mjs'
+
+const downloadFromCacheSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+    editorBuildId: zz.editorBuildId(),
+    filename: zz.filepath().refine(s => ClsiCacheHandler.isAllowedFilename(s), {
+      message: 'path is not allowed',
+    }),
+  }),
+})
 
 /**
  * Download a file from a specific build on the clsi-cache.
@@ -22,12 +34,14 @@ import Metrics from '@overleaf/metrics'
  * @return {Promise<*>}
  */
 async function downloadFromCache(req, res) {
-  const { Project_id: projectId, buildId, filename } = req.params
+  const {
+    params: { Project_id: projectId, editorBuildId, filename },
+  } = parseReq(req, downloadFromCacheSchema)
   return await _downloadFromCacheWithParams(
     req,
     res,
     projectId,
-    buildId,
+    editorBuildId,
     filename
   )
 }
@@ -38,18 +52,16 @@ async function downloadFromCache(req, res) {
  * @param req
  * @param res
  * @param projectId
- * @param buildId
+ * @param editorBuildId
  * @param filename
  * @param projectId
- * @param buildId
- * @param filename
  * @return {Promise<*>}
  */
 async function _downloadFromCacheWithParams(
   req,
   res,
   projectId,
-  buildId,
+  editorBuildId,
   filename
 ) {
   const userId = CompileController._getUserIdForCompile(req)
@@ -61,7 +73,7 @@ async function _downloadFromCacheWithParams(
       ClsiCacheHandler.getOutputFile(
         projectId,
         userId,
-        buildId,
+        editorBuildId,
         filename,
         ac.signal
       ),

@@ -230,11 +230,11 @@ describe('<FileTreeModalCreateFile/>', function () {
         status: 'success',
         outputFiles: [
           {
-            build: 'test',
+            build: '1234-5678',
             path: 'baz.jpg',
           },
           {
-            build: 'test',
+            build: '1234-5678',
             path: 'ball.jpg',
           },
         ],
@@ -299,7 +299,7 @@ describe('<FileTreeModalCreateFile/>', function () {
         data: {
           source_project_id: 'project-2',
           source_output_file_path: 'ball.jpg',
-          build_id: 'test',
+          build_id: '1234-5678',
         },
       })
   })
