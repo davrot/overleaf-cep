@@ -1071,6 +1071,7 @@ module.exports = {
     ],
     integrationPanelComponents: [],
     referenceSearchSetting: [],
+    settingsModalEditorTabSections: [],
     errorLogsComponents: [],
     referenceIndices: [],
     railEntries: [],

@@ -130,6 +130,98 @@ describe('<SettingsModal />', function () {
     })
   })
 
+  describe('when a user has Writefull enabled', function () {
+    beforeEach(function () {
+      window.metaAttributesCache.set('ol-writefullEnabled', true)
+      window.metaAttributesCache.set('ol-showAiFeatures', true)
+    })
+
+    afterEach(function () {
+      window.metaAttributesCache.delete('ol-writefullEnabled')
+      window.metaAttributesCache.delete('ol-showAiFeatures')
+    })
+
+    it('shows the AI assistance section in the Editor tab', async function () {
+      render(
+        <EditorProviders
+          rootFolder={[rootFolder as any]}
+          layoutContext={{ leftMenuShown: true }}
+        >
+          <SettingsModal />
+        </EditorProviders>
+      )
+
+      selectTab('Editor')
+      await waitFor(() => expect(screen.getByText('AI assistance')).to.exist)
+    })
+  })
+
+  describe('when a user does not have Writefull enabled', function () {
+    afterEach(function () {
+      window.metaAttributesCache.delete('ol-writefullEnabled')
+      window.metaAttributesCache.delete('ol-showAiFeatures')
+      window.metaAttributesCache.delete('ol-cannot-use-ai')
+    })
+
+    it('does not show the AI assistance section when ol-writefullEnabled is false', async function () {
+      window.metaAttributesCache.set('ol-writefullEnabled', false)
+      window.metaAttributesCache.set('ol-showAiFeatures', true)
+      render(
+        <EditorProviders
+          rootFolder={[rootFolder as any]}
+          layoutContext={{ leftMenuShown: true }}
+        >
+          <SettingsModal />
+        </EditorProviders>
+      )
+
+      selectTab('Editor')
+      await waitFor(
+        () => expect(screen.getByLabelText('Auto-complete')).to.exist
+      )
+      expect(screen.queryByText('AI assistance')).to.be.null
+    })
+
+    it('does not show the AI assistance section when ol-showAiFeatures is false', async function () {
+      window.metaAttributesCache.set('ol-writefullEnabled', true)
+      window.metaAttributesCache.set('ol-showAiFeatures', false)
+      render(
+        <EditorProviders
+          rootFolder={[rootFolder as any]}
+          layoutContext={{ leftMenuShown: true }}
+        >
+          <SettingsModal />
+        </EditorProviders>
+      )
+
+      selectTab('Editor')
+      await waitFor(
+        () => expect(screen.getByLabelText('Auto-complete')).to.exist
+      )
+      expect(screen.queryByText('AI assistance')).to.be.null
+    })
+
+    it('does not show the AI assistance section when ol-cannot-use-ai is true', async function () {
+      window.metaAttributesCache.set('ol-writefullEnabled', true)
+      window.metaAttributesCache.set('ol-showAiFeatures', true)
+      window.metaAttributesCache.set('ol-cannot-use-ai', true)
+      render(
+        <EditorProviders
+          rootFolder={[rootFolder as any]}
+          layoutContext={{ leftMenuShown: true }}
+        >
+          <SettingsModal />
+        </EditorProviders>
+      )
+
+      selectTab('Editor')
+      await waitFor(
+        () => expect(screen.getByLabelText('Auto-complete')).to.exist
+      )
+      expect(screen.queryByText('AI assistance')).to.be.null
+    })
+  })
+
   describe('when open=project-notifications query param is present', function () {
     beforeEach(function () {
       window.metaAttributesCache.set('ol-splitTestVariants', {

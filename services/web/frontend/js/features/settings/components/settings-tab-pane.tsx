@@ -1,5 +1,5 @@
 import { TabPane } from 'react-bootstrap'
-import { SettingsTab } from '../context/settings-modal-context'
+import { SettingsTab } from '../context/types'
 import SettingsSection from './settings-section'
 import { Fragment } from 'react'
 
