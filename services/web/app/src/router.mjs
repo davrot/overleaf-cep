@@ -941,6 +941,11 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthenticationController.requirePrivateApiAuth(),
     DocumentController.setDocument
   )
+  privateApiRouter.post(
+    '/project/:Project_id/doc/:doc_id/changes/reject',
+    AuthenticationController.requirePrivateApiAuth(),
+    DocumentController.trackChangesRejected
+  )
 
   privateApiRouter.post(
     '/user/:user_id/project/new',
