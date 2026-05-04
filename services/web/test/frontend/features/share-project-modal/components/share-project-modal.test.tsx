@@ -1052,4 +1052,127 @@ describe('<ShareProjectModal/>', function () {
       )
     })
   })
+
+  describe('with "sharing-updates" feature flag', function () {
+    beforeEach(function () {
+      window.metaAttributesCache.set('ol-splitTestVariants', {
+        'sharing-updates': 'enabled',
+      })
+    })
+
+    afterEach(function () {
+      window.metaAttributesCache.set('ol-splitTestVariants', {})
+    })
+
+    it('disables the invite button when no email is entered', async function () {
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased' })
+      )
+
+      const inviteButton = (await screen.findByRole('button', {
+        name: /invite/i,
+      })) as HTMLButtonElement
+
+      expect(inviteButton.disabled).to.be.true
+    })
+
+    it('enables the invite button once a valid email is typed', async function () {
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased' })
+      )
+
+      const inviteButton = (await screen.findByRole('button', {
+        name: /invite/i,
+      })) as HTMLButtonElement
+
+      expect(inviteButton.disabled).to.be.true
+
+      const inputElement = await screen.findByTestId('collaborator-email-input')
+      fireEvent.change(inputElement, {
+        target: { value: 'new@example.com' },
+      })
+
+      await waitFor(() => expect(inviteButton.disabled).to.be.false)
+    })
+
+    it('shows a validation error and disables invite button for an invalid email format', async function () {
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased' })
+      )
+
+      const inputElement = await screen.findByTestId('collaborator-email-input')
+      fireEvent.change(inputElement, { target: { value: 'invalid@' } })
+      fireEvent.blur(inputElement)
+
+      await screen.findByText('Email addresses must be a valid format.')
+
+      const inviteButton = screen.getByRole('button', {
+        name: /invite/i,
+      }) as HTMLButtonElement
+      expect(inviteButton.disabled).to.be.true
+    })
+
+    it('shows a validation error and disables invite button when email already has access', async function () {
+      const members: ProjectMember[] = [
+        {
+          _id: 'existing-member' as UserId,
+          email: 'member@example.com',
+          privileges: 'readAndWrite',
+          first_name: 'Existing',
+          last_name: 'Member',
+        },
+      ]
+
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased', members })
+      )
+
+      const inputElement = await screen.findByTestId('collaborator-email-input')
+      fireEvent.change(inputElement, {
+        target: { value: 'member@example.com' },
+      })
+      fireEvent.blur(inputElement)
+
+      await screen.findByText('Only add people who don’t yet have access.')
+
+      const inviteButton = screen.getByRole('button', {
+        name: /invite/i,
+      }) as HTMLButtonElement
+      expect(inviteButton.disabled).to.be.true
+    })
+
+    it('shows "invitations sent" message after a successful invite', async function () {
+      fetchMock.post('express:/project/:projectId/invite', {
+        status: 200,
+        body: {
+          invite: {
+            _id: 'new-invite',
+            email: 'new@example.com',
+            privileges: 'readAndWrite',
+          },
+        },
+      })
+
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased' })
+      )
+
+      const inputElement = await screen.findByTestId('collaborator-email-input')
+      fireEvent.change(inputElement, { target: { value: 'new@example.com' } })
+      fireEvent.blur(inputElement)
+
+      const inviteButton = (await screen.findByRole('button', {
+        name: /invite/i,
+      })) as HTMLButtonElement
+      await waitFor(() => expect(inviteButton.disabled).to.be.false)
+      await userEvent.click(inviteButton)
+
+      await screen.findByText('Invitation(s) sent.')
+    })
+  })
 })

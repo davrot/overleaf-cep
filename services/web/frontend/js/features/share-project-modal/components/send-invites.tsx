@@ -19,10 +19,6 @@ export default function SendInvites({
 }) {
   const isSharingUpdatesEnabled = useFeatureFlag('sharing-updates')
 
-  if (isSharingUpdatesEnabled) {
-    return null
-  }
-
   return (
     <OLRow
       className={classnames('invite-controls', {

@@ -18,6 +18,7 @@ import OLSpinner from './ol/ol-spinner'
 import DSFormLabel from '@/shared/components/ds/ds-form-label'
 import DSFormGroup from '@/shared/components/ds/ds-form-group'
 import DSFormControl from '@/shared/components/ds/ds-form-control'
+import { DropdownItemProps } from '@/shared/components/types/dropdown-menu-props'
 
 export type SelectProps<T> = {
   // The items rendered as dropdown options.
@@ -39,6 +40,10 @@ export type SelectProps<T> = {
   itemToSubtitle?: (item: T | null | undefined) => string
   // Stringifies an item. The resulting string is rendered as a React `key` for each item.
   itemToKey: (item: T) => string
+  // Maps an item to a leading icon.
+  itemToLeadingIcon?: (
+    item: T | null | undefined
+  ) => DropdownItemProps['leadingIcon']
   // Callback invoked after the selected item is updated.
   onSelectedItemChanged?: (item: T | null | undefined) => void
   // Optionally directly control the selected item.
@@ -57,6 +62,7 @@ export type SelectProps<T> = {
   dataTestId?: string
   // CIAM-specific layout
   isCiam?: boolean
+  size?: React.ComponentProps<typeof FormControl>['size']
 }
 
 export const Select = <T,>({
@@ -68,6 +74,7 @@ export const Select = <T,>({
   defaultItem,
   itemToSubtitle,
   itemToKey,
+  itemToLeadingIcon,
   onSelectedItemChanged,
   selected,
   disabled = false,
@@ -77,6 +84,7 @@ export const Select = <T,>({
   selectedIcon = false,
   dataTestId,
   isCiam,
+  size,
 }: SelectProps<T>) => {
   const [selectedItem, setSelectedItem] = useState<T | undefined | null>(
     defaultItem
@@ -185,6 +193,9 @@ export const Select = <T,>({
                 trailingIcon={
                   selectedIcon && selectedItem === item ? tickIcon() : undefined
                 }
+                leadingIcon={
+                  itemToLeadingIcon ? itemToLeadingIcon(item) : undefined
+                }
                 description={itemToSubtitle ? itemToSubtitle(item) : undefined}
                 {...itemProps}
                 disabled={disabled}
@@ -250,6 +261,7 @@ export const Select = <T,>({
             className="align-text-bottom"
           />
         }
+        size={size}
       />
       {dropdown}
     </div>
