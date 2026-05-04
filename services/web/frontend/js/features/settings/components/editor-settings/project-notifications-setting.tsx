@@ -72,11 +72,10 @@ export default function ProjectNotificationsSetting() {
                 {t('email_notifications_are_currently_in_beta')}{' '}
                 {t('these_settings_might_change_in_the_future')}{' '}
               </span>
-              {/* TODO: update forms link */}
               <a
                 target="_blank"
                 rel="noopener noreferrer"
-                href="https://forms.gle/"
+                href="https://forms.gle/unCNQedYXChTn2Qo6"
               >
                 {t('give_feedback')}
               </a>
