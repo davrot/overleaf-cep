@@ -19,5 +19,12 @@ declare module 'express' {
     userRestrictions?: Set
     oauth_user?: OAuth2Server.User
     logger: RequestLogger
+    i18n: {
+      translate(
+        key: string,
+        vars?: Record<string, any>,
+        components?: any
+      ): string
+    }
   }
 }

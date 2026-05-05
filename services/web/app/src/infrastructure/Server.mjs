@@ -234,7 +234,6 @@ await Modules.applyNonCsrfRouter(webRouter, privateApiRouter, publicApiRouter)
 
 webRouter.csrf = new CsrfClass()
 webRouter.use(webRouter.csrf.middleware)
-webRouter.use(translations.i18nMiddleware)
 webRouter.use(translations.setLangBasedOnDomainMiddleware)
 
 if (Settings.cookieRollingSession) {

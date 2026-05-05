@@ -141,8 +141,6 @@
     "helmet": "^6.0.1",
     "https-proxy-agent": "^7.0.6",
     "i18next": "^23.10.0",
-    "i18next-fs-backend": "2.6.1",
-    "i18next-http-middleware": "^3.5.0",
     "jose": "^4.3.8",
     "json2csv": "^4.3.3",
     "jsonwebtoken": "^9.0.3",

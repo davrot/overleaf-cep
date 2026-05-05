@@ -7371,8 +7371,6 @@ __metadata:
     html-webpack-plugin: "npm:^5.5.3"
     https-proxy-agent: "npm:^7.0.6"
     i18next: "npm:^23.10.0"
-    i18next-fs-backend: "npm:2.6.1"
-    i18next-http-middleware: "npm:^3.5.0"
     i18next-scanner: "npm:4.4.0"
     idb: "npm:^8.0.0"
     inversify: "npm:^6.2.2"
@@ -20734,20 +20732,6 @@ __metadata:
   version: 1.2.0
   resolution: "hyperdyperid@npm:1.2.0"
   checksum: 10c0/885ba3177c7181d315a856ee9c0005ff8eb5dcb1ce9e9d61be70987895d934d84686c37c981cceeb53216d4c9c15c1cc25f1804e84cc6a74a16993c5d7fd0893
-  languageName: node
-  linkType: hard
-
-"i18next-fs-backend@npm:2.6.1":
-  version: 2.6.1
-  resolution: "i18next-fs-backend@npm:2.6.1"
-  checksum: 10c0/9751745d40a9f5e57fd6144129dba11f120372f5dd9e906d025c3f96c569d65aeeddfd1a36cdfcfe7acda9c624d80ef9610917544485174a363793ca00cf8636
-  languageName: node
-  linkType: hard
-
-"i18next-http-middleware@npm:3.5.0":
-  version: 3.5.0
-  resolution: "i18next-http-middleware@npm:3.5.0"
-  checksum: 10c0/fc3cb67c6984c0eb29c7456ecf320230eb361534f7d58983f514e66f14addbf082d5aa7af04b4c0bbad45b696faf4709aac64840fcd5db02038f5870b7285ea9
   languageName: node
   linkType: hard
 
