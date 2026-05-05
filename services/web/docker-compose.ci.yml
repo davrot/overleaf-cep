@@ -29,6 +29,7 @@ services:
       REDIS_HOST: redis_test
       VITEST_NO_CACHE: true
       COVERAGE_UNIT_TESTS:
+      NO_COLOR: true
       MONOREPO:
     depends_on:
       - redis_test
@@ -51,6 +52,7 @@ services:
       OVERLEAF_CONFIG:
       REDIS_HOST: redis_test
       COVERAGE_ACCEPTANCE_TESTS:
+      NO_COLOR: true
       MONOREPO:
       RETRIES:
     extra_hosts:
@@ -85,6 +87,7 @@ services:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       CI:
       JUNIT_ROOT_SUITE_NAME:
+      NO_COLOR: true
 
   test_frontend_ct:
     build:
@@ -101,6 +104,7 @@ services:
       CYPRESS_RESULTS:
       CYPRESS_SPEC_PATTERN:
       CYPRESS_EXCLUDE_SPEC_PATTERN:
+      NO_COLOR: true
     volumes:
       - /dev/shm/overleaf:/overleaf
       - ./data/reports:/overleaf/services/web/data/reports
@@ -125,6 +129,7 @@ services:
       CI:
       JUNIT_ROOT_SUITE_NAME:
       NODE_OPTIONS: "--unhandled-rejections=strict"
+      NO_COLOR: true
 
   tar:
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER-webpack
