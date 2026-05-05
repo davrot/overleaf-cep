@@ -11,6 +11,7 @@ import {
 import OLButton from '@/shared/components/ol/ol-button'
 import '@uppy/core/dist/style.css'
 import '@uppy/dashboard/dist/style.css'
+import BetaBadgeIcon from '@/shared/components/beta-badge-icon'
 
 function ImportDocxModal({
   onHide,
@@ -36,9 +37,15 @@ function ImportDocxModal({
       backdrop="static"
     >
       <OLModalHeader>
-        <OLModalTitle as="h3">{t('import_word_document')}</OLModalTitle>
+        <OLModalTitle as="h3" className="import-docx-modal-title">
+          {t('choose_word_document')}
+          <span className="beta-icon-wrapper">
+            <BetaBadgeIcon />
+          </span>
+        </OLModalTitle>
       </OLModalHeader>
       <OLModalBody>
+        <p>{t('import_word_document_description')}</p>
         <Dashboard
           uppy={uppy}
           proudlyDisplayPoweredByUppy={false}

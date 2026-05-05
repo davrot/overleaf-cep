@@ -1,4 +1,4 @@
-import { Trans, useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import {
   OLModal,
   OLModalBody,
@@ -63,20 +63,7 @@ function ProjectConvertedFromDocxModalContent({
       <OLModalHeader>
         <OLModalTitle as="h3">{t('document_ready_for_editing')}</OLModalTitle>
       </OLModalHeader>
-      <OLModalBody>
-        <Trans
-          i18nKey="weve_converted_your_content_to_latex"
-          components={[
-            // eslint-disable-next-line jsx-a11y/anchor-has-content
-            <a
-              href="/learn"
-              key="wiki-link"
-              rel="noopener noreferrer"
-              target="_blank"
-            />,
-          ]}
-        />
-      </OLModalBody>
+      <OLModalBody>{t('weve_converted_your_content_to_latex')}</OLModalBody>
       <OLModalFooter>
         <OLButton variant="primary" onClick={onHide}>
           {t('start_editing')}

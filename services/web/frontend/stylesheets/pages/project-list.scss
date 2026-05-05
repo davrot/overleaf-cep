@@ -585,6 +585,16 @@ ul.project-list-filters {
   }
 }
 
+.import-docx-modal-title {
+  display: flex;
+  align-items: center;
+
+  .beta-icon-wrapper {
+    margin-left: var(--spacing-03);
+    display: inline-flex;
+  }
+}
+
 /* stylelint-disable selector-class-pattern */
 .project-list-upload-project-modal-uppy-dashboard .uppy-Root {
   .uppy-Dashboard-AddFiles-title {
