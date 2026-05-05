@@ -1,6 +1,6 @@
 import { assert, beforeEach, describe, it, vi } from 'vitest'
 import sinon from 'sinon'
-import { InvalidRequestError } from '@overleaf/validation-tools'
+import { ZodError } from 'zod'
 
 const modulePath = '../../../../app/src/Features/Tags/TagsController.mjs'
 
@@ -202,7 +202,7 @@ describe('TagsController', function () {
     it('without a name', function (ctx) {
       ctx.req.body = { name: undefined }
       ctx.TagsController.renameTag(ctx.req, ctx.res).should.be.rejectedWith(
-        InvalidRequestError
+        ZodError
       )
     })
   })

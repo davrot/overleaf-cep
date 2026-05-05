@@ -219,13 +219,14 @@ describe('Project CRUD', function () {
     })
     it('returns a 400 when publicAccessLevel is an unsupported access level', async function () {
       await this.user.makePrivate(this.projectId)
-      const { response } = await this.user.doRequest('POST', {
+      const { response, body } = await this.user.doRequest('POST', {
         url: `/project/${this.projectId}/settings/admin`,
         json: {
           publicAccessLevel: 'readOnly',
         },
       })
       expect(response.statusCode).to.equal(400)
+      expect(body.details[0].message).to.equal('unexpected access level')
       const project = await Project.findById(this.projectId).exec()
       expect(project.publicAccesLevel).to.equal('private')
     })

@@ -1,20 +1,15 @@
-const { fromError } = require('zod-validation-error')
-const { InvalidParamsError, InvalidRequestError } = require('./Errors')
+const { isZodErrorLike, fromError } = require('zod-validation-error')
 
 function createHandleValidationError(statusCode = 400) {
-  return (err, req, res, next) => {
-    if (err instanceof InvalidParamsError) {
-      res
-        .status(404)
-        .json({ error: fromError(err.zodError).toString(), statusCode: 404 })
-    } else if (err instanceof InvalidRequestError) {
-      res
-        .status(statusCode)
-        .json({ error: fromError(err.zodError).toString(), statusCode })
-    } else {
-      next(err)
-    }
-  }
+  return [
+    (err, req, res, next) => {
+      if (!isZodErrorLike(err)) {
+        return next(err)
+      }
+
+      res.status(statusCode).json({ ...fromError(err), statusCode })
+    },
+  ]
 }
 
 const handleValidationError = createHandleValidationError(400)

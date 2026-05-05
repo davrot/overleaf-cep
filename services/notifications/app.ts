@@ -13,10 +13,8 @@ import methodOverride from 'method-override'
 import { mongoClient } from './app/js/mongodb.js'
 import NotificationsController from './app/js/NotificationsController.ts'
 import HealthCheckController from './app/js/HealthCheckController.ts'
-import {
-  InvalidParamsError,
-  InvalidRequestError,
-} from '@overleaf/validation-tools'
+import { isZodErrorLike } from 'zod-validation-error'
+import { ParamsError } from '@overleaf/validation-tools'
 
 const app = express()
 
@@ -58,10 +56,10 @@ const handleApiError: ErrorRequestHandler = (
   next: NextFunction
 ) => {
   req.logger.addFields({ err })
-  if (err instanceof InvalidParamsError) {
+  if (err instanceof ParamsError) {
     req.logger.setLevel('warn')
     res.sendStatus(404)
-  } else if (err instanceof InvalidRequestError) {
+  } else if (isZodErrorLike(err)) {
     req.logger.setLevel('warn')
     res.sendStatus(400)
   } else {

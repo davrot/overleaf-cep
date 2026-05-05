@@ -2,7 +2,7 @@
 
 import { parseReq, z, zz } from '@overleaf/validation-tools'
 
-export { InvalidParamsError, parseReq, z, zz } from '@overleaf/validation-tools'
+export { ParamsError, parseReq, z, zz } from '@overleaf/validation-tools'
 
 export default {
   parseReq,

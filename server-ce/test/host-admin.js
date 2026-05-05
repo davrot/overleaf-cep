@@ -5,12 +5,8 @@ import { execFile as execFileCb } from 'node:child_process'
 import bodyParser from 'body-parser'
 import express from 'express'
 import YAML from 'js-yaml'
-import {
-  InvalidParamsError,
-  InvalidRequestError,
-  parseReq,
-  z,
-} from '@overleaf/validation-tools'
+import { isZodErrorLike } from 'zod-validation-error'
+import { ParamsError, parseReq, z } from '@overleaf/validation-tools'
 import { expressify } from '@overleaf/promise-utils'
 
 const execFile = promisify(execFileCb)
@@ -478,13 +474,12 @@ app.delete(
 )
 
 app.use((error, req, res, next) => {
-  if (error instanceof InvalidParamsError) {
+  if (error instanceof ParamsError) {
     res.status(404).json({ error })
-  } else if (error instanceof InvalidRequestError) {
-    res.status(400).json({ error: error.zodError })
-  } else {
-    next(error)
+  } else if (isZodErrorLike(error)) {
+    res.status(400).json({ error })
   }
+  next(error)
 })
 
 purgeDataDir()

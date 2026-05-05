@@ -54,7 +54,7 @@ describe('parseReq', () => {
             }),
           })
         )
-      ).toThrowError(expect.objectContaining({ name: 'InvalidParamsError' }))
+      ).toThrowError(expect.objectContaining({ name: 'ParamsError' }))
     })
 
     it('should throw an error containing issues if the schema is invalid', () => {
@@ -75,11 +75,9 @@ describe('parseReq', () => {
         )
       ).toThrowError(
         expect.objectContaining({
-          zodError: expect.objectContaining({
-            issues: expect.arrayContaining([
-              expect.objectContaining({ path: ['body', 'name'] }),
-            ]),
-          }),
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: ['body', 'name'] }),
+          ]),
         })
       )
     })

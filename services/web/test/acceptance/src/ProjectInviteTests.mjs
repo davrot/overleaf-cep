@@ -375,6 +375,11 @@ describe('ProjectInviteTests', function () {
                 return done(err)
               }
               expect(response.statusCode).to.equal(400)
+              expect(body.details).to.have.lengthOf(1)
+              expect(response.body.details[0].path).to.eql(['body', 'email'])
+              expect(response.body.details[0].message).to.equal(
+                'Invalid input: expected string, received object'
+              )
               done()
             }
           )
@@ -399,6 +404,14 @@ describe('ProjectInviteTests', function () {
                 return done(err)
               }
               expect(response.statusCode).to.equal(400)
+              expect(body.details).to.have.lengthOf(1)
+              expect(response.body.details[0].path).to.eql([
+                'body',
+                'privileges',
+              ])
+              expect(response.body.details[0].message).to.equal(
+                'Invalid option: expected one of "readOnly"|"readAndWrite"|"review"'
+              )
               done()
             }
           )

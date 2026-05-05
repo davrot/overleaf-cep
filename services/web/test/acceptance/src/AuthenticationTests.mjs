@@ -176,12 +176,31 @@ describe('Authentication', function () {
       }
     })
     it('should return 400 with bad email (missing @)', async function () {
-      const { statusCode } = await tryLoginWithEmail('foo')
+      const { statusCode, body } = await tryLoginWithEmail('foo')
       expect(statusCode).to.equal(400)
+      expect(body).to.deep.equal({
+        name: 'ZodValidationError',
+        details: [
+          { code: 'custom', path: [], message: 'Invalid email address' },
+        ],
+        statusCode: 400,
+      })
     })
     it('should return 400 with bad email (number)', async function () {
-      const { statusCode } = await tryLoginWithEmail(1)
+      const { statusCode, body } = await tryLoginWithEmail(1)
       expect(statusCode).to.equal(400)
+      expect(body).to.deep.equal({
+        name: 'ZodValidationError',
+        details: [
+          {
+            expected: 'string',
+            code: 'invalid_type',
+            path: [],
+            message: 'Invalid input: expected string, received number',
+          },
+        ],
+        statusCode: 400,
+      })
     })
   })
 })

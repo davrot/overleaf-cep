@@ -685,7 +685,7 @@ describe('SubscriptionController', function () {
       ctx.next = sinon.stub()
       await expect(
         ctx.SubscriptionController.pauseSubscription(ctx.req, ctx.res, ctx.next)
-      ).to.be.rejectedWith('Invalid request parameters')
+      ).to.be.rejectedWith('Invalid params')
     })
 
     it('should throw an error if an invalid pause length is provided', async function (ctx) {

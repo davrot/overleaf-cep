@@ -2,7 +2,6 @@ import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
 import { callbackify } from '@overleaf/promise-utils'
 import Settings from '@overleaf/settings'
 import EmailHelper from '../Helpers/EmailHelper.mjs'
-import { InvalidRequestError } from '@overleaf/validation-tools'
 
 const rateLimiterLoginEmail = new RateLimiter(
   'login',
@@ -13,11 +12,7 @@ const rateLimiterLoginEmail = new RateLimiter(
 )
 
 async function processLoginRequest(email) {
-  try {
-    email = EmailHelper.emailSchema.parse(email)
-  } catch (err) {
-    throw new InvalidRequestError(err)
-  }
+  email = EmailHelper.emailSchema.parse(email)
   try {
     await rateLimiterLoginEmail.consume(email, 1, {
       method: 'email',
