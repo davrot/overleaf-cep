@@ -1429,6 +1429,88 @@ describe('SubscriptionController', function () {
     })
   })
 
+  describe('makeChangePreview', function () {
+    let pendingChange, baseSubscription, subscriptionChange
+
+    beforeEach(function (ctx) {
+      pendingChange = {
+        nextPlanCode: 'student',
+        nextPlanName: 'Student',
+        nextPlanPrice: 1000,
+        nextAddOns: [],
+      }
+
+      baseSubscription = {
+        currency: 'USD',
+        netTerms: 0,
+        periodEnd: new Date('2027-04-29'),
+        taxRate: 0,
+        pendingChange,
+      }
+
+      subscriptionChange = {
+        subscription: baseSubscription,
+        nextPlanCode: 'professional',
+        nextPlanName: 'Professional',
+        nextPlanPrice: 2000,
+        nextAddOns: [],
+        immediateCharge: {
+          subtotal: 0,
+          tax: 0,
+          total: 0,
+          discount: 0,
+          lineItems: [],
+        },
+      }
+    })
+
+    it('uses subscriptionChange plan for future invoice when type is premium-subscription', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'premium-subscription',
+          plan: { code: 'professional', name: 'Professional' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+
+    it('uses subscriptionChange plan for future invoice when type is group-plan-upgrade', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        { type: 'group-plan-upgrade', prevPlan: { name: 'Standard' } },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+
+    it('uses pendingChange plan for future invoice when type is add-on-purchase', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'add-on-purchase',
+          addOn: { code: 'ai-assist', name: 'AI Assist' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Student')
+      expect(preview.nextInvoice.plan.amount).to.equal(1000)
+    })
+
+    it('uses subscriptionChange plan for future invoice when there is no pending change', function (ctx) {
+      baseSubscription.pendingChange = undefined
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'premium-subscription',
+          plan: { code: 'professional', name: 'Professional' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+  })
+
   describe('previewAddonPurchase', function () {
     beforeEach(function (ctx) {
       ctx.req = new MockRequest(vi)

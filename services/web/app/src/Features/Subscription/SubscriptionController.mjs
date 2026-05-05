@@ -1229,11 +1229,23 @@ function makeChangePreview(
       }
     }
 
+    // If the current change is a plan change, it overrides the pending scheduled
+    // plan change — use the new plan for future payments, not the stale pending one.
+    const isPlanChange =
+      subscriptionChangeDescription.type === 'premium-subscription' ||
+      subscriptionChangeDescription.type === 'group-plan-upgrade'
+
     futureInvoiceChange = new PaymentProviderSubscriptionChange({
       subscription,
-      nextPlanCode: pendingChange.nextPlanCode,
-      nextPlanName: pendingChange.nextPlanName,
-      nextPlanPrice: pendingChange.nextPlanPrice,
+      nextPlanCode: isPlanChange
+        ? subscriptionChange.nextPlanCode
+        : pendingChange.nextPlanCode,
+      nextPlanName: isPlanChange
+        ? subscriptionChange.nextPlanName
+        : pendingChange.nextPlanName,
+      nextPlanPrice: isPlanChange
+        ? subscriptionChange.nextPlanPrice
+        : pendingChange.nextPlanPrice,
       nextAddOns: mergedAddOns,
     })
   } else {
