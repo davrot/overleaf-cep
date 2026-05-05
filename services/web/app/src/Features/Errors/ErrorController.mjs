@@ -1,11 +1,14 @@
-import { isZodErrorLike, fromZodError } from 'zod-validation-error'
+import { fromZodError } from 'zod-validation-error'
+import {
+  InvalidRequestError,
+  InvalidParamsError,
+} from '@overleaf/validation-tools'
 import Errors, { NotFoundError } from './Errors.js'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import SamlLogHandler from '../SamlLog/SamlLogHandler.mjs'
 import HttpErrorHandler from './HttpErrorHandler.mjs'
 import { plainTextResponse } from '../../infrastructure/Response.mjs'
 import { expressifyErrorHandler } from '@overleaf/promise-utils'
-import { ParamsError } from '@overleaf/validation-tools'
 
 function notFound(req, res) {
   res.status(404)
@@ -42,7 +45,7 @@ async function handleError(error, req, res, next) {
     if (shouldSendErrorResponse) {
       notFound(req, res)
     }
-  } else if (error instanceof ParamsError) {
+  } else if (error instanceof InvalidParamsError) {
     req.logger.setLevel('warn')
     if (shouldSendErrorResponse) {
       notFound(req, res)
@@ -104,11 +107,11 @@ async function handleError(error, req, res, next) {
       res.status(400)
       plainTextResponse(res, error.message)
     }
-  } else if (isZodErrorLike(error)) {
+  } else if (error instanceof InvalidRequestError) {
     req.logger.setLevel('warn')
     res.status(400)
     if (shouldSendErrorResponse) {
-      const validationError = fromZodError(error)
+      const validationError = fromZodError(error.zodError)
       res.render('general/400', { message: validationError.message })
     }
   } else {
@@ -126,7 +129,10 @@ async function handleError(error, req, res, next) {
 
 function handleApiError(err, req, res, next) {
   req.logger.addFields({ err })
-  if (err instanceof Errors.NotFoundError || err instanceof ParamsError) {
+  if (
+    err instanceof Errors.NotFoundError ||
+    err instanceof InvalidParamsError
+  ) {
     req.logger.setLevel('warn')
     res.sendStatus(404)
   } else if (
@@ -141,7 +147,7 @@ function handleApiError(err, req, res, next) {
   } else if (err instanceof Errors.ForbiddenError) {
     req.logger.setLevel('warn')
     res.sendStatus(403)
-  } else if (isZodErrorLike(err)) {
+  } else if (err instanceof InvalidRequestError) {
     req.logger.setLevel('warn')
     res.sendStatus(400)
   } else {
