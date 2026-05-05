@@ -4,6 +4,11 @@
   .plans-title-section {
     padding-top: var(--spacing-15);
     padding-bottom: var(--spacing-13);
+
+    .geo-banner-container {
+      margin-top: 0;
+      margin-bottom: var(--spacing-15);
+    }
   }
 
   // Period toggle switch — used only by _plans-period-toggle.pug
