@@ -16,7 +16,7 @@ import getMeta from '@/utils/meta'
 import PdfClearCacheButton from '@/features/pdf-preview/components/pdf-clear-cache-button'
 import PdfDownloadFilesButton from '@/features/pdf-preview/components/pdf-download-files-button'
 import RollingBuildSelectedReminder from './rolling-build-selected-reminder'
-import AiPaywallNotification from '@/shared/components/ai-paywall-notification'
+import ErrorAssistantAiPaywallNotification from './error-assistant-ai-paywall-notification'
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
 
 // todo: quota clean-up remove unneeded old paywall component
@@ -84,7 +84,7 @@ function ErrorLogs({
       {logsComponents.map(({ import: { default: Component }, path }) => (
         <Component key={path} />
       ))}
-      <AiPaywallNotification featureLocation="errorAssist" />
+      <ErrorAssistantAiPaywallNotification />
       <TabContent className="error-logs new-error-logs">
         <div className="logs-pane-content">
           <RollingBuildSelectedReminder />

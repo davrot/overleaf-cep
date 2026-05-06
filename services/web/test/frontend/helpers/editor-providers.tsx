@@ -277,23 +277,31 @@ export function makeEditorProvider({
   cobranding = undefined,
   renameProject = () => {},
   isRestrictedTokenMember,
+  hasSuggestionsLeft = false,
+  hasTokensLeft = false,
+  premiumSuggestionResetDate = new Date(),
+  tokenResetDate = new Date(),
 }: {
   isProjectOwner?: boolean
   cobranding?: Cobranding
   renameProject?: () => void
   isRestrictedTokenMember?: boolean
+  hasSuggestionsLeft?: boolean
+  hasTokensLeft?: boolean
+  premiumSuggestionResetDate?: Date
+  tokenResetDate?: Date
 } = {}) {
   const EditorProvider: FC<PropsWithChildren> = ({ children }) => {
     const value = {
       isProjectOwner,
       renameProject,
       isPendingEditor: false,
-      hasSuggestionsLeft: false,
-      premiumSuggestionResetDate: new Date(),
-      hasTokensLeft: false,
+      hasSuggestionsLeft,
+      premiumSuggestionResetDate,
+      hasTokensLeft,
       tokensLeft: 0,
       setTokensLeft: () => {},
-      tokenResetDate: new Date(),
+      tokenResetDate,
       setTokenResetDate: () => {},
       suggestionsLeft: 0,
       setSuggestionsLeft: () => {},
