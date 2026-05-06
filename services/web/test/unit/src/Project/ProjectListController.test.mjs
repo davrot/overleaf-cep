@@ -557,6 +557,27 @@ describe('ProjectListController', function () {
       await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
     })
 
+    it('should not redirect to domain capture page when no domain capture groups found', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.SplitTestHandler.promises.getAssignment
+        .withArgs(ctx.req, ctx.res, 'domain-capture-redirect')
+        .resolves({ variant: 'enabled' })
+      ctx.Modules.promises.hooks.fire
+        .withArgs('findDomainCaptureGroupsUserCouldBePartOf', ctx.user._id)
+        .resolves([[]])
+      let redirectCalled = false
+      ctx.res.redirect = () => {
+        redirectCalled = true
+      }
+      let redirectTo = ''
+      ctx.res.render = (pageName, opts) => {
+        redirectTo = pageName
+      }
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+      expect(redirectCalled).to.be.false
+      expect(redirectTo).to.equal('project/list-react')
+    })
+
     describe('when user linked to SSO', function () {
       const linkedEmail = 'picard@starfleet.com'
       const universityName = 'Starfleet'
