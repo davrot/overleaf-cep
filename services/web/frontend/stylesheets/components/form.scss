@@ -471,6 +471,10 @@ input.form-control[type='search'] {
   background-color: var(--input-field-bg);
   border-color: var(--input-field-border-color);
 
+  &.is-invalid {
+    border-color: var(--bs-form-invalid-border-color);
+  }
+
   &::placeholder {
     color: var(--input-placeholder-content);
   }
