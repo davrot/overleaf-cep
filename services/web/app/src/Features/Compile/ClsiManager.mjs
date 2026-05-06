@@ -82,23 +82,25 @@ async function clearBaseHistoryVersion(projectId, userId) {
   await rclient.del(_baseHistoryVersionKey(projectId, userId))
 }
 
-function getNewCompileBackendClass(projectId, compileBackendClass) {
-  // Sample x% of projects to move up one bracket.
-  if (
-    SplitTestHandler.getPercentile(projectId, 'double-compile', 'release') >=
-    Settings.apis.clsi_new.sample
-  ) {
-    return null
-  }
+function getDoubleCompilePercentile(projectId) {
+  return SplitTestHandler.getPercentile(projectId, 'double-compile', 'release')
+}
 
+function getNewCompileBackendClass(projectId, compileBackendClass) {
+  let cfg
   switch (compileBackendClass) {
     case 'c3d':
-      return 'n4'
+      cfg = Settings.apis.clsi_new.doubleCompileFree
+      break
     case 'c4d':
-      return 'n4'
+      cfg = Settings.apis.clsi_new.doubleCompilePremium
+      break
     default:
       throw new Error('unknown ?compileBackendClass')
   }
+  if (!cfg.backendClass || !cfg.sample) return null
+  if (getDoubleCompilePercentile(projectId) >= cfg.sample) return null
+  return cfg.backendClass
 }
 
 /**

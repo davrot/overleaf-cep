@@ -170,7 +170,14 @@ describe('ClsiManager', function () {
           submissionBackendClass: 'c3d',
         },
         clsi_new: {
-          sample: 100,
+          doubleCompileFree: {
+            sample: 100,
+            backendClass: 'n4',
+          },
+          doubleCompilePremium: {
+            sample: 100,
+            backendClass: 'n4d',
+          },
         },
       },
       enablePdfCaching: true,
@@ -1033,9 +1040,93 @@ describe('ClsiManager', function () {
       })
     })
 
-    describe('when a new backend is configured', function () {
+    describe('when a new backend is configured (free)', function () {
       beforeEach(async function (ctx) {
-        ctx.Settings.apis.clsi_new = { url: 'https://compiles.somewhere.test' }
+        ctx.Settings.apis.clsi_new.url = 'https://compiles.somewhere.test'
+        await ctx.ClsiManager.promises.sendRequest(
+          ctx.project._id,
+          ctx.user_id,
+          {
+            compileBackendClass: 'c3d',
+            compileGroup: 'standard',
+          }
+        )
+        // wait for the background task to finish
+        await setTimeout(0)
+      })
+
+      it('makes a request to the new backend', function (ctx) {
+        expect(ctx.FetchUtils.fetchStringWithResponse).to.have.been.calledTwice
+        expect(ctx.FetchUtils.fetchStringWithResponse).to.have.been.calledWith(
+          sinon.match(
+            url =>
+              url.host === CLSI_HOST &&
+              url.pathname ===
+                `/project/${ctx.project._id}/user/${ctx.user_id}/compile` &&
+              url.searchParams.get('compileBackendClass') === 'c3d' &&
+              url.searchParams.get('compileGroup') === 'standard'
+          )
+        )
+        expect(ctx.FetchUtils.fetchStringWithResponse).to.have.been.calledWith(
+          sinon.match(
+            url =>
+              url.toString() ===
+              `${ctx.Settings.apis.clsi_new.url}/project/${ctx.project._id}/user/${ctx.user_id}/compile?compileBackendClass=n4&compileGroup=standard`
+          )
+        )
+      })
+      it('should record an event', function (ctx) {
+        expect(
+          ctx.AnalyticsManager.recordEventForUserInBackground
+        ).to.have.been.calledWith(ctx.user_id, 'double-compile-result', {
+          projectId: 'project-id',
+          compileBackendClass: 'c3d',
+          newCompileBackendClass: 'n4',
+          status: 'success',
+          compileTime: 1337,
+          newCompileTime: 1337,
+          clsiServerId: 'newserver',
+          newClsiServerId: 'clsi-server-id',
+          pdfSize: 42,
+          newPdfSize: 42,
+        })
+      })
+    })
+
+    describe('when a new backend is configured with low sample', function () {
+      beforeEach(async function (ctx) {
+        ctx.Settings.apis.clsi_new.url = 'https://compiles.somewhere.test'
+        ctx.Settings.apis.clsi_new.doubleCompileFree.sample = 0
+        await ctx.ClsiManager.promises.sendRequest(
+          ctx.project._id,
+          ctx.user_id,
+          {
+            compileBackendClass: 'c3d',
+            compileGroup: 'standard',
+          }
+        )
+        // wait for the background task to finish
+        await setTimeout(0)
+      })
+
+      it('does not make a request to the new backend', function (ctx) {
+        expect(ctx.FetchUtils.fetchStringWithResponse).to.have.been.calledOnce
+        expect(ctx.FetchUtils.fetchStringWithResponse).to.have.been.calledWith(
+          sinon.match(
+            url =>
+              url.host === CLSI_HOST &&
+              url.pathname ===
+                `/project/${ctx.project._id}/user/${ctx.user_id}/compile` &&
+              url.searchParams.get('compileBackendClass') === 'c3d' &&
+              url.searchParams.get('compileGroup') === 'standard'
+          )
+        )
+      })
+    })
+
+    describe('when a new backend is configured (premium)', function () {
+      beforeEach(async function (ctx) {
+        ctx.Settings.apis.clsi_new.url = 'https://compiles.somewhere.test'
         await ctx.ClsiManager.promises.sendRequest(
           ctx.project._id,
           ctx.user_id,
@@ -1064,7 +1155,7 @@ describe('ClsiManager', function () {
           sinon.match(
             url =>
               url.toString() ===
-              `${ctx.Settings.apis.clsi_new.url}/project/${ctx.project._id}/user/${ctx.user_id}/compile?compileBackendClass=n4&compileGroup=priority`
+              `${ctx.Settings.apis.clsi_new.url}/project/${ctx.project._id}/user/${ctx.user_id}/compile?compileBackendClass=n4d&compileGroup=priority`
           )
         )
       })
@@ -1074,7 +1165,7 @@ describe('ClsiManager', function () {
         ).to.have.been.calledWith(ctx.user_id, 'double-compile-result', {
           projectId: 'project-id',
           compileBackendClass: 'c4d',
-          newCompileBackendClass: 'n4',
+          newCompileBackendClass: 'n4d',
           status: 'success',
           compileTime: 1337,
           newCompileTime: 1337,
@@ -1239,7 +1330,7 @@ describe('ClsiManager', function () {
 
     describe('when a new backend is configured', function () {
       beforeEach(async function (ctx) {
-        ctx.Settings.apis.clsi_new = { url: 'https://compiles.somewhere.test' }
+        ctx.Settings.apis.clsi_new.url = 'https://compiles.somewhere.test'
         await ctx.ClsiManager.promises.deleteAuxFiles(
           ctx.project._id,
           ctx.user_id,
@@ -1256,7 +1347,7 @@ describe('ClsiManager', function () {
         ).to.have.been.calledWith(ctx.project._id, ctx.user_id, 'c4d')
         expect(
           ctx.ClsiCookieManager.promises.clearServerId
-        ).to.have.been.calledWith(ctx.project._id, ctx.user_id, 'n4')
+        ).to.have.been.calledWith(ctx.project._id, ctx.user_id, 'n4d')
       })
 
       it('should forward delete request', function (ctx) {
@@ -1278,7 +1369,7 @@ describe('ClsiManager', function () {
               url.host === 'compiles.somewhere.test' &&
               url.pathname ===
                 `/project/${ctx.project._id}/user/${ctx.user_id}` &&
-              url.searchParams.get('compileBackendClass') === 'n4' &&
+              url.searchParams.get('compileBackendClass') === 'n4d' &&
               url.searchParams.get('compileGroup') === 'priority' &&
               !url.searchParams.has('clsiserverid')
           ),
@@ -1351,7 +1442,7 @@ describe('ClsiManager', function () {
 
     describe('when a new backend is configured', function () {
       beforeEach(async function (ctx) {
-        ctx.Settings.apis.clsi_new = { url: 'https://compiles.somewhere.test' }
+        ctx.Settings.apis.clsi_new.url = 'https://compiles.somewhere.test'
         await ctx.ClsiManager.promises.wordCount(
           ctx.project._id,
           ctx.user_id,
@@ -1375,7 +1466,7 @@ describe('ClsiManager', function () {
           sinon.match(
             url =>
               url.toString() ===
-              `${ctx.Settings.apis.clsi_new.url}/project/${ctx.project._id}/user/${ctx.user_id}/wordcount?compileBackendClass=n4&compileGroup=priority&file=main.tex&image=mock-image-name`
+              `${ctx.Settings.apis.clsi_new.url}/project/${ctx.project._id}/user/${ctx.user_id}/wordcount?compileBackendClass=n4d&compileGroup=priority&file=main.tex&image=mock-image-name`
           )
         )
       })
