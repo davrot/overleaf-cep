@@ -273,7 +273,7 @@ describe('<UserNotifications />', function () {
       screen.getByText(/it looks like you’re at/i)
       screen.getByText(/did you know that/i)
       screen.getByText(
-        /add an institutional email address to claim your features/i
+        /add your university email address to see if you qualify/i
       )
 
       const addAffiliation = screen.getByRole('link', {
@@ -836,7 +836,7 @@ describe('<UserNotifications />', function () {
         const alert = await screen.findByRole('alert')
         const email = unconfirmedCommonsUserData.email
         expect(alert.textContent).to.contain(
-          'You are one step away from accessing Overleaf Pro features'
+          'You are one step away from accessing Overleaf premium features'
         )
         expect(alert.textContent).to.contain(
           `Overleaf has an Overleaf subscription. Click the confirmation link sent to ${email} to upgrade to Overleaf Pro`
