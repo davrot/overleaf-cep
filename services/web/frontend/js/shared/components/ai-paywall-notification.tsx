@@ -91,6 +91,8 @@ function AiPaywallNotification({
           featureLocation === 'workbench' ? chattingMessage : assistMessage
         }
         isDismissible={false}
+        customIcon={null}
+        className="ai-paywall-notification"
       />
     )
   }
@@ -141,7 +143,7 @@ function AiPaywallNotification({
             source={featureLocation}
           />
         }
-        className="ai-upgrade-paywall-btn"
+        className="ai-upgrade-paywall-btn ai-paywall-notification"
       />
     </>
   )
@@ -173,6 +175,7 @@ function GroupsPaywall({
         content={message}
         isDismissible={false}
         customIcon={null}
+        className="ai-paywall-notification"
       />
     </>
   )
@@ -204,6 +207,7 @@ function CommonsPaywall({
         content={message}
         isDismissible={false}
         customIcon={null}
+        className="ai-paywall-notification"
       />
     </>
   )
@@ -243,6 +247,8 @@ function FairUseLimit({
         title={title}
         content={message}
         isDismissible={false}
+        customIcon={null}
+        className="ai-paywall-notification"
       />
     </>
   )

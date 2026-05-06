@@ -47,6 +47,10 @@
 }
 
 :root {
+  --notification-ai-paywall-background: var(--bg-info-03);
+  --notification-ai-paywall-color: var(--content-primary);
+  --notification-ai-paywall-border-color: var(--blue-60);
+
   @include light-notification;
 
   // Until we roll out dark mode notifications, make sure we show buttons in
@@ -56,6 +60,10 @@
   }
 
   @include theme('default') {
+    --notification-ai-paywall-background: var(--bg-dark-secondary);
+    --notification-ai-paywall-color: var(--content-primary-dark);
+    --notification-ai-paywall-border-color: var(--blue-30);
+
     .project-ds-nav-page {
       .notification {
         @include dark-notification;
@@ -336,4 +344,12 @@
 // Only apply bottom margin to form messages when it is non-empty
 .form-messages-bottom-margin > :last-child {
   margin-bottom: var(--spacing-06);
+}
+
+.ai-paywall-notification {
+  // Override notification styles. !important is needed so that it binds
+  // stronger than the notification variant styles.
+  border: 2px solid var(--notification-ai-paywall-border-color) !important;
+  background-color: var(--notification-ai-paywall-background) !important;
+  color: var(--notification-ai-paywall-color) !important;
 }
