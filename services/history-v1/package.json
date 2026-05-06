@@ -34,7 +34,7 @@
     "http-status": "^1.4.2",
     "jsonwebtoken": "^9.0.3",
     "knex": "^2.4.0",
-    "lodash": "^4.17.19",
+    "lodash": "^4.18.1",
     "mongodb": "6.12.0",
     "overleaf-editor-core": "workspace:*",
     "p-limit": "^6.2.0",

@@ -92,7 +92,7 @@
     "@contentful/rich-text-types": "16.0.2",
     "i18next": "23.10.0",
     "sanitize-html": "2.12.1",
-    "lodash": "4.17.23",
+    "lodash": "4.18.1",
     "express-session": "1.17.2",
     "ioredis": "4.27.11",
     "webpack": "5.98.0",

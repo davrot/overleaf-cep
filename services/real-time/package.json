@@ -32,7 +32,7 @@
     "cookie-parser": "^1.4.6",
     "express": "4.22.1",
     "express-session": "^1.17.1",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "proxy-addr": "^2.0.7",
     "socket.io": "github:overleaf/socket.io#0.9.19-overleaf-12",
     "socket.io-client": "github:overleaf/socket.io-client#0.9.17-overleaf-5",

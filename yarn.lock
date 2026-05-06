@@ -6272,7 +6272,7 @@ __metadata:
   dependencies:
     chai: "npm:^4.3.6"
     chai-as-promised: "npm:^7.1.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -6310,7 +6310,7 @@ __metadata:
     east: "npm:^2.0.3"
     express: "npm:4.22.1"
     json2csv: "npm:^4.5.4"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     minimist: "npm:^1.2.7"
     mixpanel: "npm:^0.13.0"
     mocha: "npm:^11.1.0"
@@ -6433,7 +6433,7 @@ __metadata:
     dockerode: "npm:^4.0.9"
     express: "npm:4.22.1"
     form-data: "npm:^4.0.5"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -6524,7 +6524,7 @@ __metadata:
     chai: "npm:^4.3.6"
     chai-as-promised: "npm:^7.1.1"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -6563,7 +6563,7 @@ __metadata:
     cluster-key-slot: "npm:^1.0.5"
     diff-match-patch: "overleaf/diff-match-patch#89805f9c671a77a263fc53461acd62aa7498f688"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     minimist: "npm:^1.2.8"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
@@ -6585,7 +6585,7 @@ __metadata:
   dependencies:
     "@typescript-eslint/parser": "npm:^8.50.0"
     eslint: "npm:^8.51.0"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
   languageName: unknown
   linkType: soft
 
@@ -6599,7 +6599,7 @@ __metadata:
     chai: "npm:^4.3.6"
     chai-as-promised: "npm:^7.1.1"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -6669,7 +6669,7 @@ __metadata:
     chai: "npm:^4.3.6"
     chai-as-promised: "npm:^7.1.1"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -6897,7 +6897,7 @@ __metadata:
     diff-match-patch: "overleaf/diff-match-patch#89805f9c671a77a263fc53461acd62aa7498f688"
     esmock: "npm:^2.7.3"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.20"
+    lodash: "npm:^4.18.1"
     minimist: "npm:^1.2.8"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
@@ -6963,7 +6963,7 @@ __metadata:
     cookie-signature: "npm:^1.1.0"
     express: "npm:4.22.1"
     express-session: "npm:^1.17.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -7090,7 +7090,7 @@ __metadata:
     chai-as-promised: "npm:^7.1.1"
     express: "npm:4.22.1"
     install: "npm:^0.13.0"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     marked: "npm:^4.1.0"
     method-override: "npm:^3.0.0"
     mocha: "npm:^11.1.0"
@@ -7126,7 +7126,7 @@ __metadata:
     express: "npm:4.22.1"
     express-basic-auth: "npm:^1.2.0"
     ioredis: "npm:^4.16.0"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     lru-cache: "npm:^4.1.5"
     minimatch: "npm:^10.2.2"
     minimist: "npm:^1.2.8"
@@ -7164,7 +7164,7 @@ __metadata:
     chai-as-promised: "npm:^7.1.1"
     esmock: "npm:^2.7.3"
     express: "npm:4.22.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.18.1"
     lru-cache: "npm:^5.1.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
@@ -7198,7 +7198,7 @@ __metadata:
     express: "npm:4.22.1"
     express-basic-auth: "npm:^1.2.0"
     ioredis: "npm:^4.16.0"
-    lodash: "npm:^4.17.15"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -7449,7 +7449,7 @@ __metadata:
     jsonwebtoken: "npm:^9.0.3"
     katex: "npm:^0.16.28"
     knip: "npm:^5.64.1"
-    lodash: "npm:^4.17.19"
+    lodash: "npm:^4.18.1"
     lottie-react: "npm:^2.4.1"
     lru-cache: "npm:^7.10.1"
     marked: "npm:^4.1.0"
@@ -23116,10 +23116,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lodash@npm:4.17.23":
-  version: 4.17.23
-  resolution: "lodash@npm:4.17.23"
-  checksum: 10c0/1264a90469f5bb95d4739c43eb6277d15b6d9e186df4ac68c3620443160fc669e2f14c11e7d8b2ccf078b81d06147c01a8ccced9aab9f9f63d50dcf8cace6bf6
+"lodash@npm:4.18.1":
+  version: 4.18.1
+  resolution: "lodash@npm:4.18.1"
+  checksum: 10c0/757228fc68805c59789e82185135cf85f05d0b2d3d54631d680ca79ec21944ec8314d4533639a14b8bcfbd97a517e78960933041a5af17ecb693ec6eecb99a27
   languageName: node
   linkType: hard
 
@@ -25903,7 +25903,7 @@ __metadata:
     "@types/path-browserify": "npm:^1.0.3"
     chai: "npm:^3.3.0"
     check-types: "npm:^5.1.0"
-    lodash: "npm:^4.17.19"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
@@ -25951,7 +25951,7 @@ __metadata:
     http-status: "npm:^1.4.2"
     jsonwebtoken: "npm:^9.0.3"
     knex: "npm:^2.4.0"
-    lodash: "npm:^4.17.19"
+    lodash: "npm:^4.18.1"
     mocha: "npm:^11.1.0"
     mocha-junit-reporter: "npm:^2.2.1"
     mocha-multi-reporters: "npm:^1.5.1"
