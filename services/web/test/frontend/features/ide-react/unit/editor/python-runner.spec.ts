@@ -2,8 +2,10 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import {
   PythonRunner,
+  PythonRunnerState,
   DEFAULT_STATE,
   ExecutionContext,
+  type FileUploader,
 } from '@/features/ide-react/components/editor/python/python-runner'
 import { WorkerMock, createWorker } from './worker-mock'
 
@@ -14,6 +16,7 @@ function createRunner(
   overrides: {
     fileId?: string
     getExecutionContext?: () => Promise<ExecutionContext | null>
+    fileUploader?: FileUploader
   } = {}
 ) {
   const fileId = overrides.fileId ?? FILE_ID
@@ -25,11 +28,14 @@ function createRunner(
         files: [{ relativePath: 'main.py', content: 'print("hello")' }],
       }))
 
+  const fileUploader = overrides.fileUploader ?? sinon.stub().resolves([])
+
   const runner = new PythonRunner(
     fileId,
     BASE_ASSET_PATH,
     getExecutionContext,
-    createWorker
+    createWorker,
+    fileUploader
   )
   return runner
 }
@@ -40,6 +46,24 @@ function initAndLoad(runner: PythonRunner) {
   worker.emitMessage({ type: 'listening' })
   worker.emitMessage({ type: 'loaded' })
   return worker
+}
+
+function waitForState(
+  runner: PythonRunner,
+  predicate: (state: PythonRunnerState) => boolean
+): Promise<PythonRunnerState> {
+  return new Promise(resolve => {
+    if (predicate(runner.getState())) {
+      resolve(runner.getState())
+      return
+    }
+    const unsubscribe = runner.subscribe(() => {
+      if (predicate(runner.getState())) {
+        unsubscribe()
+        resolve(runner.getState())
+      }
+    })
+  })
 }
 
 describe('PythonRunner', function () {
@@ -110,9 +134,12 @@ describe('PythonRunner', function () {
         type: 'run-code-result',
         fileId: FILE_ID,
         executionId: runMsg.executionId,
+        success: true,
         outputs: [],
+        outputFiles: [],
       })
 
+      await waitForState(runner, s => s.status === 'finished')
       expect(runner.getState().status).to.equal('finished')
     })
 
@@ -133,7 +160,9 @@ describe('PythonRunner', function () {
         type: 'run-code-result',
         fileId: FILE_ID,
         executionId: runMsg.executionId,
+        success: true,
         outputs: [],
+        outputFiles: [],
       })
       expect(runner.getState().output).to.deep.equal([
         { stream: 'stdout', line: 'first run output' },

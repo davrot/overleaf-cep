@@ -5,6 +5,12 @@ import { v4 as uuid } from 'uuid'
 import { debugConsole } from '@/utils/debugging'
 import { PyodideWorkerClient } from './pyodide-worker-client'
 import type { OutputStream } from './pyodide-worker-messages'
+import type {
+  BatchUploadItem,
+  UploadResult,
+} from '@/infrastructure/batch-file-uploader'
+
+export type FileUploader = (items: BatchUploadItem[]) => Promise<UploadResult[]>
 
 const MAX_OUTPUT_LINES = 100
 
@@ -45,6 +51,8 @@ export class PythonRunner {
   private readonly baseAssetPath: string
   private readonly createWorker: () => Worker
   private readonly getExecutionContext: () => Promise<ExecutionContext | null>
+  private readonly fileUploader: FileUploader
+
   private listeners = new Set<Listener>()
 
   private activeExecutionId: string | null = null
@@ -54,12 +62,14 @@ export class PythonRunner {
     fileId: string,
     baseAssetPath: string,
     getExecutionContext: () => Promise<ExecutionContext | null>,
-    createWorker: () => Worker
+    createWorker: () => Worker,
+    fileUploader: FileUploader
   ) {
     this.fileId = fileId
     this.baseAssetPath = baseAssetPath
     this.createWorker = createWorker
     this.getExecutionContext = getExecutionContext
+    this.fileUploader = fileUploader
   }
 
   subscribe = (listener: Listener): (() => void) => {
@@ -100,6 +110,7 @@ export class PythonRunner {
     this.client = new PyodideWorkerClient({
       baseAssetPath: this.baseAssetPath,
       createWorker: this.createWorker,
+      fileUploader: this.fileUploader,
       onLifecycle: event => {
         switch (event.type) {
           case 'loaded':
@@ -111,15 +122,17 @@ export class PythonRunner {
             this.updateState({ status: 'errored', error: event.error })
             return
 
-          case 'run-finished':
+          case 'run-finished': {
             if (
               event.fileId !== this.fileId ||
               this.activeExecutionId !== event.executionId
             ) {
               return
             }
+
             this.activeExecutionId = null
             this.updateState({ status: 'finished' })
+          }
         }
       },
       onOutput: (stream, line, fileId, executionId) => {

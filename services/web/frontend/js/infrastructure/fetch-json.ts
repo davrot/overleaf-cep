@@ -5,6 +5,7 @@
 // - parse JSON response body, unless response is empty
 import OError from '@overleaf/o-error'
 import getMeta from '@/utils/meta'
+import { getErrorMessageForStatusCode } from './http-status-messages'
 
 type FetchPath = string
 // Custom config types are merged with `fetch`s RequestInit type
@@ -27,25 +28,6 @@ export function putJSON<T = any>(path: FetchPath, options?: FetchConfig) {
 
 export function deleteJSON<T = any>(path: FetchPath, options?: FetchConfig) {
   return fetchJSON<T>(path, { ...options, method: 'DELETE' })
-}
-
-function getErrorMessageForStatusCode(statusCode?: number) {
-  if (!statusCode) {
-    return 'Unknown Error'
-  }
-
-  const statusCodes: { readonly [K: number]: string } = {
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    429: 'Too Many Requests',
-    500: 'Internal Server Error',
-    502: 'Bad Gateway',
-    503: 'Service Unavailable',
-  }
-
-  return statusCodes[statusCode] ?? `Unexpected Error: ${statusCode}`
 }
 
 export class FetchError extends OError {
