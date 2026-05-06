@@ -283,6 +283,10 @@ describe('SubscriptionController', function () {
           res.status(400)
           res.json({ message })
         }),
+        forbidden: sinon.stub().callsFake((req, res, message) => {
+          res.status(403)
+          res.json({ message })
+        }),
       }),
     }))
 
@@ -679,6 +683,12 @@ describe('SubscriptionController', function () {
   })
 
   describe('pauseSubscription', function () {
+    beforeEach(function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment
+        .withArgs(sinon.match.any, sinon.match.any, 'pause-subscription')
+        .resolves({ variant: 'enabled' })
+    })
+
     it('should throw an error if no pause length is provided', async function (ctx) {
       ctx.res = new MockResponse(vi)
       ctx.req = new MockRequest(vi)
@@ -712,6 +722,25 @@ describe('SubscriptionController', function () {
         ctx.next
       )
       expect(ctx.res.statusCode).to.equal(200)
+    })
+
+    it('should return a 403 when the pause-subscription feature flag is not enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment
+        .withArgs(sinon.match.any, sinon.match.any, 'pause-subscription')
+        .resolves({ variant: 'default' })
+      ctx.res = new MockResponse(vi)
+      ctx.req = new MockRequest(vi)
+      ctx.req.params = { pauseCycles: '3' }
+      ctx.next = sinon.stub()
+      await ctx.SubscriptionController.pauseSubscription(
+        ctx.req,
+        ctx.res,
+        ctx.next
+      )
+      expect(ctx.res.statusCode).to.equal(403)
+      expect(
+        ctx.SubscriptionHandler.promises.pauseSubscription.called
+      ).to.equal(false)
     })
   })
 

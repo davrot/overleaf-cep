@@ -399,6 +399,14 @@ const pauseSubscriptionSchema = z.object({
  */
 async function pauseSubscription(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
+  const { variant } = await SplitTestHandler.promises.getAssignment(
+    req,
+    res,
+    'pause-subscription'
+  )
+  if (variant !== 'enabled') {
+    return HttpErrorHandler.forbidden(req, res)
+  }
   const { params } = parseReq(req, pauseSubscriptionSchema)
   const pauseCycles = params.pauseCycles
   if (pauseCycles < 0) {
