@@ -293,6 +293,9 @@ async function tryDeleteUser(req, res, next) {
   UserSessionsManager.promises.untrackSession(user, sessionId).catch(err => {
     logger.warn({ err, userId: user._id }, 'failed to untrack session')
   })
+  // Note that the "*" must be in double quotes
+  // https://www.w3.org/TR/clear-site-data/#ref-for-grammardef-
+  res.set('Clear-Site-Data', '"*"')
   res.sendStatus(200)
 }
 

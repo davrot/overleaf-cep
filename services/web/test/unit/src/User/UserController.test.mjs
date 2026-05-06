@@ -243,6 +243,7 @@ describe('UserController', function () {
       status: sinon.stub(),
       sendStatus: sinon.stub(),
       json: sinon.stub(),
+      set: sinon.stub(),
     }
     ctx.res.status.returns(ctx.res)
     ctx.next = sinon.stub()
@@ -264,6 +265,16 @@ describe('UserController', function () {
       return new Promise(resolve => {
         ctx.res.sendStatus = code => {
           code.should.equal(200)
+          resolve()
+        }
+        ctx.UserController.tryDeleteUser(ctx.req, ctx.res, ctx.next)
+      })
+    })
+
+    it('should set the Clear-Site-Data header', function (ctx) {
+      return new Promise(resolve => {
+        ctx.res.sendStatus = code => {
+          expect(ctx.res.set).to.have.been.calledWith('Clear-Site-Data', '"*"')
           resolve()
         }
         ctx.UserController.tryDeleteUser(ctx.req, ctx.res, ctx.next)
