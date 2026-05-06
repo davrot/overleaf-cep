@@ -70,7 +70,12 @@ const defaultUserSettings = {
 } satisfies UserSettings
 
 export type EditorProvidersProps = {
-  user?: { id: string; email: string; signUpDate?: string }
+  user?: {
+    id: string
+    email: string
+    signUpDate?: string
+    isProfessionalGroupPlan?: boolean
+  }
   projectId?: string
   projectName?: string
   projectOwner?: ProjectMetadata['owner']

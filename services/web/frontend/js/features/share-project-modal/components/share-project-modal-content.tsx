@@ -15,6 +15,7 @@ import OLButton from '@/shared/components/ol/ol-button'
 import OLSpinner from '@/shared/components/ol/ol-spinner'
 import MaterialIcon from '@/shared/components/material-icon'
 import ErrorMessage from '@/features/share-project-modal/components/error-message'
+import GiveFeedbackLink from '@/features/share-project-modal/components/give-feedback-link'
 import classNames from 'classnames'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useShareProjectContext } from '@/features/share-project-modal/components/share-project-modal'
@@ -49,8 +50,7 @@ export default function ShareProjectModalContent({
   const isSharingUpdatesEnabled = useFeatureFlag('sharing-updates')
   const [isInvitedPeopleScreen, setIsInvitedPeopleScreen] = useState(false)
   const { successActionMessage } = useShareProjectContext()
-
-  const { isRestrictedTokenMember } = useEditorContext()
+  const { isRestrictedTokenMember, isProjectOwner } = useEditorContext()
 
   return (
     <OLModal show={show} onHide={cancel} animation={animation}>
@@ -71,6 +71,7 @@ export default function ShareProjectModalContent({
                 : t('share_project')}
             </OLModalTitle>
           )}
+          {isSharingUpdatesEnabled && isProjectOwner && <GiveFeedbackLink />}
         </div>
       </OLModalHeader>
 

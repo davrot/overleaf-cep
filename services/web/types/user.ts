@@ -62,6 +62,7 @@ export type User = {
   planName?: string
   isAnnualPlan?: boolean
   isMemberOfGroupSubscription?: boolean
+  isProfessionalGroupPlan?: boolean
   hasInstitutionLicence?: boolean
 }
 

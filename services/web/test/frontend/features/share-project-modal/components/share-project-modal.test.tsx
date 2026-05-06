@@ -1053,6 +1053,15 @@ describe('<ShareProjectModal/>', function () {
     })
   })
 
+  it('does not show the "Give feedback" link when the "sharing-updates" feature flag is disabled', async function () {
+    renderWithEditorContext(
+      <ShareProjectModal {...modalProps} />,
+      createContextProps()
+    )
+
+    expect(screen.queryByRole('link', { name: 'Give feedback' })).to.be.null
+  })
+
   describe('with "sharing-updates" feature flag', function () {
     beforeEach(function () {
       window.metaAttributesCache.set('ol-splitTestVariants', {
@@ -1173,6 +1182,65 @@ describe('<ShareProjectModal/>', function () {
       await userEvent.click(inviteButton)
 
       await screen.findByText('Invitation(s) sent.')
+    })
+
+    it('shows the "Give feedback" link for the project owner', async function () {
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps()
+      )
+
+      await screen.findByRole('link', { name: 'Give feedback' })
+    })
+
+    it('does not show the "Give feedback" link for non-owners', async function () {
+      renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
+        ...createContextProps(),
+        user: {
+          id: 'non-project-owner',
+          email: 'non-project-owner@example.com',
+        },
+      })
+
+      expect(screen.queryByRole('link', { name: 'Give feedback' })).to.be.null
+    })
+
+    describe('"Give feedback" link URL based on subscription plan', function () {
+      it('links to the professional feedback URL when the user has a professional group plan', async function () {
+        renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
+          ...createContextProps(),
+          user: {
+            id: USER_ID,
+            email: USER_EMAIL,
+            isProfessionalGroupPlan: true,
+          },
+        })
+
+        const feedbackLink = await screen.findByRole('link', {
+          name: 'Give feedback',
+        })
+        expect(feedbackLink.getAttribute('href')).to.equal(
+          'https://forms.gle/rz1JDMuNajWG4ZY49'
+        )
+      })
+
+      it('links to the standard feedback URL when the user does not have a professional group plan', async function () {
+        renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
+          ...createContextProps(),
+          user: {
+            id: USER_ID,
+            email: USER_EMAIL,
+            isProfessionalGroupPlan: false,
+          },
+        })
+
+        const feedbackLink = await screen.findByRole('link', {
+          name: 'Give feedback',
+        })
+        expect(feedbackLink.getAttribute('href')).to.equal(
+          'https://forms.gle/WLEjzG4Ayp8zFscM9'
+        )
+      })
     })
   })
 })
