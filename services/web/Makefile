@@ -479,6 +479,7 @@ ci:
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
 RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/web/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ -w /overleaf $(IMAGE_CI) yarn run --silent
+RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(PWD) -e PATH=$(MONOREPO)/node_modules/.bin:$$PATH --user node node:24.14.1 corepack yarn run --silent
 RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.14.1 corepack yarn run --silent
 
 ORG_PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -531,7 +532,7 @@ ifeq ($(CI),true)
 	-yarn run lint --format json --output-file data/reports/eslint.json
 	sed -i 's_"filePath":"/overleaf_"filePath":"$(MONOREPO)_g' data/reports/eslint.json
 else
-	yarn run lint
+	$(RUN_LINTING) lint
 endif
 
 lint: lint_stylelint
@@ -540,11 +541,11 @@ ifeq ($(CI),true)
 	-yarn run lint:styles --formatter json --output-file data/reports/stylelint.json
 	sed -i 's_"source":"/overleaf_"source":"$(MONOREPO)_g' data/reports/stylelint.json
 else
-	yarn run lint:styles
+	$(RUN_LINTING) lint:styles
 endif
 
 lint_stylelint_fix:
-	npm run --silent lint:styles:fix
+	$(RUN_LINTING) lint:styles:fix
 
 lint: lint_pug
 lint_pug:
@@ -574,11 +575,19 @@ lint_overleafModuleImports:
 
 lint: typecheck_frontend
 typecheck_frontend:
+ifeq ($(CI),true)
 	yarn run --silent type-check
+else
+	$(RUN_LINTING) type-check
+endif
 
 lint: typecheck_backend
 typecheck_backend:
+ifeq ($(CI),true)
 	yarn run --silent type-check:backend
+else
+	$(RUN_LINTING) type-check:backend
+endif
 
 lint_in_docker:
 	$(RUN_LINT_FORMAT) make lint -j2 --output-sync
