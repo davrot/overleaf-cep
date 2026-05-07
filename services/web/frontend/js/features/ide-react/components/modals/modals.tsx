@@ -3,7 +3,7 @@ import ForceDisconnected from '@/features/ide-react/components/modals/force-disc
 import { UnsavedDocs } from '@/features/ide-react/components/unsaved-docs/unsaved-docs'
 import SystemMessages from '@/shared/components/system-messages'
 import ViewOnlyAccessModal from '@/features/share-project-modal/components/view-only-access-modal'
-import ProjectConvertedFromDocxModal from '@/features/ide-react/components/modals/project-converted-from-docx-modal'
+import ProjectConvertedFromDocumentModal from '@/features/ide-react/components/modals/project-converted-from-document-modal'
 
 export const Modals = memo(() => {
   return (
@@ -12,7 +12,7 @@ export const Modals = memo(() => {
       <UnsavedDocs />
       <SystemMessages />
       <ViewOnlyAccessModal />
-      <ProjectConvertedFromDocxModal />
+      <ProjectConvertedFromDocumentModal />
     </>
   )
 })

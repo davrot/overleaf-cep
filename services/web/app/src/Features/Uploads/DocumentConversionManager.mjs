@@ -11,20 +11,26 @@ import OError from '@overleaf/o-error'
 import FormData from 'form-data'
 import { FileTooLargeError } from '../Errors/Errors.js'
 
-async function convertDocxToLaTeXZipArchive(path, userId) {
+async function convertDocumentToLaTeXZipArchive(path, userId, conversionType) {
   const clsiUrl = new URL(Settings.apis.clsi.url)
   const limits = await CompileManager.promises._getUserCompileLimits(userId)
 
-  clsiUrl.pathname = '/convert/docx-to-latex'
+  // Uncomment this and remove the line below when the deploy is done.
+  // clsiUrl.pathname = '/convert/document-to-latex'
+  clsiUrl.pathname =
+    conversionType === 'docx'
+      ? '/convert/docx-to-latex'
+      : '/convert/document-to-latex'
   clsiUrl.searchParams.set('compileBackendClass', limits.compileBackendClass)
   clsiUrl.searchParams.set('compileGroup', limits.compileGroup)
+  clsiUrl.searchParams.set('type', conversionType)
 
   const formData = new FormData()
   formData.append('qqfile', fs.createReadStream(path))
 
   logger.debug(
-    { clsiUrl: clsiUrl.toString() },
-    'sending docx to CLSI for conversion'
+    { clsiUrl: clsiUrl.toString(), conversionType },
+    'sending document to CLSI for conversion'
   )
 
   const outputFileName = crypto.randomUUID() + '_document-conversion' + '.zip'
@@ -99,7 +105,7 @@ async function convertProjectToDocument(projectId, userId, type) {
 
 export default {
   promises: {
-    convertDocxToLaTeXZipArchive,
+    convertDocumentToLaTeXZipArchive,
     convertProjectToDocument,
   },
 }

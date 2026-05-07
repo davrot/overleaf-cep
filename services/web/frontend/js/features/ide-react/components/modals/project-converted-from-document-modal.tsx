@@ -8,36 +8,35 @@ import {
 } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
 import { useEffect, useState } from 'react'
-import { showImportDocxFeedbackToast } from '@/features/project-list/components/new-project-button/import-docx-feedback-toast'
+import { showImportDocumentFeedbackToast } from '@/features/project-list/components/new-project-button/import-document-feedback-toast'
 
-function ProjectConvertedFromDocxModal() {
-  const [
-    showProjectConvertedFromDocxModal,
-    setShowProjectConvertedFromDocxModal,
-  ] = useState(false)
+function ProjectConvertedFromDocumentModal() {
+  const [convertedFrom, setConvertedFrom] = useState<string | null>(null)
 
   useEffect(() => {
-    const query = window.location.search
-    const queryString = new URLSearchParams(query)
+    const queryString = new URLSearchParams(window.location.search)
+    const from = queryString.get('converted-from')
 
-    if (queryString.get('converted-from-docx') === 'true') {
-      setShowProjectConvertedFromDocxModal(true)
+    if (from) {
+      setConvertedFrom(from)
 
       // Clean the URL immediately so a refresh doesn't trigger the modal again,
       // but preserve other search params and the hash.
       const url = new URL(window.location.href)
-      url.searchParams.delete('converted-from-docx')
+      url.searchParams.delete('converted-from')
       window.history.replaceState(window.history.state, '', url.toString())
     }
   }, [])
 
   return (
     <>
-      {showProjectConvertedFromDocxModal && (
-        <ProjectConvertedFromDocxModalContent
+      {convertedFrom && (
+        <ProjectConvertedFromImportModalContent
           onHide={() => {
-            setShowProjectConvertedFromDocxModal(false)
-            showImportDocxFeedbackToast()
+            setConvertedFrom(null)
+            if (convertedFrom === 'docx' || convertedFrom === 'markdown') {
+              showImportDocumentFeedbackToast(convertedFrom)
+            }
           }}
         />
       )}
@@ -45,7 +44,7 @@ function ProjectConvertedFromDocxModal() {
   )
 }
 
-function ProjectConvertedFromDocxModalContent({
+function ProjectConvertedFromImportModalContent({
   onHide,
 }: {
   onHide: () => void
@@ -57,7 +56,7 @@ function ProjectConvertedFromDocxModalContent({
       show
       animation
       onHide={onHide}
-      id="converted-from-docx-modal"
+      id="converted-from-document-modal"
       backdrop="static"
     >
       <OLModalHeader>
@@ -73,4 +72,4 @@ function ProjectConvertedFromDocxModalContent({
   )
 }
 
-export default ProjectConvertedFromDocxModal
+export default ProjectConvertedFromDocumentModal

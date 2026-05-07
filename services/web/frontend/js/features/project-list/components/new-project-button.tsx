@@ -62,6 +62,9 @@ function NewProjectButton({
   const docxImportEnabled =
     useFeatureFlag('import-docx') &&
     getMeta('ol-ExposedSettings').enablePandocConversions
+  const markdownImportEnabled =
+    useFeatureFlag('import-markdown') &&
+    getMeta('ol-ExposedSettings').enablePandocConversions
   const sendTrackingEvent = useCallback(
     ({
       dropdownMenu,
@@ -225,6 +228,21 @@ function NewProjectButton({
                 trailingIcon={<MaterialIcon type="fiber_new" />}
               >
                 {t('import_word_document')}
+              </DropdownItem>
+            </li>
+          )}
+          {markdownImportEnabled && (
+            <li role="none">
+              <DropdownItem
+                onClick={e =>
+                  handleModalMenuClick(e, {
+                    modalVariant: 'import_markdown',
+                    dropdownMenuEvent: 'import-markdown',
+                  })
+                }
+                trailingIcon={<MaterialIcon type="fiber_new" />}
+              >
+                {t('import_markdown_file')}
               </DropdownItem>
             </li>
           )}

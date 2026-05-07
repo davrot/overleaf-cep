@@ -11,19 +11,25 @@ import Path from 'node:path'
 
 const SUPPORTED_CONVERSION_TYPES = new Map([['docx', 'docx']])
 
-async function convertDocxToLaTeX(req, res) {
+async function convertDocumentToLaTeX(req, res) {
   const { path } = req.file
+  const conversionType = req.query.type
   if (!Settings.enablePandocConversions) {
     await fs.unlink(path).catch(() => {})
     return res.sendStatus(404)
   }
-  logger.debug({ path }, 'received file for conversion')
+  if (!conversionType || !['docx', 'markdown'].includes(conversionType)) {
+    await fs.unlink(path).catch(() => {})
+    return res.sendStatus(400)
+  }
+  logger.debug({ path, conversionType }, 'received file for conversion')
   const conversionId = crypto.randomUUID()
   let zipPath
   try {
-    zipPath = await ConversionManager.promises.convertDocxToLaTeXWithLock(
+    zipPath = await ConversionManager.promises.convertToLaTeXWithLock(
       conversionId,
-      path
+      path,
+      conversionType
     )
   } finally {
     await fs.unlink(path).catch(() => {})
@@ -98,6 +104,6 @@ async function convertProjectToDocument(req, res) {
 }
 
 export default {
-  convertDocxToLaTeX: expressify(convertDocxToLaTeX),
+  convertDocumentToLaTeX: expressify(convertDocumentToLaTeX),
   convertProjectToDocument: expressify(convertProjectToDocument),
 }

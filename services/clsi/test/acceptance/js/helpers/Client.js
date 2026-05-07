@@ -30,10 +30,10 @@ function compile(projectId, data) {
   })
 }
 
-async function convertDocx(path) {
+async function convertDocument(path, type) {
   const formData = new FormData()
   formData.append('qqfile', fs.createReadStream(path))
-  return await fetchStream(`${host}/convert/docx-to-latex`, {
+  return await fetchStream(`${host}/convert/document-to-latex?type=${type}`, {
     method: 'POST',
     body: formData,
   })
@@ -202,7 +202,7 @@ function smokeTest() {
 export default {
   randomId,
   compile,
-  convertDocx,
+  convertDocument,
   stopCompile,
   clearCache,
   getOutputFile,

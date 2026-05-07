@@ -25,7 +25,7 @@ describe('Conversions', function () {
       const outputStream = fs.createWriteStream(
         '/tmp/clsi_acceptance_tests_' + crypto.randomUUID() + '.zip'
       )
-      const stream = await Client.convertDocx(sourcePath)
+      const stream = await Client.convertDocument(sourcePath, 'docx')
       await pipeline(stream, outputStream)
 
       await new Promise((resolve, reject) => {
@@ -77,7 +77,8 @@ describe('Conversions', function () {
         import.meta.dirname,
         '../fixtures/minimal.pdf'
       )
-      await expect(Client.convertDocx(sourcePath)).to.eventually.be.rejected
+      await expect(Client.convertDocument(sourcePath, 'docx')).to.eventually.be
+        .rejected
     })
   })
 })

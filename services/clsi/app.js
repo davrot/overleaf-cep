@@ -125,10 +125,20 @@ app.get(
 )
 
 // Conversion endpoints
+// Keep old route for backwards compatibility during CLSI/web deploy transition
 app.post(
   '/convert/docx-to-latex',
   FileUploadMiddleware.multerMiddleware,
-  ConversionController.convertDocxToLaTeX
+  (req, res, next) => {
+    req.query.type = 'docx'
+    next()
+  },
+  ConversionController.convertDocumentToLaTeX
+)
+app.post(
+  '/convert/document-to-latex',
+  FileUploadMiddleware.multerMiddleware,
+  ConversionController.convertDocumentToLaTeX
 )
 app.post(
   '/project/:project_id/user/:user_id/download/project-to-document',

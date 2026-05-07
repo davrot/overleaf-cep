@@ -88,12 +88,74 @@ describe('DocumentConversionManager', function () {
     ctx.DocumentConversionManager = (await import(MODULE_PATH)).default
   })
 
-  describe('convertDocxToLaTeXZipArchive', function () {
-    describe('successfully', function () {
+  describe('convertDocumentToLaTeXZipArchive', function () {
+    describe('with conversionType=docx', function () {
+      describe('successfully', function () {
+        beforeEach(async function (ctx) {
+          ctx.path = '/path/to/input.docx'
+          ctx.userId = 'test-user-id'
+          ctx.response = {
+            headers: {
+              get: sinon.stub().returns(null),
+            },
+          }
+          ctx.response.headers.get.withArgs('Content-Length').returns('50')
+
+          ctx.fetchUtils.fetchStreamWithResponse.resolves({
+            stream: 'mocked-fetch-stream',
+            response: ctx.response,
+          })
+
+          ctx.result =
+            await ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
+              ctx.path,
+              ctx.userId,
+              'docx'
+            )
+        })
+
+        it('should call fetchStreamWithResponse with the correct URL and form data', function (ctx) {
+          const expectedUrl = new URL(ctx.Settings.apis.clsi.url)
+          // TODO: revert this to '/convert/document-to-latex' once the deploy is done (PR #32857)
+          expectedUrl.pathname = '/convert/docx-to-latex'
+          expectedUrl.searchParams.set(
+            'compileBackendClass',
+            'test-backend-class'
+          )
+          expectedUrl.searchParams.set('compileGroup', 'test-compile-group')
+          expectedUrl.searchParams.set('type', 'docx')
+
+          sinon.assert.calledWith(
+            ctx.fetchUtils.fetchStreamWithResponse,
+            sinon.match(url => url.toString() === expectedUrl.toString()),
+            {
+              method: 'POST',
+              body: sinon.match.instanceOf(FormData),
+              signal: sinon.match.instanceOf(AbortSignal),
+            }
+          )
+        })
+
+        it('should pipe result into the output file', function (ctx) {
+          sinon.assert.calledWith(
+            ctx.nodeStream.pipeline,
+            'mocked-fetch-stream',
+            'mocked-write-stream'
+          )
+        })
+
+        it('should return a path to the output file', function (ctx) {
+          expect(ctx.result).to.match(
+            /\/path\/to\/dump\/folder\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}_document-conversion\.zip/
+          )
+        })
+      })
+    })
+
+    describe('with conversionType=markdown', function () {
       beforeEach(async function (ctx) {
-        ctx.path = '/path/to/input.docx'
+        ctx.path = '/path/to/input.md'
         ctx.userId = 'test-user-id'
-        ctx.outputPath = '/path/to/output.zip'
         ctx.response = {
           headers: {
             get: sinon.stub().returns(null),
@@ -107,20 +169,22 @@ describe('DocumentConversionManager', function () {
         })
 
         ctx.result =
-          await ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
+          await ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
             ctx.path,
-            ctx.userId
+            ctx.userId,
+            'markdown'
           )
       })
 
-      it('should call fetchStreamWithResponse with the correct URL and form data', function (ctx) {
+      it('should call fetchStreamWithResponse with the correct URL including markdown type', function (ctx) {
         const expectedUrl = new URL(ctx.Settings.apis.clsi.url)
-        expectedUrl.pathname = '/convert/docx-to-latex'
+        expectedUrl.pathname = '/convert/document-to-latex'
         expectedUrl.searchParams.set(
           'compileBackendClass',
           'test-backend-class'
         )
         expectedUrl.searchParams.set('compileGroup', 'test-compile-group')
+        expectedUrl.searchParams.set('type', 'markdown')
 
         sinon.assert.calledWith(
           ctx.fetchUtils.fetchStreamWithResponse,
@@ -158,9 +222,10 @@ describe('DocumentConversionManager', function () {
         )
 
         await expect(
-          ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
+          ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
             ctx.path,
-            ctx.userId
+            ctx.userId,
+            'docx'
           )
         ).to.be.rejectedWith('document conversion failed')
       })
@@ -195,9 +260,10 @@ describe('DocumentConversionManager', function () {
         })
 
         await expect(
-          ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
+          ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
             ctx.path,
-            ctx.userId
+            ctx.userId,
+            'docx'
           )
         ).to.be.rejectedWith(sinon.match.instanceOf(FileTooLargeError))
       })

@@ -22,7 +22,7 @@ describe('ConversionController', function () {
     ctx.parsedRequest = { rootResourcePath: 'main.tex' }
     ctx.ConversionManager = {
       promises: {
-        convertDocxToLaTeXWithLock: sinon.stub().resolves(ctx.zipPath),
+        convertToLaTeXWithLock: sinon.stub().resolves(ctx.zipPath),
         convertLaTeXToDocumentInDirWithLock: sinon
           .stub()
           .resolves(ctx.documentPath),
@@ -86,16 +86,17 @@ describe('ConversionController', function () {
     ctx.ConversionController = (await import(MODULE_PATH)).default
   })
 
-  describe('convertDocxToLaTeX', function () {
+  describe('convertDocumentToLaTeX', function () {
     describe('when conversions are disabled', function () {
       beforeEach(async function (ctx) {
         ctx.Settings.enablePandocConversions = false
         ctx.req = {
           file: { path: '/path/to/uploaded/file.docx' },
+          query: { type: 'docx' },
         }
         ctx.res.sendStatus = sinon.stub()
 
-        await ctx.ConversionController.convertDocxToLaTeX(ctx.req, ctx.res)
+        await ctx.ConversionController.convertDocumentToLaTeX(ctx.req, ctx.res)
       })
 
       it('should remove the uploaded file', function (ctx) {
@@ -108,7 +109,59 @@ describe('ConversionController', function () {
 
       it('should not call the conversion manager', function (ctx) {
         sinon.assert.notCalled(
-          ctx.ConversionManager.promises.convertDocxToLaTeXWithLock
+          ctx.ConversionManager.promises.convertToLaTeXWithLock
+        )
+      })
+    })
+
+    describe('when conversionType is missing', function () {
+      beforeEach(async function (ctx) {
+        ctx.req = {
+          file: { path: '/path/to/uploaded/file.docx' },
+          query: {},
+        }
+        ctx.res.sendStatus = sinon.stub()
+
+        await ctx.ConversionController.convertDocumentToLaTeX(ctx.req, ctx.res)
+      })
+
+      it('should remove the uploaded file', function (ctx) {
+        sinon.assert.calledWith(ctx.fs.unlink, ctx.req.file.path)
+      })
+
+      it('should return 400', function (ctx) {
+        sinon.assert.calledWith(ctx.res.sendStatus, 400)
+      })
+
+      it('should not call the conversion manager', function (ctx) {
+        sinon.assert.notCalled(
+          ctx.ConversionManager.promises.convertToLaTeXWithLock
+        )
+      })
+    })
+
+    describe('when conversionType is unsupported', function () {
+      beforeEach(async function (ctx) {
+        ctx.req = {
+          file: { path: '/path/to/uploaded/file.docx' },
+          query: { type: 'invalid' },
+        }
+        ctx.res.sendStatus = sinon.stub()
+
+        await ctx.ConversionController.convertDocumentToLaTeX(ctx.req, ctx.res)
+      })
+
+      it('should remove the uploaded file', function (ctx) {
+        sinon.assert.calledWith(ctx.fs.unlink, ctx.req.file.path)
+      })
+
+      it('should return 400', function (ctx) {
+        sinon.assert.calledWith(ctx.res.sendStatus, 400)
+      })
+
+      it('should not call the conversion manager', function (ctx) {
+        sinon.assert.notCalled(
+          ctx.ConversionManager.promises.convertToLaTeXWithLock
         )
       })
     })
@@ -117,18 +170,20 @@ describe('ConversionController', function () {
       beforeEach(async function (ctx) {
         ctx.req = {
           file: { path: '/path/to/uploaded/file.docx' },
+          query: { type: 'docx' },
         }
 
-        await ctx.ConversionController.convertDocxToLaTeX(ctx.req, ctx.res)
+        await ctx.ConversionController.convertDocumentToLaTeX(ctx.req, ctx.res)
       })
 
-      it('should call the conversion manager with the uploaded file path', function (ctx) {
+      it('should call the conversion manager with the uploaded file path and type', function (ctx) {
         sinon.assert.calledWith(
-          ctx.ConversionManager.promises.convertDocxToLaTeXWithLock,
+          ctx.ConversionManager.promises.convertToLaTeXWithLock,
           sinon.match(
             /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
           ),
-          ctx.req.file.path
+          ctx.req.file.path,
+          'docx'
         )
       })
 
@@ -160,6 +215,28 @@ describe('ConversionController', function () {
       })
     })
 
+    describe('with conversionType=markdown', function () {
+      beforeEach(async function (ctx) {
+        ctx.req = {
+          file: { path: '/path/to/uploaded/file.md' },
+          query: { type: 'markdown' },
+        }
+
+        await ctx.ConversionController.convertDocumentToLaTeX(ctx.req, ctx.res)
+      })
+
+      it('should call the conversion manager with the uploaded file path and markdown type', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ConversionManager.promises.convertToLaTeXWithLock,
+          sinon.match(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+          ),
+          ctx.req.file.path,
+          'markdown'
+        )
+      })
+    })
+
     describe('unsuccessfully', function () {
       describe('on streaming error', function () {
         it('should propagate the error and still clean up', async function (ctx) {
@@ -169,10 +246,13 @@ describe('ConversionController', function () {
           res.attachment = sinon.stub()
           res.setHeader = sinon.stub()
 
-          const req = { file: { path: '/path/to/uploaded/file.docx' } }
+          const req = {
+            file: { path: '/path/to/uploaded/file.docx' },
+            query: { type: 'docx' },
+          }
 
           await expect(
-            ctx.ConversionController.convertDocxToLaTeX(req, res)
+            ctx.ConversionController.convertDocumentToLaTeX(req, res)
           ).to.be.rejectedWith('mock stream error')
 
           sinon.assert.calledWith(ctx.fs.rm, ctx.conversionDir)

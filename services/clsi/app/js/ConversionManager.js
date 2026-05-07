@@ -6,19 +6,44 @@ import CommandRunner from './CommandRunner.js'
 import LockManager from './LockManager.js'
 import OError from '@overleaf/o-error'
 
-async function convertDocxToLaTeXWithLock(conversionId, inputPath) {
+const CONVERSION_CONFIGS = {
+  docx: {
+    inputFilename: 'input.docx',
+    pandocArgs: ['--extract-media=.', '--from', 'docx+citations', '--citeproc'],
+  },
+  markdown: {
+    inputFilename: 'input.md',
+    pandocArgs: ['--from', 'markdown'],
+  },
+}
+
+async function convertToLaTeXWithLock(conversionId, inputPath, conversionType) {
   const conversionDir = Path.join(Settings.path.compilesDir, conversionId)
   const lock = LockManager.acquire(conversionDir)
   try {
-    return await convertDocxToLaTeX(conversionId, conversionDir, inputPath)
+    return await convertToLaTeX(
+      conversionId,
+      conversionDir,
+      inputPath,
+      conversionType
+    )
   } finally {
     lock.release()
   }
 }
 
-async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
+async function convertToLaTeX(
+  conversionId,
+  conversionDir,
+  inputPath,
+  conversionType
+) {
+  const config = CONVERSION_CONFIGS[conversionType]
+  if (!config) {
+    throw new OError('unsupported conversion type', { conversionType })
+  }
   await fs.mkdir(conversionDir, { recursive: true })
-  const newSourcePath = Path.join(conversionDir, 'input.docx')
+  const newSourcePath = Path.join(conversionDir, config.inputFilename)
   await fs.copyFile(inputPath, newSourcePath)
   const outputName = crypto.randomUUID() + '.zip'
 
@@ -31,16 +56,13 @@ async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
       conversionId,
       [
         'pandoc',
-        'input.docx',
+        config.inputFilename,
         '--output',
         'main.tex',
-        '--extract-media=.',
-        '--from',
-        'docx+citations',
         '--to',
         'latex',
-        '--citeproc',
         '--standalone',
+        ...config.pandocArgs,
       ],
       conversionDir,
       Settings.pandocImage,
@@ -164,7 +186,7 @@ async function convertLaTeXToDocumentInDir(
 
 export default {
   promises: {
-    convertDocxToLaTeXWithLock,
+    convertToLaTeXWithLock,
     convertLaTeXToDocumentInDirWithLock,
   },
 }

@@ -531,6 +531,7 @@ async function projectListPage(req, res, next) {
     // Split tests that will be made available to the frontend
     'import-docx',
     'overleaf-library',
+    'import-markdown',
   ].filter(Boolean)
 
   await Promise.all(

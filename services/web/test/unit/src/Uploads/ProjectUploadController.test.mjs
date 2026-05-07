@@ -48,7 +48,7 @@ describe('ProjectUploadController', function () {
     }
     ctx.DocumentConversionManager = {
       promises: {
-        convertDocxToLaTeXZipArchive: sinon.stub(),
+        convertDocumentToLaTeXZipArchive: sinon.stub(),
       },
     }
 
@@ -463,7 +463,7 @@ describe('ProjectUploadController', function () {
     })
   })
 
-  describe('importDocx', function () {
+  describe('importDocument', function () {
     beforeEach(async function (ctx) {
       ctx.req.file = {
         path: '/path/to/uploaded/file.docx',
@@ -471,13 +471,73 @@ describe('ProjectUploadController', function () {
       ctx.req.body = {
         name: 'file.docx',
       }
+      ctx.req.query = { type: 'docx' }
       ctx.archivePath = '/path/to/archive.zip'
       ctx.fsPromises.unlink = sinon.stub().resolves()
     })
 
-    describe('successfully', async function () {
+    describe('with conversionType=docx', async function () {
+      describe('successfully', async function () {
+        beforeEach(async function (ctx) {
+          ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive =
+            sinon.stub().resolves(ctx.archivePath)
+          ctx.ProjectUploadManager.promises.createProjectFromZipArchive = sinon
+            .stub()
+            .resolves({
+              _id: 'new-project-id',
+            })
+
+          await new Promise(resolve => {
+            ctx.res.json = data => {
+              expect(data.success).to.be.true
+              expect(data.project_id).to.equal('new-project-id')
+              resolve()
+            }
+            ctx.ProjectUploadController.importDocument(ctx.req, ctx.res)
+          })
+        })
+
+        it('should call the DocumentConversionManager with file path and type', function (ctx) {
+          expect(
+            ctx.DocumentConversionManager.promises
+              .convertDocumentToLaTeXZipArchive
+          ).to.have.been.calledWith(ctx.req.file.path, ctx.user_id, 'docx')
+        })
+
+        it('should use the resulting archive to create a new project', function (ctx) {
+          expect(
+            ctx.ProjectUploadManager.promises.createProjectFromZipArchive
+          ).to.have.been.calledWith(ctx.user_id, 'file', ctx.archivePath)
+        })
+
+        it('should set the compiler to lualatex', function (ctx) {
+          expect(
+            ctx.ProjectOptionsHandler.promises.setCompiler
+          ).to.have.been.calledWith('new-project-id', 'lualatex')
+        })
+
+        it('should unlink the archive after creating the project', function (ctx) {
+          expect(ctx.fsPromises.unlink).to.have.been.calledWith(ctx.archivePath)
+        })
+
+        it('should unlink the uploaded file', function (ctx) {
+          expect(ctx.fsPromises.unlink).to.have.been.calledWith(
+            ctx.req.file.path
+          )
+        })
+      })
+    })
+
+    describe('with conversionType=markdown', async function () {
       beforeEach(async function (ctx) {
-        ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive =
+        ctx.req.file = {
+          path: '/path/to/uploaded/file.md',
+        }
+        ctx.req.body = {
+          name: 'file.md',
+        }
+        ctx.req.query = { type: 'markdown' }
+        ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive =
           sinon.stub().resolves(ctx.archivePath)
         ctx.ProjectUploadManager.promises.createProjectFromZipArchive = sinon
           .stub()
@@ -491,14 +551,15 @@ describe('ProjectUploadController', function () {
             expect(data.project_id).to.equal('new-project-id')
             resolve()
           }
-          ctx.ProjectUploadController.importDocx(ctx.req, ctx.res)
+          ctx.ProjectUploadController.importDocument(ctx.req, ctx.res)
         })
       })
 
-      it('should call the DocumentConversionManager to convert the file', function (ctx) {
+      it('should call the DocumentConversionManager with file path and markdown type', function (ctx) {
         expect(
-          ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive
-        ).to.have.been.calledWith(ctx.req.file.path, ctx.user_id)
+          ctx.DocumentConversionManager.promises
+            .convertDocumentToLaTeXZipArchive
+        ).to.have.been.calledWith(ctx.req.file.path, ctx.user_id, 'markdown')
       })
 
       it('should use the resulting archive to create a new project', function (ctx) {
@@ -522,9 +583,37 @@ describe('ProjectUploadController', function () {
       })
     })
 
+    describe('with an invalid conversionType', async function () {
+      beforeEach(async function (ctx) {
+        ctx.req.query = { type: 'invalid' }
+
+        await new Promise(resolve => {
+          ctx.res.json = data => {
+            expect(data).to.deep.equal({
+              success: false,
+              error: 'invalid_type',
+            })
+            resolve()
+          }
+          ctx.ProjectUploadController.importDocument(ctx.req, ctx.res)
+        })
+      })
+
+      it('should return http 400', function (ctx) {
+        expect(ctx.res.statusCode).to.equal(400)
+      })
+
+      it('should not call DocumentConversionManager', function (ctx) {
+        expect(
+          ctx.DocumentConversionManager.promises
+            .convertDocumentToLaTeXZipArchive
+        ).not.to.have.been.called
+      })
+    })
+
     describe('unsuccessfully', async function () {
       beforeEach(async function (ctx) {
-        ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive =
+        ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive =
           sinon.stub().rejects(new Error('Conversion failed'))
 
         await new Promise(resolve => {
@@ -532,14 +621,15 @@ describe('ProjectUploadController', function () {
             expect(data.success).to.be.false
             resolve()
           }
-          ctx.ProjectUploadController.importDocx(ctx.req, ctx.res)
+          ctx.ProjectUploadController.importDocument(ctx.req, ctx.res)
         })
       })
 
       it('should call the DocumentConversionManager to convert the file', function (ctx) {
         expect(
-          ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive
-        ).to.have.been.calledWith(ctx.req.file.path, ctx.user_id)
+          ctx.DocumentConversionManager.promises
+            .convertDocumentToLaTeXZipArchive
+        ).to.have.been.calledWith(ctx.req.file.path, ctx.user_id, 'docx')
       })
 
       it('should unlink the uploaded file', function (ctx) {
@@ -553,7 +643,7 @@ describe('ProjectUploadController', function () {
 
     describe('when the converted archive is too large', async function () {
       beforeEach(async function (ctx) {
-        ctx.DocumentConversionManager.promises.convertDocxToLaTeXZipArchive =
+        ctx.DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive =
           sinon.stub().rejects(new FileTooLargeError('file too large'))
 
         await new Promise(resolve => {
@@ -564,7 +654,7 @@ describe('ProjectUploadController', function () {
             })
             resolve()
           }
-          ctx.ProjectUploadController.importDocx(ctx.req, ctx.res)
+          ctx.ProjectUploadController.importDocument(ctx.req, ctx.res)
         })
       })
 

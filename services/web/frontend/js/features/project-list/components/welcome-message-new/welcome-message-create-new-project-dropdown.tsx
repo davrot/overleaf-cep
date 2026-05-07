@@ -64,6 +64,9 @@ function WelcomeMessageCreateNewProjectDropdown({
   const docxImportEnabled =
     useFeatureFlag('import-docx') &&
     getMeta('ol-ExposedSettings').enablePandocConversions
+  const markdownImportEnabled =
+    useFeatureFlag('import-markdown') &&
+    getMeta('ol-ExposedSettings').enablePandocConversions
 
   const { isOverleaf } = getMeta('ol-ExposedSettings')
 
@@ -150,6 +153,20 @@ function WelcomeMessageCreateNewProjectDropdown({
               trailingIcon={<MaterialIcon type="fiber_new" />}
             >
               {t('import_word_document')}
+            </DropdownItem>
+          </li>
+        )}
+        {markdownImportEnabled && (
+          <li role="none">
+            <DropdownItem
+              as="button"
+              onClick={e =>
+                handleDropdownItemClick(e, 'import_markdown', 'import-markdown')
+              }
+              tabIndex={-1}
+              trailingIcon={<MaterialIcon type="fiber_new" />}
+            >
+              {t('import_markdown_file')}
             </DropdownItem>
           </li>
         )}

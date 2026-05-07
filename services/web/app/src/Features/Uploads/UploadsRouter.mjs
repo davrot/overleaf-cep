@@ -29,11 +29,23 @@ export default {
 
     if (Settings.enablePandocConversions) {
       webRouter.post(
+        '/project/new/import-document',
+        AuthenticationController.requireLogin(),
+        RateLimiterMiddleware.rateLimit(rateLimiters.projectUpload),
+        ProjectUploadController.multerMiddleware,
+        ProjectUploadController.importDocument
+      )
+      // Keep old route for backwards compatibility with old frontends that haven't reloaded
+      webRouter.post(
         '/project/new/import-docx',
         AuthenticationController.requireLogin(),
         RateLimiterMiddleware.rateLimit(rateLimiters.projectUpload),
         ProjectUploadController.multerMiddleware,
-        ProjectUploadController.importDocx
+        (req, res, next) => {
+          req.query.type = 'docx'
+          next()
+        },
+        ProjectUploadController.importDocument
       )
     }
 

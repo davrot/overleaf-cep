@@ -178,16 +178,21 @@ async function uploadFile(req, res, next) {
  * @param {any} res
  * @param {any} next
  */
-async function importDocx(req, res, next) {
+async function importDocument(req, res, next) {
   const userId = SessionManager.getLoggedInUserId(req.session)
-  logger.debug({ path: req.file?.path, userId }, 'importing docx file')
   const { path } = req.file
-  const name = Path.basename(req.body.name, '.docx')
+  const conversionType = req.query.type
+  if (!['docx', 'markdown'].includes(conversionType)) {
+    return res.status(400).json({ success: false, error: 'invalid_type' })
+  }
+  const name = Path.basename(req.body.name, Path.extname(req.body.name))
+  logger.debug({ path, userId, conversionType }, 'importing document file')
   try {
     const archivePath =
-      await DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
+      await DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
         path,
-        userId
+        userId,
+        conversionType
       )
     try {
       const project =
@@ -207,7 +212,7 @@ async function importDocx(req, res, next) {
       })
     }
   } catch (error) {
-    logger.error({ error }, 'error importing docx file')
+    logger.error({ error }, 'error importing document file')
     if (
       error instanceof FileTooLargeError ||
       error?.name === 'FileTooLargeError'
@@ -267,5 +272,5 @@ export default {
   uploadProject,
   uploadFile: expressify(uploadFile),
   multerMiddleware,
-  importDocx: expressify(importDocx),
+  importDocument: expressify(importDocument),
 }
