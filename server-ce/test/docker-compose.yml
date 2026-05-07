@@ -80,6 +80,10 @@ services:
       - $PWD:$PWD
       - $MONOREPO/libraries:$MONOREPO/libraries:ro
       - $MONOREPO/node_modules:$MONOREPO/node_modules:ro
+      - $MONOREPO/.yarn:$MONOREPO/.yarn:ro
+      - $MONOREPO/.yarnrc.yml:$MONOREPO/.yarnrc.yml:ro
+      - $MONOREPO/package.json:$MONOREPO/package.json:ro
+      - $MONOREPO/yarn.lock:$MONOREPO/yarn.lock:ro
     environment:
       MONOREPO:
       CYPRESS_SHARD:
@@ -110,6 +114,10 @@ services:
       - $PWD:$PWD
       - $MONOREPO/libraries:$MONOREPO/libraries:ro
       - $MONOREPO/node_modules:$MONOREPO/node_modules:ro
+      - $MONOREPO/.yarn:$MONOREPO/.yarn:ro
+      - $MONOREPO/.yarnrc.yml:$MONOREPO/.yarnrc.yml:ro
+      - $MONOREPO/package.json:$MONOREPO/package.json:ro
+      - $MONOREPO/yarn.lock:$MONOREPO/yarn.lock:ro
       - /var/run/docker.sock:/var/run/docker.sock
     stop_grace_period: 0s
     environment:

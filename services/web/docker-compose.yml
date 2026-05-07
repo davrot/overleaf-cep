@@ -3,7 +3,10 @@ volumes:
 
 services:
   test_unit:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/web/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/web
       - ../../node_modules:/overleaf/node_modules
@@ -30,7 +33,7 @@ services:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       REDIS_HOST: redis_test
       MONOREPO:
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 -- corepack
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: yarn run --silent test:unit:app
     user: node
     depends_on:
@@ -38,7 +41,10 @@ services:
       - redis_test
 
   test_acceptance:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/web/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/web
       - ../../node_modules:/overleaf/node_modules
@@ -75,7 +81,7 @@ services:
       - mongo
       - saml
       - ldap
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 -- corepack
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: yarn run --silent test:acceptance:app
 
   test_frontend_jsdom:
@@ -98,7 +104,6 @@ services:
       MOCHA_GREP: ${MOCHA_GREP}
       NODE_OPTIONS: "--unhandled-rejections=strict"
       VERBOSE_LOGGING:
-    entrypoint: corepack
     command: yarn run --silent test:frontend
     user: node
 
@@ -141,7 +146,6 @@ services:
       JUNIT_ROOT_SUITE_NAME:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       VERBOSE_LOGGING:
-    entrypoint: corepack
     command: yarn run --silent test:writefull
     user: node
 

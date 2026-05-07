@@ -27,7 +27,7 @@ services:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
-    command: corepack yarn run --silent test:unit
+    command: yarn run --silent test:unit
     user: node
 
   test_acceptance:
@@ -81,7 +81,7 @@ services:
         condition: service_completed_successfully
       gcs:
         condition: service_healthy
-    command: corepack yarn run --silent test:acceptance
+    command: yarn run --silent test:acceptance
 
   certs:
     build:

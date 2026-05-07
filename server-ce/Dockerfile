@@ -15,8 +15,11 @@ COPY server-ce/genScript.js server-ce/services.js /overleaf/
 
 # Pre-install yarn via corepack so it is available at runtime for all users
 # -------------------------------------------------------------------------
+# Corepack setup, shared between all the images.
+ENV PATH="/overleaf/node_modules/.bin:$PATH"
 ENV COREPACK_HOME=/opt/corepack
-RUN corepack install
+RUN corepack enable && corepack install -g yarn@4.14.1
+ENV COREPACK_ENABLE_NETWORK=0
 
 # Install yarn dependencies
 # -------------------------

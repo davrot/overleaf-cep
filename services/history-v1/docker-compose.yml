@@ -34,7 +34,7 @@ services:
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: corepack yarn run --silent test:unit
+    command: yarn run --silent test:unit
     user: node
     depends_on:
       mongo:
@@ -99,7 +99,7 @@ services:
       gcs:
         condition: service_healthy
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: corepack yarn run --silent test:acceptance
+    command: yarn run --silent test:acceptance
 
   redis_test:
     image: redis:7.4.8

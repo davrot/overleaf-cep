@@ -4,7 +4,10 @@
 
 services:
   test_unit:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/real-time/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/real-time
       - ../../node_modules:/overleaf/node_modules
@@ -26,14 +29,17 @@ services:
       QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
-    command: corepack yarn run --silent test:unit
+    command: yarn run --silent test:unit
     user: node
     depends_on:
       redis_test:
         condition: service_healthy
 
   test_acceptance:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/real-time/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/real-time
       - ../../node_modules:/overleaf/node_modules
@@ -60,7 +66,7 @@ services:
     depends_on:
       redis_test:
         condition: service_healthy
-    command: corepack yarn run --silent test:acceptance
+    command: yarn run --silent test:acceptance
 
   redis_test:
     image: redis:7.4.8

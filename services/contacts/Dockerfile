@@ -4,9 +4,13 @@
 
 FROM node:24.14.1 AS base
 
-WORKDIR /overleaf/services/contacts
+# Corepack setup, shared between all the images.
 ENV PATH="/overleaf/node_modules/.bin:$PATH"
-RUN corepack enable
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack enable && corepack install -g yarn@4.14.1
+ENV COREPACK_ENABLE_NETWORK=0
+
+WORKDIR /overleaf/services/contacts
 
 # Google Cloud Storage needs a writable $HOME/.config for resumable uploads
 # (see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream)

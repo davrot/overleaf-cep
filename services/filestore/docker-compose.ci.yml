@@ -21,7 +21,6 @@ services:
       VITEST_NO_CACHE: true
 
   test_acceptance:
-    build: .
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
       CI:

@@ -23,7 +23,6 @@ services:
         condition: service_started
 
   test_acceptance:
-    build: .
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
       CI:

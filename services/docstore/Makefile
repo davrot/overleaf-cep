@@ -37,6 +37,16 @@ DOCKER_COMPOSE := BUILD_NUMBER=$(BUILD_NUMBER) \
 	MOCHA_GREP=${MOCHA_GREP} \
 	docker compose ${DOCKER_COMPOSE_FLAGS}
 
+# Common flags for docker compose run.
+# --rm           Tear down test runner container
+# --build        Make sure that we use the latest base image
+# --quiet-build  Hide build output
+ifeq ($(CI),true)
+	DC_RUN_FLAGS := --rm
+else
+	DC_RUN_FLAGS := --rm --build --quiet-build
+endif
+
 COMPOSE_PROJECT_NAME_TEST_ACCEPTANCE ?= test_acceptance_$(BUILD_DIR_NAME)
 DOCKER_COMPOSE_TEST_ACCEPTANCE = \
 	COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME_TEST_ACCEPTANCE) $(DOCKER_COMPOSE)
@@ -54,11 +64,11 @@ clean:
 
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
-RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) -e PATH=$(MONOREPO)/node_modules/.bin:$$PATH --user node node:24.14.1 corepack yarn run --silent
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) -e PATH=$(MONOREPO)/node_modules/.bin:$$PATH --user node node:24.14.1 corepack yarn run --silent
+RUN_LINTING = ../../bin/run -w /overleaf/services/$(PROJECT_NAME) monorepo yarn run --silent
+RUN_LINTING_MONOREPO = ../../bin/run monorepo yarn run --silent
 
-RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/docstore/reports:/overleaf/services/docstore/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache $(IMAGE_CI) corepack yarn run --silent
-RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/docstore/reports:/overleaf/services/docstore/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache -w /overleaf $(IMAGE_CI) corepack yarn run --silent
+RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/docstore/reports:/overleaf/services/docstore/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache $(IMAGE_CI) yarn run --silent
+RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/docstore/reports:/overleaf/services/docstore/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache -w /overleaf $(IMAGE_CI) yarn run --silent
 
 SHELLCHECK_OPTS = \
 	--shell=bash \
@@ -125,7 +135,7 @@ test: format lint typecheck shellcheck test_unit test_acceptance
 
 test_unit:
 ifneq (,$(wildcard test/unit))
-	$(DOCKER_COMPOSE_TEST_UNIT) run --rm test_unit
+	$(DOCKER_COMPOSE_TEST_UNIT) run $(DC_RUN_FLAGS) test_unit
 endif
 
 test_clean: test_unit_clean
@@ -142,12 +152,12 @@ test_acceptance_debug: test_acceptance_clean test_acceptance_pre_run test_accept
 
 test_acceptance_run:
 ifneq (,$(wildcard test/acceptance))
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run --rm test_acceptance
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run $(DC_RUN_FLAGS) test_acceptance
 endif
 
 test_acceptance_run_debug:
 ifneq (,$(wildcard test/acceptance))
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run -p 127.0.0.9:19999:19999 --rm test_acceptance corepack yarn run --inspect=0.0.0.0:19999 --inspect-brk test:acceptance
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run -p 127.0.0.9:19999:19999 $(DC_RUN_FLAGS) test_acceptance yarn run --inspect=0.0.0.0:19999 --inspect-brk test:acceptance
 endif
 
 test_clean: test_acceptance_clean
@@ -156,11 +166,11 @@ test_acceptance_clean:
 
 test_acceptance_pre_run:
 ifneq (,$(wildcard test/acceptance/js/scripts/pre-run))
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run --rm test_acceptance test/acceptance/js/scripts/pre-run
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run $(DC_RUN_FLAGS) test_acceptance test/acceptance/js/scripts/pre-run
 endif
 
 benchmarks:
-	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run --rm test_acceptance corepack yarn run benchmarks
+	$(DOCKER_COMPOSE_TEST_ACCEPTANCE) run $(DC_RUN_FLAGS) test_acceptance yarn run benchmarks
 
 build:
 	docker build \

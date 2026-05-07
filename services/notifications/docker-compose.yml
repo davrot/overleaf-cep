@@ -4,7 +4,10 @@
 
 services:
   test_unit:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/notifications/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/notifications
       - ../../node_modules:/overleaf/node_modules
@@ -24,14 +27,17 @@ services:
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: corepack yarn run --silent test:unit
+    command: yarn run --silent test:unit
     user: node
     depends_on:
       mongo:
         condition: service_started
 
   test_acceptance:
-    image: node:24.14.1
+    build:
+      context: ../..
+      dockerfile: services/notifications/Dockerfile
+      target: base
     volumes:
       - .:/overleaf/services/notifications
       - ../../node_modules:/overleaf/node_modules
@@ -57,7 +63,7 @@ services:
       mongo:
         condition: service_started
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
-    command: corepack yarn run --silent test:acceptance
+    command: yarn run --silent test:acceptance
 
   mongo:
     image: mongo:8.0.11

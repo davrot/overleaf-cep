@@ -4,9 +4,13 @@
 
 FROM node:24.14.1 AS base
 
-WORKDIR /overleaf/services/clsi
+# Corepack setup, shared between all the images.
 ENV PATH="/overleaf/node_modules/.bin:$PATH"
-RUN corepack enable
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack enable && corepack install -g yarn@4.14.1
+ENV COREPACK_ENABLE_NETWORK=0
+
+WORKDIR /overleaf/services/clsi
 COPY services/clsi/install_deps.sh /overleaf/services/clsi/
 RUN chmod 0755 ./install_deps.sh && ./install_deps.sh
 ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]

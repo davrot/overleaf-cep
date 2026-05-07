@@ -47,7 +47,7 @@ test-e2e-native-linux:
 		docker compose -f docker-compose.yml -f docker-compose.native.yml up --no-log-prefix cypress
 
 test-e2e:
-	docker compose build host-admin
+	docker compose build host-admin e2e
 	docker compose up --detach --wait host-admin
 	docker compose up --detach --wait mongo
 	docker compose up --no-log-prefix --exit-code-from=e2e e2e host-admin
@@ -81,7 +81,7 @@ prefetch_default_compose:
 
 prefetch_default: prefetch_default_compose_build
 prefetch_default_compose_build:
-	docker compose build host-admin
+	docker compose build host-admin e2e
 
 prefetch: prefetch_custom
 prefetch_custom: prefetch_custom_compose_pull

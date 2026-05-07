@@ -24,7 +24,7 @@ services:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
-    command: corepack yarn run --silent test:unit
+    command: yarn run --silent test:unit
 
   test_acceptance:
     build:
@@ -64,7 +64,7 @@ services:
     depends_on:
       clsi-nginx:
         condition: service_started
-    command: corepack yarn run --silent test:acceptance
+    command: yarn run --silent test:acceptance
 
   clsi-nginx:
     image: nginx:1.28

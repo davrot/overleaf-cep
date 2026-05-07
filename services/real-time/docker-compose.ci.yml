@@ -26,7 +26,6 @@ services:
         condition: service_healthy
 
   test_acceptance:
-    build: .
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
       CI:
