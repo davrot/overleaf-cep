@@ -8,6 +8,7 @@ import type {
 } from '../../../../../modules/notifications/app/src/types.js'
 import { sendMB } from '@/infrastructure/event-tracking'
 import { useIdeReactContext } from '@/features/ide-react/context/ide-react-context'
+import { type PermissionsLevel } from '@/features/ide-react/types/permissions'
 
 export type SettableNotificationLevel = 'all' | 'replies' | 'off'
 export type NotificationLevel = SettableNotificationLevel | 'global-off'
@@ -56,38 +57,43 @@ function levelToPreferences(
 }
 
 /**
- * Map backend preferences to UI notification level
+ * Map backend preferences to UI notification level, considering the user's
+ * role so that only the relevant key variant is inspected.
  */
 function preferencesToLevel(
-  preferences: GlobalNotificationPreferencesSchema
+  preferences: GlobalNotificationPreferencesSchema,
+  permissionsLevel: PermissionsLevel
 ): NotificationLevel {
   if (preferences.muteAllNotifications) {
     return 'global-off'
   }
 
-  // If all notifications are off
-  if (
-    !preferences.commentOnOwnProject &&
-    !preferences.commentOnInvitedProject &&
-    !preferences.repliesOnOwnProject &&
-    !preferences.repliesOnInvitedProject &&
-    !preferences.repliesOnAuthoredThread &&
-    !preferences.repliesOnParticipatingThread
-  ) {
+  const isOwner = permissionsLevel === 'owner'
+
+  const projectComments = isOwner
+    ? preferences.commentOnOwnProject
+    : preferences.commentOnInvitedProject
+  const projectTrackedChanges = isOwner
+    ? preferences.trackedChangesOnOwnProject
+    : preferences.trackedChangesOnInvitedProject
+  const projectReplies = isOwner
+    ? preferences.repliesOnOwnProject
+    : preferences.repliesOnInvitedProject
+
+  const anyProjectNotifications =
+    projectComments || projectTrackedChanges || projectReplies
+  const anyParticipantNotifications =
+    preferences.repliesOnAuthoredThread ||
+    preferences.repliesOnParticipatingThread
+
+  if (!anyProjectNotifications && !anyParticipantNotifications) {
     return 'off'
   }
 
-  // If only reply-related notifications are on
-  if (
-    !preferences.commentOnOwnProject &&
-    !preferences.commentOnInvitedProject &&
-    (preferences.repliesOnAuthoredThread ||
-      preferences.repliesOnParticipatingThread)
-  ) {
+  if (!anyProjectNotifications && anyParticipantNotifications) {
     return 'replies'
   }
 
-  // Default to 'all' for any other combination
   return 'all'
 }
 
@@ -104,11 +110,11 @@ export function useProjectNotificationPreferences() {
       `/notifications/preferences/project/${projectId}`
     )
       .then(prefs => {
-        setNotificationLevel(preferencesToLevel(prefs))
+        setNotificationLevel(preferencesToLevel(prefs, permissionsLevel))
       })
       .catch(debugConsole.error)
       .finally(() => setIsLoading(false))
-  }, [projectId])
+  }, [projectId, permissionsLevel])
 
   const setLevel = useCallback(
     (level: SettableNotificationLevel) => {

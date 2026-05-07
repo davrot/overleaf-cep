@@ -53,9 +53,21 @@ const allNotificationsOff = {
   repliesOnParticipatingThread: false,
 }
 
-function renderComponent() {
+const defaultPreferences = {
+  trackedChangesOnOwnProject: true,
+  trackedChangesOnInvitedProject: false,
+  commentOnOwnProject: true,
+  commentOnInvitedProject: false,
+  repliesOnOwnProject: false,
+  repliesOnInvitedProject: false,
+  repliesOnAuthoredThread: true,
+  repliesOnParticipatingThread: true,
+  muteAllNotifications: false,
+}
+
+function renderComponent(props: { permissionsLevel?: string } = {}) {
   return render(
-    <EditorProviders>
+    <EditorProviders permissionsLevel={props.permissionsLevel as any}>
       <SettingsModalProvider>
         <ProjectNotificationsSetting />
       </SettingsModalProvider>
@@ -239,6 +251,40 @@ describe('<ProjectNotificationsSetting />', function () {
         body: allNotificationsOff,
       })
     ).to.be.true
+  })
+
+  it('shows "all" for owner with default preferences', async function () {
+    fetchMock.get(preferencesUrl, defaultPreferences)
+
+    renderComponent({ permissionsLevel: 'owner' })
+
+    await waitFor(
+      () =>
+        expect(
+          (
+            screen.getByLabelText('All project activity', {
+              exact: false,
+            }) as HTMLInputElement
+          ).checked
+        ).to.be.true
+    )
+  })
+
+  it('shows "replies" for invitee with default preferences', async function () {
+    fetchMock.get(preferencesUrl, defaultPreferences)
+
+    renderComponent({ permissionsLevel: 'readAndWrite' })
+
+    await waitFor(
+      () =>
+        expect(
+          (
+            screen.getByLabelText('Replies to your activity only', {
+              exact: false,
+            }) as HTMLInputElement
+          ).checked
+        ).to.be.true
+    )
   })
 
   it('POSTs "all" preferences when "All project activity" is selected', async function () {
