@@ -2,6 +2,8 @@ import { StripeCurrencyCode } from './currency'
 
 export type Features = {
   aiUsageQuota: 'basic' | 'unlimited'
+  // todo: quota clean-up: remove aiErrorAssistant once migration finishes
+  aiErrorAssistant?: boolean
   collaborators: number
   compileGroup: string
   compileTimeout: number

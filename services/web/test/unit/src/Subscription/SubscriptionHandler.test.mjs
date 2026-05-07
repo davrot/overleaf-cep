@@ -432,6 +432,54 @@ describe('SubscriptionHandler', function () {
       expect(ctx.AiFeatureUsageRateLimiter.resetFeatureUsage).to.not.have.been
         .called
     })
+
+    describe('previous_plan_type customer.io attribute', function () {
+      beforeEach(function (ctx) {
+        ctx.subscription.planCode = 'collaborator'
+        ctx.subscription.groupPlan = false
+        ctx.LimitationsManager.promises.userHasSubscription.resolves({
+          hasSubscription: true,
+          subscription: ctx.subscription,
+        })
+        ctx.Modules.promises.hooks.fire.resolves()
+      })
+
+      it('should not set previous_plan_type when the new plan code matches the current plan code', async function (ctx) {
+        await ctx.SubscriptionHandler.promises.updateSubscription(
+          ctx.user,
+          'collaborator'
+        )
+        expect(ctx.Modules.promises.hooks.fire).to.not.have.been.calledWith(
+          'setUserProperties',
+          sinon.match.any,
+          sinon.match.has('previous_plan_type')
+        )
+      })
+
+      it('should not set previous_plan_type when the new plan code resolves to the same normalised plan type', async function (ctx) {
+        await ctx.SubscriptionHandler.promises.updateSubscription(
+          ctx.user,
+          'collaborator-annual'
+        )
+        expect(ctx.Modules.promises.hooks.fire).to.not.have.been.calledWith(
+          'setUserProperties',
+          sinon.match.any,
+          sinon.match.has('previous_plan_type')
+        )
+      })
+
+      it('should set previous_plan_type when the new plan resolves to a different normalised plan type', async function (ctx) {
+        await ctx.SubscriptionHandler.promises.updateSubscription(
+          ctx.user,
+          'professional'
+        )
+        expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+          'setUserProperties',
+          ctx.user._id,
+          { previous_plan_type: 'standard' }
+        )
+      })
+    })
   })
 
   describe('cancelPendingSubscriptionChange', function () {

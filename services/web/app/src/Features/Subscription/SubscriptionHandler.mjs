@@ -139,7 +139,9 @@ async function updateSubscription(user, planCode) {
     logger.error({ err, userId: user._id }, 'failed to reset AI usage limits')
   }
 
-  if (previousPlanType) {
+  const newPlanType =
+    CustomerIoPlanHelpers.normalizePlanTypeFromPlanCode(planCode)
+  if (previousPlanType && previousPlanType !== newPlanType) {
     Modules.promises.hooks
       .fire('setUserProperties', user._id, {
         previous_plan_type: previousPlanType,

@@ -1,6 +1,29 @@
+// @ts-check
 import Settings from '@overleaf/settings'
 import { AI_ADD_ON_CODE, isStandaloneAiAddOnPlanCode } from './AiHelper.mjs'
 import FeaturesHelper from './FeaturesHelper.mjs'
+
+/**
+ * @typedef {InstanceType<typeof import('../../models/Subscription.mjs').Subscription>} MongoSubscription
+ * @typedef {import('../../../../types/subscription/plan').Plan} Plan
+ * @typedef {import('../../../../modules/subscriptions/app/src/PaymentService.mjs').PaymentRecord} PaymentRecord
+ */
+
+/**
+ * @template T
+ * @typedef {T | null} Nullable
+ */
+
+/**
+ * Subset of the "best subscription" object from
+ * SubscriptionViewModelBuilder.buildUsersSubscriptionViewModel
+ *
+ * @typedef {object} BestSubscription
+ * @property {'free' | 'individual' | 'group' | 'commons' | 'standalone-ai-add-on'} [type]
+ * @property {Partial<Plan>} [plan]
+ * @property {{ teamName?: string, membersLimit?: number }} [subscription]
+ * @property {number} [remainingTrialDays]
+ */
 
 const INACTIVE_NEXT_RENEWAL_DATE_STATES = new Set([
   'canceled',
@@ -9,12 +32,22 @@ const INACTIVE_NEXT_RENEWAL_DATE_STATES = new Set([
 ])
 const PENDING_CANCELLATION_STATES = new Set(['canceled', 'cancelled'])
 
+/**
+ * @param {MongoSubscription} subscription
+ * @returns {string}
+ */
 function getSubscriptionState(subscription) {
   return (
-    subscription?.recurlyStatus?.state || subscription?.paymentProvider?.state
+    subscription.recurlyStatus?.state ||
+    subscription.paymentProvider?.state ||
+    ''
   )
 }
 
+/**
+ * @param {Nullable<Date | string | number>} [dateValue]
+ * @returns {number | null}
+ */
 function toUnixTimestamp(dateValue) {
   if (!dateValue) {
     return null
@@ -28,12 +61,19 @@ function toUnixTimestamp(dateValue) {
   return Math.floor(date.getTime() / 1000)
 }
 
+/**
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @returns {string}
+ */
 function normalizePlanType(bestSubscription) {
   if (!bestSubscription) {
-    return null
+    return ''
   }
 
-  if (['standalone-ai-add-on', 'commons'].includes(bestSubscription.type)) {
+  if (
+    bestSubscription.type === 'standalone-ai-add-on' ||
+    bestSubscription.type === 'commons'
+  ) {
     return bestSubscription.type
   }
 
@@ -41,7 +81,7 @@ function normalizePlanType(bestSubscription) {
   const isGroupPlan = bestSubscription.plan?.groupPlan === true
 
   if (!planCode) {
-    return bestSubscription.type || null
+    return bestSubscription.type || ''
   }
 
   if (planCode.startsWith('v1_')) {
@@ -71,11 +111,35 @@ function normalizePlanType(bestSubscription) {
   return planCode
 }
 
+/**
+ * @param {Nullable<string>} [planCode]
+ * @returns {string}
+ */
+function normalizePlanTypeFromPlanCode(planCode) {
+  if (!planCode) {
+    return ''
+  }
+  const plan = /** @type {Plan[]} */ (Settings.plans).find(
+    candidate => candidate.planCode === planCode
+  )
+  return normalizePlanType({
+    plan: {
+      planCode,
+      groupPlan: plan?.groupPlan === true,
+    },
+  })
+}
+
+/**
+ * @param {Nullable<string>} [planType]
+ * @returns {string}
+ */
 function getFriendlyPlanName(planType) {
   if (!planType) {
-    return null
+    return ''
   }
 
+  /** @type {Record<string, string>} */
   const friendlyPlanNames = {
     free: 'Free',
     personal: 'Personal',
@@ -96,6 +160,10 @@ function getFriendlyPlanName(planType) {
   return planType
 }
 
+/**
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @returns {'annual' | 'monthly' | null}
+ */
 function getPlanCadence(bestSubscription) {
   if (!bestSubscription?.plan) {
     return null
@@ -104,12 +172,18 @@ function getPlanCadence(bestSubscription) {
   return bestSubscription.plan.annual ? 'annual' : 'monthly'
 }
 
+/**
+ * @param {Nullable<string>} [planCode]
+ * @returns {'annual' | 'monthly' | null}
+ */
 function getPlanCadenceFromPlanCode(planCode) {
   if (!planCode) {
     return null
   }
 
-  const plan = Settings.plans.find(candidate => candidate.planCode === planCode)
+  const plan = /** @type {Plan[]} */ (Settings.plans).find(
+    candidate => candidate.planCode === planCode
+  )
   if (plan) {
     return plan.annual ? 'annual' : 'monthly'
   }
@@ -125,15 +199,26 @@ function getPlanCadenceFromPlanCode(planCode) {
   return null
 }
 
+/**
+ * @param {Nullable<PaymentRecord>} [paymentRecord]
+ * @returns {number | null}
+ */
 function getNextRenewalDateFromPaymentRecord(paymentRecord) {
   const subscriptionState = paymentRecord?.subscription?.state
-  if (INACTIVE_NEXT_RENEWAL_DATE_STATES.has(subscriptionState)) {
+  if (
+    subscriptionState &&
+    INACTIVE_NEXT_RENEWAL_DATE_STATES.has(subscriptionState)
+  ) {
     return null
   }
 
   return toUnixTimestamp(paymentRecord?.subscription?.periodEnd)
 }
 
+/**
+ * @param {Nullable<MongoSubscription>} [subscription]
+ * @returns {boolean}
+ */
 function shouldClearNextRenewalDate(subscription) {
   if (!subscription) {
     return true
@@ -144,9 +229,16 @@ function shouldClearNextRenewalDate(subscription) {
   )
 }
 
+/**
+ * @param {Nullable<PaymentRecord>} [paymentRecord]
+ * @returns {number | null}
+ */
 function getExpiryDateFromPaymentRecord(paymentRecord) {
   const subscriptionState = paymentRecord?.subscription?.state
-  if (!PENDING_CANCELLATION_STATES.has(subscriptionState)) {
+  if (
+    subscriptionState == null ||
+    !PENDING_CANCELLATION_STATES.has(subscriptionState)
+  ) {
     return null
   }
 
@@ -158,6 +250,10 @@ function getExpiryDateFromPaymentRecord(paymentRecord) {
   return expiryDate > Math.floor(Date.now() / 1000) ? expiryDate : null
 }
 
+/**
+ * @param {Nullable<MongoSubscription>} [subscription]
+ * @returns {boolean}
+ */
 function shouldClearExpiryDate(subscription) {
   if (!subscription) {
     return true
@@ -166,6 +262,10 @@ function shouldClearExpiryDate(subscription) {
   return !PENDING_CANCELLATION_STATES.has(getSubscriptionState(subscription))
 }
 
+/**
+ * @param {Nullable<MongoSubscription>} [individualSubscription]
+ * @returns {number | null}
+ */
 function getTrialEndDate(individualSubscription) {
   const trialEndsAt =
     individualSubscription?.recurlyStatus?.trialEndsAt ||
@@ -173,6 +273,11 @@ function getTrialEndDate(individualSubscription) {
   return toUnixTimestamp(trialEndsAt)
 }
 
+/**
+ * @param {Nullable<MongoSubscription>} [individualSubscription]
+ * @param {Nullable<PaymentRecord>} [paymentRecord]
+ * @returns {boolean}
+ */
 function hasIndividualAiAssistAddOn(individualSubscription, paymentRecord) {
   if (
     !individualSubscription ||
@@ -189,6 +294,13 @@ function hasIndividualAiAssistAddOn(individualSubscription, paymentRecord) {
   )
 }
 
+/**
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @param {Nullable<MongoSubscription>} [individualSubscription]
+ * @param {Nullable<PaymentRecord>} [paymentRecord]
+ * @param {Nullable<{ isPremium?: boolean }>} [writefullData]
+ * @returns {'ai-assist-standalone' | 'ai-assist-add-on' | 'writefull-premium' | 'none'}
+ */
 function getAiPlanType(
   bestSubscription,
   individualSubscription,
@@ -213,6 +325,13 @@ function getAiPlanType(
   return 'none'
 }
 
+/**
+ * @param {Nullable<string>} [aiPlan]
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @param {Nullable<MongoSubscription>} [individualSubscription]
+ * @param {Nullable<PaymentRecord>} [paymentRecord]
+ * @returns {'annual' | 'monthly' | null}
+ */
 function getAiPlanCadence(
   aiPlan,
   bestSubscription,
@@ -236,6 +355,10 @@ function getAiPlanCadence(
   return null
 }
 
+/**
+ * @param {Nullable<Partial<Plan>>} [plan]
+ * @returns {boolean}
+ */
 function hasPlanAiEnabled(plan) {
   if (!plan?.features) {
     return false
@@ -247,6 +370,13 @@ function hasPlanAiEnabled(plan) {
   )
 }
 
+/**
+ * @param {MongoSubscription[]} [memberGroupSubscriptions]
+ * @param {MongoSubscription[]} [managedGroupSubscriptions]
+ * @param {boolean} [userIsMemberOfGroupSubscription]
+ * @param {Map<string, boolean>} [aiBlockedByPolicyId]
+ * @returns {boolean | null}
+ */
 function getGroupAiEnabled(
   memberGroupSubscriptions = [],
   managedGroupSubscriptions = [],
@@ -270,6 +400,12 @@ function getGroupAiEnabled(
   return !someBlocked
 }
 
+/**
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @param {MongoSubscription[]} [memberGroupSubscriptions]
+ * @param {MongoSubscription[]} [managedGroupSubscriptions]
+ * @returns {number | null}
+ */
 function getGroupSize(
   bestSubscription,
   memberGroupSubscriptions = [],
@@ -309,7 +445,7 @@ function getGroupSize(
   }
 
   return allGroupSubscriptions.reduce((largestGroupSize, subscription) => {
-    const plan = Settings.plans.find(
+    const plan = /** @type {Plan[]} */ (Settings.plans).find(
       candidate => candidate.planCode === subscription.planCode
     )
     const groupSize = subscription.membersLimit ?? plan?.membersLimit ?? 0
@@ -318,16 +454,24 @@ function getGroupSize(
   }, 0)
 }
 
+/**
+ * @param {Nullable<MongoSubscription>} [individualSubscription]
+ * @param {MongoSubscription[]} [memberGroupSubscriptions]
+ * @param {MongoSubscription[]} [managedGroupSubscriptions]
+ * @returns {'stripe' | 'recurly' | null}
+ */
 function getPaymentProvider(
   individualSubscription,
   memberGroupSubscriptions = [],
   managedGroupSubscriptions = []
 ) {
-  const candidates = [
-    individualSubscription,
-    ...memberGroupSubscriptions,
-    ...managedGroupSubscriptions,
-  ].filter(Boolean)
+  const candidates = /** @type {MongoSubscription[]} */ (
+    [
+      individualSubscription,
+      ...memberGroupSubscriptions,
+      ...managedGroupSubscriptions,
+    ].filter(Boolean)
+  )
 
   if (candidates.length === 0) {
     return null
@@ -343,6 +487,12 @@ function getPaymentProvider(
   return 'recurly'
 }
 
+/**
+ * @param {boolean} hasCommons
+ * @param {Nullable<BestSubscription>} [bestSubscription]
+ * @param {Nullable<Partial<Plan>>} [commonsPlan]
+ * @returns {boolean}
+ */
 function shouldUseCommonsBestSubscription(
   hasCommons,
   bestSubscription,
@@ -364,6 +514,17 @@ function shouldUseCommonsBestSubscription(
 
 /**
  * Compute plan-related user properties for sending to customer.io.
+ *
+ * @param {object} options
+ * @param {BestSubscription} options.bestSubscription
+ * @param {Nullable<MongoSubscription>} [options.individualSubscription]
+ * @param {Nullable<PaymentRecord>} [options.individualPaymentRecord]
+ * @param {MongoSubscription[]} [options.memberGroupSubscriptions]
+ * @param {MongoSubscription[]} [options.managedGroupSubscriptions]
+ * @param {boolean} options.userIsMemberOfGroupSubscription
+ * @param {boolean} options.hasCommons
+ * @param {Nullable<{ isPremium?: boolean }>} [options.writefullData]
+ * @param {Map<string, boolean>} [options.aiBlockedByPolicyId]
  */
 function getPlanProperties({
   bestSubscription,
@@ -416,6 +577,7 @@ function getPlanProperties({
 
   const trialEndDate = getTrialEndDate(individualSubscription)
 
+  /** @type {Record<string, unknown>} */
   const properties = {
     ai_plan: aiPlan,
     group: userIsMemberOfGroupSubscription,
@@ -449,6 +611,7 @@ function getPlanProperties({
 
 export default {
   normalizePlanType,
+  normalizePlanTypeFromPlanCode,
   getFriendlyPlanName,
   getNextRenewalDateFromPaymentRecord,
   getExpiryDateFromPaymentRecord,
