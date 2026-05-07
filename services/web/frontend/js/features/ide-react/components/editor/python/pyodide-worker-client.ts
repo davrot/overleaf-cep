@@ -1,5 +1,6 @@
 import path from 'path-browserify'
 import type {
+  ExecutionErrorType,
   OutputStream,
   ProjectFileData,
   PyodideWorkerRequest,
@@ -26,6 +27,8 @@ export type LifecycleCallback = (
         success: boolean
         outputs: string[]
         failedUploads: string[]
+        imports: string[]
+        errorType?: ExecutionErrorType
       }
 ) => void
 
@@ -203,6 +206,9 @@ export class PyodideWorkerClient {
           }
         }
 
+        const errorType =
+          failedUploads.length > 0 ? 'UploadFileError' : response.errorType
+
         this.lifecycleCallback?.({
           type: 'run-finished',
           fileId: response.fileId,
@@ -210,6 +216,8 @@ export class PyodideWorkerClient {
           success,
           outputs: response.outputs,
           failedUploads,
+          imports: response.imports,
+          errorType,
         })
       }
     }

@@ -72,6 +72,18 @@
   .compile-button-group {
     border-radius: var(--ds-border-radius-300);
   }
+
+  .ide-redesign-python-output-pane-toolbar-right {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: var(--spacing-02);
+
+    .material-symbols {
+      font-size: 16px;
+    }
+  }
 }
 
 .ide-redesign-python-output-pane-body {

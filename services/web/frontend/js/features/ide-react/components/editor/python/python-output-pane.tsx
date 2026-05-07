@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLButtonToolbar from '@/shared/components/ol/ol-button-toolbar'
 import MaterialIcon from '@/shared/components/material-icon'
+import SplitTestBadge from '@/shared/components/split-test-badge'
 import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import { usePythonExecutionContext } from '@/features/ide-react/context/python-execution-context'
 import { DEFAULT_STATE } from './python-runner'
@@ -57,6 +58,12 @@ export default function PythonOutputPane() {
               />
             </OLButton>
           </div>
+        </div>
+        <div className="ide-redesign-python-output-pane-toolbar-right">
+          <SplitTestBadge
+            splitTestName="overleaf-code"
+            displayOnVariants={['enabled']}
+          />
         </div>
       </OLButtonToolbar>
 

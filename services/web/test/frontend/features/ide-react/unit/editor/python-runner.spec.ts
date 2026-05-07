@@ -137,6 +137,7 @@ describe('PythonRunner', function () {
         success: true,
         outputs: [],
         outputFiles: [],
+        imports: [],
       })
 
       await waitForState(runner, s => s.status === 'finished')
@@ -163,6 +164,7 @@ describe('PythonRunner', function () {
         success: true,
         outputs: [],
         outputFiles: [],
+        imports: [],
       })
       expect(runner.getState().output).to.deep.equal([
         { stream: 'stdout', line: 'first run output' },

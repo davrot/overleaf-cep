@@ -49,6 +49,15 @@ export type PyodideWorkerEvent =
 
 // Worker -> Main thread ID responses
 
+export type ExecutionErrorType =
+  | 'SyntaxError'
+  | 'ModuleNotFoundError'
+  | 'OutputLimitExceeded'
+  | 'UploadFileError'
+  | 'generic'
+
+export type ExecutionResult = 'success' | 'error'
+
 export type RunCodeResult = {
   type: 'run-code-result'
   fileId: string
@@ -56,6 +65,8 @@ export type RunCodeResult = {
   success: boolean
   outputs: string[]
   outputFiles: OutputFileData[]
+  imports: string[]
+  errorType?: ExecutionErrorType
 }
 
 export type PyodideWorkerResponse = PyodideWorkerEvent | RunCodeResult

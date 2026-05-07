@@ -2,6 +2,7 @@
 import path from 'path-browserify'
 import type { PyodideInterface } from 'pyodide'
 import type {
+  ExecutionErrorType,
   OutputFileData,
   InitRequest,
   ProjectFileData,
@@ -19,6 +20,16 @@ type PyodideModule = typeof import('pyodide')
 const PROJECT_FS_ROOT = '/project'
 const PROJECT_FS_PREFIX = `${PROJECT_FS_ROOT}/`
 const PYODIDE_INDEX_PATH = 'js/libs/pyodide/'
+
+function classifyErrorType(errorMessage: string): ExecutionErrorType {
+  if (errorMessage.includes('ModuleNotFoundError')) {
+    return 'ModuleNotFoundError'
+  }
+  if (errorMessage.includes('SyntaxError')) {
+    return 'SyntaxError'
+  }
+  return 'generic'
+}
 
 function ensureDirectoryExists(fs: PyodideFS, filePath: string) {
   const directory = path.dirname(filePath)
@@ -91,7 +102,17 @@ async function handleInit(msg: InitRequest) {
 async function handleRunCode(msg: RunCodeRequest) {
   const { fileId, executionId } = msg
 
-  const postFailure = (stream: 'stderr' | 'info', line: string) => {
+  const writtenPaths = new Set<string>()
+  const readPaths = new Set<string>()
+
+  const computeImports = () =>
+    [...readPaths].filter(path => !writtenPaths.has(path))
+
+  const postFailure = (
+    stream: 'stderr' | 'info',
+    line: string,
+    errorType: ExecutionErrorType = 'generic'
+  ) => {
     self.postMessage({
       type: 'output-line',
       stream,
@@ -106,6 +127,8 @@ async function handleRunCode(msg: RunCodeRequest) {
       success: false,
       outputs: [],
       outputFiles: [],
+      imports: computeImports(),
+      errorType,
     })
   }
 
@@ -118,8 +141,6 @@ async function handleRunCode(msg: RunCodeRequest) {
     env: { MPLBACKEND: 'Agg' },
     packageBaseUrl: `${pyodideIndexUrl}${pyodideModule.version}/`,
   })
-
-  const writtenPaths = new Set<string>()
 
   instance.setStdout({
     batched: (line: string) => {
@@ -146,6 +167,7 @@ async function handleRunCode(msg: RunCodeRequest) {
 
   const fs = instance.FS
   const originalWrite = fs.write as PyodideFS['write']
+  const originalRead = fs.read as PyodideFS['read']
   let runError: unknown = null
   try {
     if (msg.files.length > 0) {
@@ -165,6 +187,18 @@ async function handleRunCode(msg: RunCodeRequest) {
       return originalWrite.call(fs, ...args)
     }) as PyodideFS['write']
 
+    fs.read = ((...args: Parameters<PyodideFS['read']>) => {
+      const [stream] = args
+      if (
+        typeof stream?.path === 'string' &&
+        stream.path.startsWith(PROJECT_FS_PREFIX)
+      ) {
+        readPaths.add(stream.path)
+      }
+
+      return originalRead.call(fs, ...args)
+    }) as PyodideFS['read']
+
     await instance.loadPackagesFromImports(msg.code)
     const result = await instance.runPythonAsync(msg.code)
     if (result !== undefined) {
@@ -180,20 +214,20 @@ async function handleRunCode(msg: RunCodeRequest) {
     runError = e
   }
   fs.write = originalWrite
+  fs.read = originalRead
 
   const paths = [...writtenPaths]
 
   if (runError) {
     const errorMessage =
       runError instanceof Error ? runError.message : String(runError)
-
-    postFailure('stderr', errorMessage)
+    postFailure('stderr', errorMessage, classifyErrorType(errorMessage))
     return
   }
 
   const countViolation = checkOutputCount(paths.length)
   if (countViolation) {
-    postFailure('info', countViolation.message)
+    postFailure('info', countViolation.message, 'OutputLimitExceeded')
     return
   }
 
@@ -213,7 +247,7 @@ async function handleRunCode(msg: RunCodeRequest) {
 
   const sizeViolation = checkOutputLimits(filesWithSizes)
   if (sizeViolation) {
-    postFailure('info', sizeViolation.message)
+    postFailure('info', sizeViolation.message, 'OutputLimitExceeded')
     return
   }
 
@@ -240,6 +274,7 @@ async function handleRunCode(msg: RunCodeRequest) {
       success: true,
       outputs: filesWithSizes.map(f => f.path),
       outputFiles,
+      imports: computeImports(),
     },
     transferables
   )

@@ -1,8 +1,10 @@
 // Per-file Python execution manager. Each PythonRunner owns a PyodideWorkerClient
 // and exposes a subscribe/getState API for use with useSyncExternalStore,
 // so React components can reactively read execution status and output.
+import path from 'path-browserify'
 import { v4 as uuid } from 'uuid'
 import { debugConsole } from '@/utils/debugging'
+import { sendMB } from '@/infrastructure/event-tracking'
 import { PyodideWorkerClient } from './pyodide-worker-client'
 import type { OutputStream } from './pyodide-worker-messages'
 import type {
@@ -55,7 +57,7 @@ export class PythonRunner {
 
   private listeners = new Set<Listener>()
 
-  private activeExecutionId: string | null = null
+  private activeExecution: { id: string; startedAt: number } | null = null
   private state: PythonRunnerState = DEFAULT_STATE
 
   constructor(
@@ -123,20 +125,35 @@ export class PythonRunner {
             return
 
           case 'run-finished': {
+            const active = this.activeExecution
             if (
               event.fileId !== this.fileId ||
-              this.activeExecutionId !== event.executionId
+              active?.id !== event.executionId
             ) {
               return
             }
 
-            this.activeExecutionId = null
+            this.activeExecution = null
+
+            sendMB('script-runner-execution-completed', {
+              result: event.success ? 'success' : 'error',
+              errorType: event.success ? undefined : event.errorType,
+              executionTimeMs: Math.round(performance.now() - active.startedAt),
+              filesImportedCount: event.imports.length,
+              filesImportedExtensions: collectExtensions(event.imports),
+              filesWrittenCount: event.outputs.length,
+              filesWrittenExtensions: collectExtensions(event.outputs),
+            })
+
             this.updateState({ status: 'finished' })
           }
         }
       },
       onOutput: (stream, line, fileId, executionId) => {
-        if (fileId !== this.fileId || this.activeExecutionId !== executionId) {
+        if (
+          fileId !== this.fileId ||
+          this.activeExecution?.id !== executionId
+        ) {
           return
         }
         this.updateState({
@@ -172,8 +189,12 @@ export class PythonRunner {
 
     const { code, files } = context
 
+    sendMB('script-runner-run-clicked', {
+      scriptLineCount: countLines(code),
+    })
+
     const executionId = uuid()
-    this.activeExecutionId = executionId
+    this.activeExecution = { id: executionId, startedAt: performance.now() }
     this.updateState({ status: 'running', output: [], error: null })
 
     try {
@@ -183,10 +204,10 @@ export class PythonRunner {
         files,
       })
     } catch (runError) {
-      if (this.activeExecutionId !== executionId) {
+      if (this.activeExecution?.id !== executionId) {
         return
       }
-      this.activeExecutionId = null
+      this.activeExecution = null
       this.updateState({ status: 'errored', error: formatError(runError) })
     }
   }
@@ -196,8 +217,16 @@ export class PythonRunner {
       return
     }
 
+    if (this.state.status === 'running' && this.activeExecution) {
+      sendMB('script-runner-stop-clicked', {
+        timeBeforeStopMs: Math.round(
+          performance.now() - this.activeExecution.startedAt
+        ),
+      })
+    }
+
     this.client.reset()
-    this.activeExecutionId = null
+    this.activeExecution = null
 
     // The worker is terminated and recreated by reset(), so it needs to
     // reload Pyodide. The 'loaded' lifecycle callback will transition
@@ -234,4 +263,26 @@ function formatError(error: unknown): string {
     return error.message
   }
   return String(error)
+}
+
+function countLines(code: string): number {
+  if (code.length === 0) {
+    return 0
+  }
+  return code.split('\n').length
+}
+
+function extractExtension(filePath: string): string {
+  return path.extname(filePath).slice(1).toLowerCase()
+}
+
+function collectExtensions(filePaths: string[]): string {
+  const seen = new Set<string>()
+  for (const filePath of filePaths) {
+    const ext = extractExtension(filePath)
+    if (ext) {
+      seen.add(ext)
+    }
+  }
+  return Array.from(seen).join(',')
 }

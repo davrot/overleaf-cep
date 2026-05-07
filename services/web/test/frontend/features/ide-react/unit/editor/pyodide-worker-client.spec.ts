@@ -140,6 +140,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: ['/project/output.txt'],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -150,6 +151,8 @@ describe('PyodideWorkerClient', function () {
         success: true,
         outputs: ['/project/output.txt'],
         failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
@@ -170,6 +173,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: ['/project/fig1.png', '/project/results/data.csv'],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -180,6 +184,8 @@ describe('PyodideWorkerClient', function () {
         success: true,
         outputs: ['/project/fig1.png', '/project/results/data.csv'],
         failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
@@ -200,6 +206,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: [],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -210,6 +217,8 @@ describe('PyodideWorkerClient', function () {
         success: true,
         outputs: [],
         failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
@@ -235,6 +244,7 @@ describe('PyodideWorkerClient', function () {
         { relativePath: 'data.csv', content: csvContent },
         { relativePath: 'plot.png', content: pngContent },
       ],
+      imports: [],
     })
 
     await waitFor(() =>
@@ -249,6 +259,41 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: ['/project/data.csv', '/project/plot.png'],
       failedUploads: [],
+      imports: [],
+      errorType: undefined,
+    })
+  })
+
+  it('propagates ModuleNotFoundError errorType on run-finished', function () {
+    const { client, worker, lifecycleEvents } =
+      setupClientWithLifecycleTracking()
+
+    client.runCode('import nope', {
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      files: [],
+    })
+    worker.emitMessage({
+      type: 'run-code-result',
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      success: false,
+      outputs: [],
+      outputFiles: [],
+      imports: [],
+      errorType: 'ModuleNotFoundError',
+    })
+
+    const finished = lifecycleEvents.find(e => e.type === 'run-finished')
+    expect(finished).to.deep.equal({
+      type: 'run-finished',
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      success: false,
+      outputs: [],
+      failedUploads: [],
+      imports: [],
+      errorType: 'ModuleNotFoundError',
     })
   })
 
@@ -268,6 +313,8 @@ describe('PyodideWorkerClient', function () {
       success: false,
       outputs: [],
       outputFiles: [],
+      imports: [],
+      errorType: 'generic',
     })
 
     const finished = lifecycleEvents.find(e => e.type === 'run-finished')
@@ -278,6 +325,8 @@ describe('PyodideWorkerClient', function () {
       success: false,
       outputs: [],
       failedUploads: [],
+      imports: [],
+      errorType: 'generic',
     })
   })
 
@@ -297,6 +346,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: [],
       outputFiles: [],
+      imports: [],
     })
 
     const finished = lifecycleEvents.find(e => e.type === 'run-finished')
@@ -307,6 +357,8 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: [],
       failedUploads: [],
+      imports: [],
+      errorType: undefined,
     })
   })
 
@@ -388,6 +440,7 @@ describe('PyodideWorkerClient', function () {
         success,
         outputs: [],
         outputFiles,
+        imports: [],
       })
     }
 
@@ -463,6 +516,7 @@ describe('PyodideWorkerClient', function () {
       expect(finished).to.deep.include({
         success: false,
         failedUploads: ['output/bad.csv'],
+        errorType: 'UploadFileError',
       })
 
       // user-facing stderr line surfaced via outputCallback
@@ -485,7 +539,10 @@ describe('PyodideWorkerClient', function () {
       await waitFor(() => Boolean(findFinished(lifecycleEvents)))
 
       const finished = findFinished(lifecycleEvents)
-      expect(finished).to.deep.include({ success: false })
+      expect(finished).to.deep.include({
+        success: false,
+        errorType: 'UploadFileError',
+      })
       expect(finished)
         .to.have.property('failedUploads')
         .that.has.members(['a.csv', 'b.csv'])
