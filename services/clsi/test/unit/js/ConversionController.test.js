@@ -17,7 +17,16 @@ describe('ConversionController', function () {
     ctx.documentStat = { size: 5678 }
     ctx.Settings = {
       enablePandocConversions: true,
-      path: { compilesDir: '/compiles' },
+      path: { compilesDir: '/compiles', outputDir: '/output' },
+    }
+    ctx.OutputCacheManager = {
+      CACHE_SUBDIR: 'generated-files',
+      promises: {
+        generateBuildId: sinon.stub().resolves('00000000001-0000000000000001'),
+      },
+    }
+    ctx.ConversionOutputCleaner = {
+      scheduleCleanup: sinon.stub(),
     }
     ctx.parsedRequest = { rootResourcePath: 'main.tex' }
     ctx.ConversionManager = {
@@ -43,6 +52,8 @@ describe('ConversionController', function () {
       stat: sinon.stub().resolves(ctx.zipStat),
       unlink: sinon.stub().resolves(),
       rm: sinon.stub().resolves(),
+      mkdir: sinon.stub().resolves(),
+      copyFile: sinon.stub().resolves(),
     }
 
     ctx.readStream = new PassThrough()
@@ -79,9 +90,18 @@ describe('ConversionController', function () {
       default: ctx.RequestParser,
     }))
 
+    vi.doMock('../../../app/js/OutputCacheManager', () => ({
+      default: ctx.OutputCacheManager,
+    }))
+
+    vi.doMock('../../../app/js/ConversionOutputCleaner', () => ({
+      default: ctx.ConversionOutputCleaner,
+    }))
+
     ctx.res = new PassThrough()
     ctx.res.attachment = sinon.stub()
     ctx.res.setHeader = sinon.stub()
+    ctx.res.json = sinon.stub()
 
     ctx.ConversionController = (await import(MODULE_PATH)).default
   })
@@ -322,7 +342,7 @@ describe('ConversionController', function () {
     const uuidDirPattern =
       /^\/compiles\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-    describe('successfully', function () {
+    describe('successfully (default streaming response)', function () {
       beforeEach(async function (ctx) {
         await ctx.ConversionController.convertProjectToDocument(
           ctx.req,
@@ -376,7 +396,77 @@ describe('ConversionController', function () {
         sinon.assert.calledWith(ctx.pipeline, ctx.readStream, ctx.res)
       })
 
+      it('should not move the document or schedule cleanup', function (ctx) {
+        sinon.assert.notCalled(ctx.fs.copyFile)
+        sinon.assert.notCalled(ctx.ConversionOutputCleaner.scheduleCleanup)
+      })
+
       it('should clean up the conversion directory', function (ctx) {
+        sinon.assert.calledWith(ctx.fs.rm, sinon.match(uuidDirPattern), {
+          recursive: true,
+          force: true,
+        })
+      })
+    })
+
+    describe('successfully (responseFormat=json)', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.query.responseFormat = 'json'
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          sinon.stub()
+        )
+      })
+
+      it('should move the document into the conversion output build dir', function (ctx) {
+        const outputBuildDirPattern =
+          /^\/output\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/generated-files\/[0-9a-f]+-[0-9a-f]+$/
+        sinon.assert.calledWith(
+          ctx.fs.mkdir,
+          sinon.match(outputBuildDirPattern),
+          { recursive: true }
+        )
+        sinon.assert.calledWith(
+          ctx.fs.copyFile,
+          ctx.documentPath,
+          sinon.match(filePath => {
+            return (
+              filePath.startsWith('/output/') &&
+              filePath.endsWith('/output.docx')
+            )
+          })
+        )
+      })
+
+      it('should schedule cleanup of the conversion output dir', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ConversionOutputCleaner.scheduleCleanup,
+          sinon.match(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+          )
+        )
+      })
+
+      it('should respond with the conversion id, build id, and file name', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.res.json,
+          sinon.match({
+            conversionId: sinon.match(
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+            ),
+            buildId: sinon.match(/^[0-9a-f]+-[0-9a-f]+$/),
+            file: 'output.docx',
+          })
+        )
+      })
+
+      it('should not stream the document', function (ctx) {
+        sinon.assert.notCalled(ctx.fsSync.createReadStream)
+        sinon.assert.notCalled(ctx.pipeline)
+      })
+
+      it('should clean up the working conversion directory', function (ctx) {
         sinon.assert.calledWith(ctx.fs.rm, sinon.match(uuidDirPattern), {
           recursive: true,
           force: true,

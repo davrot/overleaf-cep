@@ -1,8 +1,11 @@
+import crypto from 'node:crypto'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import ConversionManager from './ConversionManager.js'
+import ConversionOutputCleaner from './ConversionOutputCleaner.js'
+import OutputCacheManager from './OutputCacheManager.js'
 import ResourceWriter from './ResourceWriter.js'
 import RequestParser from './RequestParser.js'
 import { pipeline } from 'node:stream/promises'
@@ -70,6 +73,8 @@ async function convertProjectToDocument(req, res) {
   request.user_id = req.params.user_id
   request.metricsOpts = {}
 
+  const responseFormat = req.query.responseFormat === 'json' ? 'json' : 'stream'
+
   const conversionId = crypto.randomUUID()
   const conversionDir = Path.join(Settings.path.compilesDir, conversionId)
 
@@ -94,12 +99,31 @@ async function convertProjectToDocument(req, res) {
         type
       )
 
-    const documentStat = await fs.stat(documentPath)
-    res.setHeader('Content-Length', documentStat.size)
-    res.attachment(`output.${config.extension}`)
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    const readStream = fsSync.createReadStream(documentPath)
-    await pipeline(readStream, res)
+    const outputName = `output.${config.extension}`
+    if (responseFormat === 'json') {
+      // TODO: drop the streaming branch once web is migrated to the two-step flow
+      const buildId = await OutputCacheManager.promises.generateBuildId()
+      const buildDir = Path.join(
+        Settings.path.outputDir,
+        conversionId,
+        OutputCacheManager.CACHE_SUBDIR,
+        buildId
+      )
+      try {
+        await fs.mkdir(buildDir, { recursive: true })
+        await fs.copyFile(documentPath, Path.join(buildDir, outputName))
+        res.json({ conversionId, buildId, file: outputName })
+      } finally {
+        ConversionOutputCleaner.scheduleCleanup(conversionId)
+      }
+    } else {
+      const documentStat = await fs.stat(documentPath)
+      res.setHeader('Content-Length', documentStat.size)
+      res.attachment(outputName)
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      const readStream = fsSync.createReadStream(documentPath)
+      await pipeline(readStream, res)
+    }
   } finally {
     await fs.rm(conversionDir, { recursive: true, force: true }).catch(() => {})
   }

@@ -3,8 +3,11 @@ import ClsiApp from './helpers/ClsiApp.js'
 import Path from 'node:path'
 import fs from 'node:fs'
 import { pipeline } from 'node:stream/promises'
+import { buffer } from 'node:stream/consumers'
 import yauzl from 'yauzl'
 import { expect } from 'chai'
+import { fetchStreamWithResponse } from '@overleaf/fetch-utils'
+import Settings from '@overleaf/settings'
 
 describe('Conversions', function () {
   describe('docx conversion', function () {
@@ -79,6 +82,60 @@ describe('Conversions', function () {
       )
       await expect(Client.convertDocument(sourcePath, 'docx')).to.eventually.be
         .rejected
+    })
+  })
+
+  describe('project-to-document conversion (responseFormat=json)', function () {
+    before(async function () {
+      await ClsiApp.ensureRunning()
+    })
+
+    it('returns ids and serves the docx output via nginx', async function () {
+      const projectId = Client.randomId()
+      const userId = '0123456789abcdef01234567'
+      const request = {
+        rootResourcePath: 'main.tex',
+        resources: [
+          {
+            path: 'main.tex',
+            content: `\
+\\documentclass{article}
+\\begin{document}
+Hello world
+\\end{document}\
+`,
+          },
+        ],
+      }
+
+      const { conversionId, buildId, file } =
+        await Client.convertProjectToDocument(
+          projectId,
+          userId,
+          'docx',
+          request,
+          'json'
+        )
+
+      expect(conversionId).to.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      )
+      expect(buildId).to.match(/^[0-9a-f]+-[0-9a-f]+$/)
+
+      const downloadUrl = new URL(Settings.apis.clsi.downloadHost)
+      downloadUrl.pathname = `/project/${conversionId}/build/${buildId}/output/${file}`
+      const { stream, response } = await fetchStreamWithResponse(
+        downloadUrl.href
+      )
+      expect(response.status).to.equal(200)
+
+      const body = await buffer(stream)
+      expect(body.length).to.be.greaterThan(0)
+      // .docx is a zip archive — verify the PK\x03\x04 magic bytes
+      expect(body[0]).to.equal(0x50)
+      expect(body[1]).to.equal(0x4b)
+      expect(body[2]).to.equal(0x03)
+      expect(body[3]).to.equal(0x04)
     })
   })
 })

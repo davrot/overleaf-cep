@@ -39,6 +39,27 @@ async function convertDocument(path, type) {
   })
 }
 
+async function convertProjectToDocument(
+  projectId,
+  userId,
+  type,
+  request,
+  responseFormat
+) {
+  const url = new URL(
+    `${host}/project/${projectId}/user/${userId}/download/project-to-document`
+  )
+  url.searchParams.set('type', type)
+  if (responseFormat) {
+    url.searchParams.set('responseFormat', responseFormat)
+  }
+  const opts = { method: 'POST', json: { compile: request } }
+  if (responseFormat === 'json') {
+    return await fetchJson(url.href, opts)
+  }
+  return await fetchStream(url.href, opts)
+}
+
 async function stopCompile(projectId) {
   return await fetchNothing(`${host}/project/${projectId}/compile/stop`, {
     method: 'POST',
@@ -202,6 +223,7 @@ function smokeTest() {
 export default {
   randomId,
   compile,
+  convertProjectToDocument,
   convertDocument,
   stopCompile,
   clearCache,
