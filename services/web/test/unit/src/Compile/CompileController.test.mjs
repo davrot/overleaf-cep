@@ -845,8 +845,8 @@ describe('CompileController', function () {
 
       it('should reject the request', function (ctx) {
         ctx.next.should.have.been.calledWithMatch({
-          name: 'ParamsError',
-          cause: asZodError({
+          name: 'InvalidParamsError',
+          zodError: asZodError({
             code: 'custom',
             path: ['params', 'file'],
             message: 'path traversal detected',
@@ -868,8 +868,8 @@ describe('CompileController', function () {
 
       it('should reject the request', function (ctx) {
         ctx.next.should.have.been.calledWithMatch({
-          name: 'ParamsError',
-          cause: asZodError({
+          name: 'InvalidParamsError',
+          zodError: asZodError({
             origin: 'string',
             code: 'invalid_format',
             format: 'regex',
