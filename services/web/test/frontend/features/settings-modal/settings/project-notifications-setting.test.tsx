@@ -9,25 +9,31 @@ import ProjectNotificationsSetting from '@/features/settings/components/editor-s
 const preferencesUrl = `/notifications/preferences/project/${PROJECT_ID}`
 
 const allNotificationsOn = {
-  trackedChangesOnOwnProject: true,
-  trackedChangesOnInvitedProject: true,
   commentOnOwnProject: true,
   commentOnInvitedProject: true,
-  repliesOnOwnProject: true,
-  repliesOnInvitedProject: true,
   repliesOnAuthoredThread: true,
   repliesOnParticipatingThread: true,
+  commentResolvedOnAuthoredThread: true,
+  commentResolvedOnParticipatingThread: true,
+  commentReopenedOnAuthoredThread: true,
+  commentReopenedOnParticipatingThread: true,
+  trackedChangesOnOwnProject: true,
+  trackedChangesOnInvitedProject: true,
+  trackChangesAcceptedOnAuthoredChange: true,
 }
 
 const repliesOnlyPreferences = {
-  trackedChangesOnOwnProject: false,
-  trackedChangesOnInvitedProject: false,
   commentOnOwnProject: false,
   commentOnInvitedProject: false,
-  repliesOnOwnProject: false,
-  repliesOnInvitedProject: false,
   repliesOnAuthoredThread: true,
   repliesOnParticipatingThread: true,
+  commentResolvedOnAuthoredThread: true,
+  commentResolvedOnParticipatingThread: true,
+  commentReopenedOnAuthoredThread: true,
+  commentReopenedOnParticipatingThread: true,
+  trackedChangesOnOwnProject: false,
+  trackedChangesOnInvitedProject: false,
+  trackChangesAcceptedOnAuthoredChange: true,
 }
 
 const globallyMutedPreferences = {
@@ -35,22 +41,28 @@ const globallyMutedPreferences = {
   trackedChangesOnInvitedProject: false,
   commentOnOwnProject: false,
   commentOnInvitedProject: false,
-  repliesOnOwnProject: false,
-  repliesOnInvitedProject: false,
   repliesOnAuthoredThread: false,
   repliesOnParticipatingThread: false,
   muteAllNotifications: true,
+  commentResolvedOnAuthoredThread: false,
+  commentResolvedOnParticipatingThread: false,
+  commentReopenedOnAuthoredThread: false,
+  commentReopenedOnParticipatingThread: false,
+  trackChangesAcceptedOnAuthoredChange: false,
 }
 
 const allNotificationsOff = {
-  trackedChangesOnOwnProject: false,
-  trackedChangesOnInvitedProject: false,
   commentOnOwnProject: false,
   commentOnInvitedProject: false,
-  repliesOnOwnProject: false,
-  repliesOnInvitedProject: false,
   repliesOnAuthoredThread: false,
   repliesOnParticipatingThread: false,
+  commentResolvedOnAuthoredThread: false,
+  commentResolvedOnParticipatingThread: false,
+  commentReopenedOnAuthoredThread: false,
+  commentReopenedOnParticipatingThread: false,
+  trackedChangesOnOwnProject: false,
+  trackedChangesOnInvitedProject: false,
+  trackChangesAcceptedOnAuthoredChange: false,
 }
 
 const defaultPreferences = {
@@ -58,11 +70,14 @@ const defaultPreferences = {
   trackedChangesOnInvitedProject: false,
   commentOnOwnProject: true,
   commentOnInvitedProject: false,
-  repliesOnOwnProject: false,
-  repliesOnInvitedProject: false,
   repliesOnAuthoredThread: true,
   repliesOnParticipatingThread: true,
   muteAllNotifications: false,
+  commentResolvedOnAuthoredThread: true,
+  commentResolvedOnParticipatingThread: true,
+  commentReopenedOnAuthoredThread: true,
+  commentReopenedOnParticipatingThread: true,
+  trackChangesAcceptedOnAuthoredChange: true,
 }
 
 function renderComponent(props: { permissionsLevel?: string } = {}) {

@@ -22,36 +22,45 @@ function levelToPreferences(
   switch (level) {
     case 'all':
       return {
-        trackedChangesOnOwnProject: true,
-        trackedChangesOnInvitedProject: true,
         commentOnOwnProject: true,
         commentOnInvitedProject: true,
-        repliesOnOwnProject: true,
-        repliesOnInvitedProject: true,
         repliesOnAuthoredThread: true,
         repliesOnParticipatingThread: true,
+        commentResolvedOnAuthoredThread: true,
+        commentResolvedOnParticipatingThread: true,
+        commentReopenedOnAuthoredThread: true,
+        commentReopenedOnParticipatingThread: true,
+        trackedChangesOnOwnProject: true,
+        trackedChangesOnInvitedProject: true,
+        trackChangesAcceptedOnAuthoredChange: true,
       }
     case 'replies':
       return {
-        trackedChangesOnOwnProject: false,
-        trackedChangesOnInvitedProject: false,
         commentOnOwnProject: false,
         commentOnInvitedProject: false,
-        repliesOnOwnProject: false,
-        repliesOnInvitedProject: false,
         repliesOnAuthoredThread: true,
         repliesOnParticipatingThread: true,
+        commentResolvedOnAuthoredThread: true,
+        commentResolvedOnParticipatingThread: true,
+        commentReopenedOnAuthoredThread: true,
+        commentReopenedOnParticipatingThread: true,
+        trackedChangesOnOwnProject: false,
+        trackedChangesOnInvitedProject: false,
+        trackChangesAcceptedOnAuthoredChange: true,
       }
     case 'off':
       return {
-        trackedChangesOnOwnProject: false,
-        trackedChangesOnInvitedProject: false,
         commentOnOwnProject: false,
         commentOnInvitedProject: false,
-        repliesOnOwnProject: false,
-        repliesOnInvitedProject: false,
         repliesOnAuthoredThread: false,
         repliesOnParticipatingThread: false,
+        commentResolvedOnAuthoredThread: false,
+        commentResolvedOnParticipatingThread: false,
+        commentReopenedOnAuthoredThread: false,
+        commentReopenedOnParticipatingThread: false,
+        trackedChangesOnOwnProject: false,
+        trackedChangesOnInvitedProject: false,
+        trackChangesAcceptedOnAuthoredChange: false,
       }
   }
 }
@@ -76,15 +85,16 @@ function preferencesToLevel(
   const projectTrackedChanges = isOwner
     ? preferences.trackedChangesOnOwnProject
     : preferences.trackedChangesOnInvitedProject
-  const projectReplies = isOwner
-    ? preferences.repliesOnOwnProject
-    : preferences.repliesOnInvitedProject
 
-  const anyProjectNotifications =
-    projectComments || projectTrackedChanges || projectReplies
+  const anyProjectNotifications = projectComments || projectTrackedChanges
   const anyParticipantNotifications =
     preferences.repliesOnAuthoredThread ||
-    preferences.repliesOnParticipatingThread
+    preferences.repliesOnParticipatingThread ||
+    preferences.trackChangesAcceptedOnAuthoredChange ||
+    preferences.commentResolvedOnAuthoredThread ||
+    preferences.commentResolvedOnParticipatingThread ||
+    preferences.commentReopenedOnAuthoredThread ||
+    preferences.commentReopenedOnParticipatingThread
 
   if (!anyProjectNotifications && !anyParticipantNotifications) {
     return 'off'
