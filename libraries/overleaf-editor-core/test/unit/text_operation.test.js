@@ -17,6 +17,10 @@ const { RetainOp, InsertOp, RemoveOp } = require('../../lib/operation/scan_op')
 const TrackingProps = require('../../lib/file_data/tracking_props')
 const ClearTrackingProps = require('../../lib/file_data/clear_tracking_props')
 
+function fuzzingErrorMessage(obj) {
+  return `Failed randomized test with input: ${JSON.stringify(obj)}`
+}
+
 describe('TextOperation', function () {
   const numTrials = 500
 
@@ -145,18 +149,12 @@ describe('TextOperation', function () {
       const str = random.string(50)
       const comments = random.comments(6)
       const o = randomOperation(str, comments.ids)
-      try {
-        expect(str.length).to.equal(o.baseLength)
-        const file = new StringFileData(str, comments.comments)
-        o.apply(file)
-        const result = file.getContent()
-        expect(result.length).to.equal(o.targetLength)
-      } catch (err) {
-        if (err instanceof Error) {
-          err.message = `Failing inputs:\n  str: ${JSON.stringify(str)}\n  comments: ${JSON.stringify(comments)}\n  o: ${JSON.stringify(o.toJSON())}\n\n${err.message}`
-        }
-        throw err
-      }
+      const fuzzingError = fuzzingErrorMessage({ str, comments, o: o.toJSON() })
+      expect(str.length).to.equal(o.baseLength, fuzzingError)
+      const file = new StringFileData(str, comments.comments)
+      o.apply(file)
+      const result = file.getContent()
+      expect(result.length).to.equal(o.targetLength, fuzzingError)
     })
   )
 
@@ -166,15 +164,11 @@ describe('TextOperation', function () {
       const doc = random.string(50)
       const comments = random.comments(2)
       const operation = randomOperation(doc, comments.ids)
-      try {
-        const roundTripOperation = TextOperation.fromJSON(operation.toJSON())
-        expect(operation.equals(roundTripOperation)).to.be.true
-      } catch (err) {
-        if (err instanceof Error) {
-          err.message = `Failing inputs:\n  doc: ${JSON.stringify(doc)}\n  comments: ${JSON.stringify(comments)}\n  operation: ${JSON.stringify(operation.toJSON())}\n\n${err.message}`
-        }
-        throw err
-      }
+      const roundTripOperation = TextOperation.fromJSON(operation.toJSON())
+      expect(operation.equals(roundTripOperation)).to.equal(
+        true,
+        fuzzingErrorMessage({ operation })
+      )
     })
   )
 
@@ -227,22 +221,20 @@ describe('TextOperation', function () {
         const str = random.string(50)
         const comments = random.comments(6)
         const o = randomOperation(str, comments.ids)
-        try {
-          const originalFile = new StringFileData(str, comments.comments)
-          const p = o.invert(originalFile)
-          expect(o.baseLength).to.equal(p.targetLength)
-          expect(o.targetLength).to.equal(p.baseLength)
-          const file = new StringFileData(str, comments.comments)
-          o.apply(file)
-          p.apply(file)
-          const result = file.toRaw()
-          expect(result).to.deep.equal(originalFile.toRaw())
-        } catch (err) {
-          if (err instanceof Error) {
-            err.message = `Failing inputs:\n  str: ${JSON.stringify(str)}\n  comments: ${JSON.stringify(comments)}\n  o: ${JSON.stringify(o.toJSON())}\n\n${err.message}`
-          }
-          throw err
-        }
+        const originalFile = new StringFileData(str, comments.comments)
+        const p = o.invert(originalFile)
+        const fuzzingError = fuzzingErrorMessage({
+          str,
+          comments,
+          o: o.toJSON(),
+        })
+        expect(o.baseLength).to.equal(p.targetLength, fuzzingError)
+        expect(o.targetLength).to.equal(p.baseLength, fuzzingError)
+        const file = new StringFileData(str, comments.comments)
+        o.apply(file)
+        p.apply(file)
+        const result = file.toRaw()
+        expect(result).to.deep.equal(originalFile.toRaw(), fuzzingError)
       })
     )
 
@@ -394,26 +386,33 @@ describe('TextOperation', function () {
         const str = random.string(20)
         const comments = random.comments(6)
         const a = randomOperation(str, comments.ids)
+        const fuzzingError = fuzzingErrorMessage({
+          str,
+          comments,
+          a: a.toJSON(),
+        })
         const file = new StringFileData(str, comments.comments)
         a.apply(file)
         const afterA = file.toRaw()
+        expect(afterA.content.length).to.equal(a.targetLength, fuzzingError)
         const b = randomOperation(afterA.content, comments.ids)
-        try {
-          expect(afterA.content.length).to.equal(a.targetLength)
-          b.apply(file)
-          const afterB = file.toRaw()
-          expect(afterB.content.length).to.equal(b.targetLength)
-          const ab = a.compose(b)
-          expect(ab.targetLength).to.equal(b.targetLength)
-          ab.apply(new StringFileData(str, comments.comments))
-          const afterAB = file.toRaw()
-          expect(afterAB).to.deep.equal(afterB)
-        } catch (err) {
-          if (err instanceof Error) {
-            err.message = `Failing inputs:\n  str: ${JSON.stringify(str)}\n  comments: ${JSON.stringify(comments)}\n  a: ${JSON.stringify(a.toJSON())}\n  b: ${JSON.stringify(b.toJSON())}\n\n${err.message}`
-          }
-          throw err
-        }
+        const fuzzingErrorWithB = fuzzingErrorMessage({
+          str,
+          comments,
+          a: a.toJSON(),
+          b: b.toJSON(),
+        })
+        b.apply(file)
+        const afterB = file.toRaw()
+        expect(afterB.content.length).to.equal(
+          b.targetLength,
+          fuzzingErrorWithB
+        )
+        const ab = a.compose(b)
+        expect(ab.targetLength).to.equal(b.targetLength, fuzzingErrorWithB)
+        ab.apply(new StringFileData(str, comments.comments))
+        const afterAB = file.toRaw()
+        expect(afterAB).to.deep.equal(afterB, fuzzingErrorWithB)
       })
     )
 
@@ -622,24 +621,23 @@ describe('TextOperation', function () {
         const comments = random.comments(6)
         const a = randomOperation(str, comments.ids)
         const b = randomOperation(str, comments.ids)
-        try {
-          const primes = TextOperation.transform(a, b)
-          const aPrime = primes[0]
-          const bPrime = primes[1]
-          const abPrime = a.compose(bPrime)
-          const baPrime = b.compose(aPrime)
-          const abFile = new StringFileData(str, comments.comments)
-          const baFile = new StringFileData(str, comments.comments)
-          abPrime.apply(abFile)
-          baPrime.apply(baFile)
-          expect(abPrime.equals(baPrime)).to.be.true
-          expect(abFile.toRaw()).to.deep.equal(baFile.toRaw())
-        } catch (err) {
-          if (err instanceof Error) {
-            err.message = `Failing inputs:\n  str: ${JSON.stringify(str)}\n  comments: ${JSON.stringify(comments)}\n  a: ${JSON.stringify(a.toJSON())}\n  b: ${JSON.stringify(b.toJSON())}\n\n${err.message}`
-          }
-          throw err
-        }
+        const primes = TextOperation.transform(a, b)
+        const aPrime = primes[0]
+        const bPrime = primes[1]
+        const abPrime = a.compose(bPrime)
+        const baPrime = b.compose(aPrime)
+        const abFile = new StringFileData(str, comments.comments)
+        const baFile = new StringFileData(str, comments.comments)
+        abPrime.apply(abFile)
+        baPrime.apply(baFile)
+        const fuzzingError = fuzzingErrorMessage({
+          str,
+          comments,
+          a: a.toJSON(),
+          b: b.toJSON(),
+        })
+        expect(abPrime.equals(baPrime)).to.be.equal(true, fuzzingError)
+        expect(abFile.toRaw()).to.deep.equal(baFile.toRaw(), fuzzingError)
       })
     )
 
