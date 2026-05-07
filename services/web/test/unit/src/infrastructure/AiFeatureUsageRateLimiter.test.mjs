@@ -82,9 +82,23 @@ describe('AiFeatureUsageRateLimiter', function () {
       },
     }
 
+    ctx.UserAuditLogHandler = {
+      addEntryInBackground: sinon.stub(),
+      promises: {
+        addEntry: sinon.stub().resolves(),
+      },
+    }
+
     vi.doMock('@overleaf/settings', () => ({
       default: ctx.settings,
     }))
+
+    vi.doMock(
+      '../../../../app/src/Features/User/UserAuditLogHandler.mjs',
+      () => ({
+        default: ctx.UserAuditLogHandler,
+      })
+    )
 
     vi.doMock('../../../../app/src/models/UserFeatureUsage', () => ({
       UserFeatureUsage: ctx.UserFeatureUsageModel,
@@ -147,6 +161,84 @@ describe('AiFeatureUsageRateLimiter', function () {
         await expect(
           ctx.AiFeatureUsageRateLimiter.useFeature(ctx.userId, res, 1)
         ).to.be.rejectedWith('aiFeatureUsage rate limit exceeded')
+      })
+    })
+
+    describe('audit log on quota breach', function () {
+      const stubUsage = (ctx, usage) => {
+        ctx.UserFeatureUsageModel.findOneAndUpdate = sinon.stub().returns({
+          exec: sinon.stub().resolves({
+            features: {
+              aiFeatureUsage: { usage, periodStart: new Date() },
+            },
+          }),
+        })
+      }
+      const buildRes = () => ({ set: () => null, req: { ip: '1.2.3.4' } })
+
+      it('writes an ai-quota-breach audit log entry with the tool when usage hits the allowance', async function (ctx) {
+        stubUsage(ctx, ctx.settings.quotaGrants.ai.basic)
+
+        await ctx.AiFeatureUsageRateLimiter.useFeature(
+          ctx.userId,
+          buildRes(),
+          1,
+          { auditLogTool: 'workbench-usage' }
+        )
+
+        expect(
+          ctx.UserAuditLogHandler.addEntryInBackground
+        ).to.have.been.calledOnceWithExactly(
+          ctx.userId,
+          'ai-quota-breach',
+          ctx.userId,
+          '1.2.3.4',
+          { tool: 'workbench-usage' }
+        )
+      })
+
+      it('writes an audit log entry when usage is already over the allowance', async function (ctx) {
+        stubUsage(ctx, ctx.settings.quotaGrants.ai.basic + 1)
+
+        await expect(
+          ctx.AiFeatureUsageRateLimiter.useFeature(ctx.userId, buildRes(), 1, {
+            auditLogTool: 'workbench-usage',
+          })
+        ).to.be.rejectedWith('aiFeatureUsage rate limit exceeded')
+
+        expect(ctx.UserAuditLogHandler.addEntryInBackground).to.have.been
+          .calledOnce
+        expect(
+          ctx.UserAuditLogHandler.addEntryInBackground.firstCall.args[1]
+        ).to.equal('ai-quota-breach')
+        expect(
+          ctx.UserAuditLogHandler.addEntryInBackground.firstCall.args[4]
+        ).to.deep.equal({ tool: 'workbench-usage' })
+      })
+
+      it('does not write an audit log entry when auditLogTool is not provided', async function (ctx) {
+        stubUsage(ctx, ctx.settings.quotaGrants.ai.basic + 1)
+
+        await expect(
+          ctx.AiFeatureUsageRateLimiter.useFeature(ctx.userId, buildRes(), 1)
+        ).to.be.rejectedWith('aiFeatureUsage rate limit exceeded')
+
+        expect(ctx.UserAuditLogHandler.addEntryInBackground).to.not.have.been
+          .called
+      })
+
+      it('does not write an audit log entry when usage is below the allowance', async function (ctx) {
+        stubUsage(ctx, 1)
+
+        await ctx.AiFeatureUsageRateLimiter.useFeature(
+          ctx.userId,
+          buildRes(),
+          1,
+          { auditLogTool: 'workbench-usage' }
+        )
+
+        expect(ctx.UserAuditLogHandler.addEntryInBackground).to.not.have.been
+          .called
       })
     })
   })
