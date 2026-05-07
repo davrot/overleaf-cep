@@ -483,6 +483,7 @@ const _ProjectController = {
       'overleaf-code',
       'export-docx',
       'sharing-updates',
+      'export-markdown',
     ].filter(Boolean)
 
     const getUserValues = async userId =>

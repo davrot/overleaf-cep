@@ -116,12 +116,41 @@ async function convertToLaTeX(
   return Path.join(conversionDir, outputName)
 }
 
+const LATEX_EXPORT_CONFIGS = {
+  docx: {
+    fileExtension: 'docx',
+    compressOutput: false,
+    getPandocArgs: ({ outputPath }) => [
+      '--output',
+      outputPath,
+      '--from',
+      'latex',
+      '--to',
+      'docx',
+      '--resource-path=.',
+    ],
+  },
+  markdown: {
+    fileExtension: 'md',
+    compressOutput: true,
+    getPandocArgs: ({ outputPath, subdirName }) => [
+      '--output',
+      outputPath,
+      '--from',
+      'latex',
+      '--to',
+      'markdown',
+      '--resource-path=.',
+      `--extract-media=${subdirName}`,
+    ],
+  },
+}
+
 async function convertLaTeXToDocumentInDirWithLock(
   conversionId,
   compileDir,
   rootDocPath,
-  type,
-  extension
+  type
 ) {
   const lock = LockManager.acquire(compileDir)
   try {
@@ -129,8 +158,7 @@ async function convertLaTeXToDocumentInDirWithLock(
       conversionId,
       compileDir,
       rootDocPath,
-      type,
-      extension
+      type
     )
   } finally {
     lock.release()
@@ -141,11 +169,25 @@ async function convertLaTeXToDocumentInDir(
   conversionId,
   compileDir,
   rootDocPath = 'main.tex',
-  type,
-  extension
+  type
 ) {
-  const outputName = crypto.randomUUID() + '.' + extension
+  if (!Object.hasOwn(LATEX_EXPORT_CONFIGS, type)) {
+    throw new OError('unsupported conversion type', { type })
+  }
+  const config = LATEX_EXPORT_CONFIGS[type]
+
   const timeoutMs = Settings.conversionTimeoutSeconds * 1000
+  const outputId = crypto.randomUUID()
+
+  let pandocOutputPath, finalOutputName
+  if (config.compressOutput) {
+    await fs.mkdir(Path.join(compileDir, outputId), { recursive: true })
+    pandocOutputPath = Path.join(outputId, `main.${config.fileExtension}`)
+    finalOutputName = outputId + '.zip'
+  } else {
+    pandocOutputPath = outputId + '.' + config.fileExtension
+    finalOutputName = pandocOutputPath
+  }
 
   logger.debug(
     { compileDir, rootDocPath, type },
@@ -157,13 +199,10 @@ async function convertLaTeXToDocumentInDir(
     [
       'pandoc',
       rootDocPath,
-      '--output',
-      outputName,
-      '--from',
-      'latex',
-      '--to',
-      type,
-      '--resource-path=.',
+      ...config.getPandocArgs({
+        outputPath: pandocOutputPath,
+        subdirName: outputId,
+      }),
     ],
     compileDir,
     Settings.pandocImage,
@@ -181,7 +220,43 @@ async function convertLaTeXToDocumentInDir(
     })
   }
 
-  return Path.join(compileDir, outputName)
+  logger.debug(
+    { stdout, stderr, exitCode },
+    'pandoc latex-to-document conversion completed'
+  )
+
+  if (!config.compressOutput) {
+    return Path.join(compileDir, finalOutputName)
+  }
+
+  const {
+    exitCode: zipExitCode,
+    stdout: zipStdout,
+    stderr: zipStderr,
+  } = await CommandRunner.promises.run(
+    conversionId,
+    ['sh', '-c', `cd ${outputId} && zip -r ../${finalOutputName} .`],
+    compileDir,
+    Settings.pandocImage,
+    timeoutMs,
+    {},
+    'conversions'
+  )
+
+  if (zipExitCode !== 0) {
+    throw new OError('zip compression of export failed', {
+      exitCode: zipExitCode,
+      stdout: zipStdout,
+      stderr: zipStderr,
+    })
+  }
+
+  logger.debug(
+    { stdout: zipStdout, stderr: zipStderr, exitCode: zipExitCode },
+    'export compressed'
+  )
+
+  return Path.join(compileDir, finalOutputName)
 }
 
 export default {

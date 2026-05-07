@@ -362,8 +362,7 @@ describe('ConversionManager', function () {
             ctx.conversionId,
             ctx.compileDir,
             ctx.rootDocPath,
-            ctx.type,
-            ctx.extension
+            ctx.type
           )
       })
 
@@ -424,10 +423,136 @@ describe('ConversionManager', function () {
             ctx.conversionId,
             ctx.compileDir,
             'main.tex',
-            'docx',
             'docx'
           )
         ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
+
+        sinon.assert.called(ctx.lock.release)
+      })
+    })
+  })
+
+  describe('convertLaTeXToDocumentInDirWithLock (type=markdown)', function () {
+    describe('successfully', function () {
+      beforeEach(async function (ctx) {
+        ctx.compileDir = '/compiles/test-compile-dir'
+        ctx.rootDocPath = 'main.tex'
+
+        ctx.result =
+          await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+            ctx.conversionId,
+            ctx.compileDir,
+            ctx.rootDocPath,
+            'markdown'
+          )
+      })
+
+      it('should acquire a lock on the compile dir', function (ctx) {
+        sinon.assert.calledWith(ctx.LockManager.acquire, ctx.compileDir)
+      })
+
+      it('should release the lock', function (ctx) {
+        sinon.assert.called(ctx.lock.release)
+      })
+
+      it('should create a UUID-named subdirectory', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.fs.mkdir,
+          Path.join(ctx.compileDir, 'output-uuid'),
+          { recursive: true }
+        )
+      })
+
+      it('should run pandoc then zip (two commands total)', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
+      })
+
+      it('should run pandoc outputting main.md into the UUID-named subdir', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
+          ctx.conversionId,
+          [
+            'pandoc',
+            ctx.rootDocPath,
+            '--output',
+            Path.join('output-uuid', 'main.md'),
+            '--from',
+            'latex',
+            '--to',
+            'markdown',
+            '--resource-path=.',
+            '--extract-media=output-uuid',
+          ],
+          ctx.compileDir,
+          ctx.Settings.pandocImage,
+          60_000,
+          {},
+          'conversions',
+        ])
+      })
+
+      it('should zip the project-named subdirectory', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.secondCall.args).toEqual([
+          ctx.conversionId,
+          ['sh', '-c', 'cd output-uuid && zip -r ../output-uuid.zip .'],
+          ctx.compileDir,
+          ctx.Settings.pandocImage,
+          60_000,
+          {},
+          'conversions',
+        ])
+      })
+
+      it('should return the path to the zip file', function (ctx) {
+        expect(ctx.result).toBe(Path.join(ctx.compileDir, 'output-uuid.zip'))
+      })
+
+      it('should convert conversion timeout to milliseconds', function (ctx) {
+        expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
+        expect(ctx.CommandRunner.promises.run.secondCall.args[4]).toBe(60_000)
+      })
+    })
+
+    describe('when pandoc fails (non-zero exit code)', function () {
+      it('should reject with an error and release the lock', async function (ctx) {
+        ctx.compileDir = '/compiles/test-compile-dir'
+
+        ctx.CommandRunner.promises.run.resolves({
+          stdout: 'mock-stdout',
+          stderr: 'mock-stderr',
+          exitCode: 1,
+        })
+
+        await expect(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+            ctx.conversionId,
+            ctx.compileDir,
+            'main.tex',
+            'markdown'
+          )
+        ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
+
+        sinon.assert.called(ctx.lock.release)
+      })
+    })
+
+    describe('when zip fails (non-zero exit code)', function () {
+      it('should reject with an error and release the lock', async function (ctx) {
+        ctx.compileDir = '/compiles/test-compile-dir'
+
+        ctx.CommandRunner.promises.run
+          .onFirstCall()
+          .resolves({ stdout: '', stderr: '', exitCode: 0 })
+          .onSecondCall()
+          .resolves({ stdout: '', stderr: 'zip error', exitCode: 1 })
+
+        await expect(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+            ctx.conversionId,
+            ctx.compileDir,
+            'main.tex',
+            'markdown'
+          )
+        ).to.be.rejectedWith('zip compression of export failed')
 
         sinon.assert.called(ctx.lock.release)
       })

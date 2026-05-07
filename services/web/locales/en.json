@@ -836,6 +836,7 @@
   "expiry": "Expiry Date",
   "explore_all_plans": "Explore all plans",
   "export_as_docx": "Export as Word document (.docx)",
+  "export_as_markdown": "Export as Markdown (.md)",
   "export_csv": "Export CSV",
   "export_document_error": "Export failed. Please try again.",
   "export_project_to_github": "Export Project to GitHub",

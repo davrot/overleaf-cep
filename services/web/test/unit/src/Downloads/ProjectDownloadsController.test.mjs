@@ -340,5 +340,71 @@ describe('ProjectDownloadsController', function () {
         sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
       })
     })
+
+    describe('with type=markdown', function () {
+      beforeEach(async function (ctx) {
+        ctx.projectId = 'test-project-id'
+        ctx.userId = 'test-user-id'
+        ctx.projectName = 'My Test Project'
+        ctx.exportStream = { pipe: sinon.stub() }
+        ctx.contentLength = 9876
+
+        ctx.req.params = { Project_id: ctx.projectId, type: 'markdown' }
+        ctx.req.session = { user: { _id: ctx.userId } }
+        ctx.req.ip = '192.168.1.1'
+
+        ctx.res.attachment = sinon.stub().returns(ctx.res)
+
+        ctx.SessionManager.getLoggedInUserId.returns(ctx.userId)
+        ctx.ProjectGetter.promises.getProject.resolves({
+          name: ctx.projectName,
+        })
+        ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          {
+            stream: ctx.exportStream,
+            contentLength: ctx.contentLength,
+          }
+        )
+
+        await ctx.ProjectDownloadsController.exportProjectConversion(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should call convertProjectToDocument with the markdown type', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.DocumentConversionManager.promises.convertProjectToDocument,
+          ctx.projectId,
+          ctx.userId,
+          'markdown'
+        )
+      })
+
+      it('should set the attachment filename with .zip extension', function (ctx) {
+        sinon.assert.calledWith(ctx.res.attachment, 'My_Test_Project.zip')
+      })
+
+      it('should add an audit log entry for markdown export', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ProjectAuditLogHandler.addEntryInBackground,
+          ctx.projectId,
+          'project-exported-markdown',
+          ctx.userId,
+          ctx.req.ip
+        )
+      })
+
+      it('should record the action via Metrics with markdown type', function (ctx) {
+        ctx.Metrics.inc
+          .calledWith('document-exports', 1, { type: 'markdown' })
+          .should.equal(true)
+      })
+
+      it('should stream the document to the response', function (ctx) {
+        sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
+      })
+    })
   })
 })

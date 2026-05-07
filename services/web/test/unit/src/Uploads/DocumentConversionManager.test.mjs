@@ -311,7 +311,7 @@ describe('DocumentConversionManager', function () {
       })
     })
 
-    describe('successfully', function () {
+    describe('successfully converts the document', function () {
       beforeEach(async function (ctx) {
         ctx.result =
           await ctx.DocumentConversionManager.promises.convertProjectToDocument(

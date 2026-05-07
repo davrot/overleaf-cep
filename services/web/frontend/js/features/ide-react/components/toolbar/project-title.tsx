@@ -14,6 +14,7 @@ import {
   DownloadProjectPDF,
   DownloadProjectZip,
   ExportProjectDocx,
+  ExportProjectMarkdown,
 } from './download-project'
 import { useCallback, useState } from 'react'
 import OLDropdownMenuItem from '@/shared/components/ol/ol-dropdown-menu-item'
@@ -81,6 +82,7 @@ export const ToolbarProjectTitle = () => {
         <DownloadProjectPDF />
         <DownloadProjectZip />
         <ExportProjectDocx />
+        <ExportProjectMarkdown />
         <DropdownDivider />
         <DuplicateProject />
         <OLDropdownMenuItem

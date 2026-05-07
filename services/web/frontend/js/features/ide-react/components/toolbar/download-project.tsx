@@ -142,3 +142,43 @@ export const ExportProjectDocx = () => {
     </OLDropdownMenuItem>
   )
 }
+
+export const ExportProjectMarkdown = () => {
+  const { t } = useTranslation()
+  const { projectId } = useProjectContext()
+  const exportMarkdownEnabled = useFeatureFlag('export-markdown')
+  const enablePandocConversions =
+    getMeta('ol-ExposedSettings')?.enablePandocConversions
+  const anonymous = getMeta('ol-anonymous')
+
+  const showExportMarkdown =
+    exportMarkdownEnabled && enablePandocConversions && !anonymous
+
+  useCommandProvider(
+    () =>
+      showExportMarkdown
+        ? [
+            {
+              id: 'export-as-markdown',
+              href: `/project/${projectId}/download/conversion/markdown`,
+              label: t('export_as_markdown'),
+            },
+          ]
+        : [],
+    [t, showExportMarkdown, projectId]
+  )
+
+  if (!showExportMarkdown) {
+    return null
+  }
+
+  return (
+    <OLDropdownMenuItem
+      href={`/project/${projectId}/download/conversion/markdown`}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {t('export_as_markdown')}
+    </OLDropdownMenuItem>
+  )
+}

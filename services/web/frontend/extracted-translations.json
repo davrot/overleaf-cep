@@ -631,6 +631,7 @@
   "expires_in_days": "",
   "expires_on": "",
   "export_as_docx": "",
+  "export_as_markdown": "",
   "export_csv": "",
   "export_document_error": "",
   "export_project_to_github": "",

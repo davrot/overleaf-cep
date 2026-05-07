@@ -339,7 +339,7 @@ describe('ConversionController', function () {
         )
       })
 
-      it('should call convertLaTeXToDocumentInDirWithLock with docx type and extension', function (ctx) {
+      it('should call convertLaTeXToDocumentInDirWithLock with docx type', function (ctx) {
         sinon.assert.calledWith(
           ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock,
           sinon.match(
@@ -347,7 +347,6 @@ describe('ConversionController', function () {
           ),
           sinon.match(uuidDirPattern),
           'main.tex',
-          'docx',
           'docx'
         )
       })
@@ -382,6 +381,37 @@ describe('ConversionController', function () {
           recursive: true,
           force: true,
         })
+      })
+    })
+
+    describe('with conversionType=markdown', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.query = { type: 'markdown', projectName: 'My_Project' }
+        ctx.fs.stat.resolves(ctx.documentStat)
+
+        await ctx.ConversionController.convertProjectToDocument(
+          ctx.req,
+          ctx.res,
+          sinon.stub()
+        )
+      })
+
+      it('should call convertLaTeXToDocumentInDirWithLock with type=markdown', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock,
+          sinon.match(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+          ),
+          sinon.match(
+            /^\/compiles\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+          ),
+          'main.tex',
+          'markdown'
+        )
+      })
+
+      it('should set the attachment filename with .zip extension', function (ctx) {
+        sinon.assert.calledWith(ctx.res.attachment, 'output.zip')
       })
     })
 

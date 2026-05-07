@@ -9,7 +9,10 @@ import { pipeline } from 'node:stream/promises'
 import Settings from '@overleaf/settings'
 import Path from 'node:path'
 
-const SUPPORTED_CONVERSION_TYPES = new Map([['docx', 'docx']])
+const CONVERSION_CONFIGS = {
+  docx: { extension: 'docx' },
+  markdown: { extension: 'zip' },
+}
 
 async function convertDocumentToLaTeX(req, res) {
   const { path } = req.file
@@ -57,10 +60,10 @@ async function convertProjectToDocument(req, res) {
   }
 
   const type = req.query.type
-  const extension = SUPPORTED_CONVERSION_TYPES.get(type)
-  if (!extension) {
+  if (!Object.hasOwn(CONVERSION_CONFIGS, type)) {
     return res.sendStatus(400)
   }
+  const config = CONVERSION_CONFIGS[type]
 
   const request = await RequestParser.promises.parse(req.body)
   request.project_id = req.params.project_id
@@ -88,13 +91,12 @@ async function convertProjectToDocument(req, res) {
         conversionId,
         conversionDir,
         request.rootResourcePath,
-        type,
-        extension
+        type
       )
 
     const documentStat = await fs.stat(documentPath)
     res.setHeader('Content-Length', documentStat.size)
-    res.attachment(`output.${extension}`)
+    res.attachment(`output.${config.extension}`)
     res.setHeader('X-Content-Type-Options', 'nosniff')
     const readStream = fsSync.createReadStream(documentPath)
     await pipeline(readStream, res)
