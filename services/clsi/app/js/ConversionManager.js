@@ -127,6 +127,8 @@ const LATEX_EXPORT_CONFIGS = {
       'latex',
       '--to',
       'docx',
+      '--citeproc',
+      '--number-sections',
       '--resource-path=.',
     ],
   },

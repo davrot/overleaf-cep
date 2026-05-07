@@ -387,6 +387,8 @@ describe('ConversionManager', function () {
             'latex',
             '--to',
             ctx.type,
+            '--citeproc',
+            '--number-sections',
             '--resource-path=.',
           ],
           ctx.compileDir,
