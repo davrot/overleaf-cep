@@ -54,6 +54,21 @@ const paramsSchema = z.object({
 })
 
 /**
+ * Normalize annual cadence to month+12 so all annual prices share the same
+ * recurring shape for downstream import/migration tooling.
+ *
+ * @param {'month' | 'year'} interval
+ * @returns {{ interval: 'month', interval_count?: 1 | 12 }}
+ */
+function getRecurringFromInterval(interval) {
+  if (interval === 'year') {
+    return { interval: 'month', interval_count: 12 }
+  }
+
+  return { interval: 'month', interval_count: 1 }
+}
+
+/**
  * @param {import('stripe').Stripe} stripe
  * @returns {Promise<Record<string, Price>>}
  */
@@ -262,7 +277,7 @@ export async function main(trackProgress) {
         product: productIdForPrice,
         currency: currencyLower,
         unit_amount: unitAmount,
-        recurring: { interval },
+        recurring: getRecurringFromInterval(interval),
         lookup_key: lookupKey,
         nickname: priceDescription || undefined,
       }
