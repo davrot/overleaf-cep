@@ -630,7 +630,7 @@ describe('<PdfPreview/>', function () {
     cy.waitForCompile({ pdf: true })
 
     cy.findByRole('button', { name: 'View logs' }).click()
-    cy.findByRole('button', { name: 'View PDF' })
+    cy.findByRole('button', { name: 'Back to PDF' })
     cy.findByLabelText('Raw logs from the LaTeX compiler').within(() => {
       cy.findByRole('button', { name: 'Expand' }).click()
       cy.findByRole('button', { name: 'Collapse' }).click()
