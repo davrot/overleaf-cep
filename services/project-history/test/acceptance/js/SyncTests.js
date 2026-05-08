@@ -169,7 +169,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
       })
@@ -263,7 +263,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
         it('should skip HEAD on blob without hash', async function () {
@@ -353,7 +353,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
         it('should record error when checking blob fails with 500', async function () {
@@ -453,7 +453,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             !addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been skipped`
+            `/api/projects/${historyId}/legacy_changes should have been skipped`
           )
         })
         it('should skip blob write when blob exists', async function () {
@@ -544,7 +544,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
         it('should add file w/o url', async function () {
@@ -635,7 +635,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
         describe('with filestore disabled', function () {
@@ -746,7 +746,7 @@ describe('Syncing with web and doc-updater', function () {
             )
             assert(
               !addFile.isDone(),
-              `/api/projects/${historyId}/changes should have been skipped`
+              `/api/projects/${historyId}/legacy_changes should have been skipped`
             )
           })
         })
@@ -852,7 +852,7 @@ describe('Syncing with web and doc-updater', function () {
           )
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
       })
@@ -921,7 +921,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             deleteFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
       })
@@ -1008,7 +1008,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
 
           const project = await db.projects.findOne({
@@ -1073,7 +1073,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1150,7 +1150,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1222,7 +1222,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1324,7 +1324,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             fixTrackedChange.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1419,8 +1419,357 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             fixTrackedChange.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
+        })
+      })
+
+      describe("when a doc's blob content is corrupted", function () {
+        beforeEach(function () {
+          MockHistoryStore()
+            .get(`/api/projects/${historyId}/latest/history`)
+            .reply(200, {
+              chunk: {
+                history: {
+                  snapshot: {
+                    files: {
+                      'main.tex': {
+                        hash: '0a207c060e61f3b88eaee0a8cd0696f46fb155eb',
+                        stringLength: 10,
+                      },
+                    },
+                  },
+                  changes: [
+                    {
+                      operations: [
+                        {
+                          pathname: 'main.tex',
+                          // Retain 10 chars, but blob content is only 3 chars.
+                          // This simulates a corrupted history where the
+                          // operation doesn't match the blob content, causing
+                          // an ApplyError when the file is loaded eagerly.
+                          textOperation: [10],
+                        },
+                      ],
+                      timestamp: '2026-01-01T00:00:00.000Z',
+                      authors: [],
+                      v2Authors: [],
+                    },
+                  ],
+                },
+                startVersion: 0,
+              },
+            })
+
+          // Blob returns valid content, but it doesn't match the operation
+          MockHistoryStore()
+            .get(
+              `/api/projects/${historyId}/blobs/0a207c060e61f3b88eaee0a8cd0696f46fb155eb`
+            )
+            .reply(200, 'a\nb')
+        })
+
+        it('should remove and re-add the file during hard resync', async function () {
+          const addFile = MockHistoryStore()
+            .post(`/api/projects/${historyId}/legacy_changes`, body => {
+              // The corrupted file is removed and re-added as two changes
+              expect(body).to.have.length(2)
+              // First change: remove the corrupted file
+              expect(body[0].operations).to.have.length(1)
+              expect(body[0].operations[0]).to.deep.include({
+                pathname: 'main.tex',
+                newPathname: '',
+              })
+              // Second change: re-add with new blob from docstore
+              expect(body[1].operations).to.have.length(1)
+              expect(body[1].operations[0].pathname).to.equal('main.tex')
+              expect(body[1].operations[0].file).to.have.property('hash')
+              return true
+            })
+            .query({ end_version: 1 })
+            .reply(204)
+
+          // The re-added file needs its blob to be stored
+          MockHistoryStore()
+            .put(new RegExp(`/api/projects/${historyId}/blobs/`))
+            .reply(201)
+
+          await ProjectHistoryClient.hardResyncHistory(this.project_id, {
+            recoverCorruptedFiles: true,
+          })
+
+          const update1 = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update1)
+
+          const update2 = {
+            path: '/main.tex',
+            projectHistoryId: historyId,
+            resyncDocContent: {
+              content: 'hello world',
+            },
+            doc: this.doc_id,
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update2)
+
+          await ProjectHistoryClient.flushProject(this.project_id)
+
+          assert(
+            addFile.isDone(),
+            `/api/projects/${historyId}/legacy_changes should have been called`
+          )
+          sinon.assert.calledWithMatch(
+            loggerWarn,
+            sinon.match({
+              projectId: this.project_id,
+              pathname: 'main.tex',
+            }),
+            'failed to load file from history during hard resync, removing and re-adding from docstore'
+          )
+        })
+
+        it('should restore comments and tracked changes from docstore after hard resync re-add', async function () {
+          const commentId = 'comment-id-1'
+
+          const addFile = MockHistoryStore()
+            .post(`/api/projects/${historyId}/legacy_changes`, body => {
+              // Expect three changes: remove, re-add, then comment sync
+              expect(body).to.have.length(3)
+              // First change: remove the corrupted file
+              expect(body[0].operations).to.have.length(1)
+              expect(body[0].operations[0]).to.deep.include({
+                pathname: 'main.tex',
+                newPathname: '',
+              })
+              // Second change: re-add with new blob from docstore
+              expect(body[1].operations).to.have.length(1)
+              expect(body[1].operations[0].pathname).to.equal('main.tex')
+              expect(body[1].operations[0].file).to.have.property('hash')
+              // Third change: restore comment from docstore ranges
+              expect(body[2].operations).to.have.length(1)
+              expect(body[2].operations[0]).to.deep.include({
+                pathname: 'main.tex',
+                commentId,
+              })
+              expect(body[2].operations[0].ranges).to.deep.equal([
+                { pos: 0, length: 5 },
+              ])
+              return true
+            })
+            .query({ end_version: 1 })
+            .reply(204)
+
+          // The re-added file needs its blob to be stored
+          MockHistoryStore()
+            .put(new RegExp(`/api/projects/${historyId}/blobs/`))
+            .reply(201)
+
+          await ProjectHistoryClient.hardResyncHistory(this.project_id, {
+            recoverCorruptedFiles: true,
+          })
+
+          const update1 = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update1)
+
+          const update2 = {
+            path: '/main.tex',
+            projectHistoryId: historyId,
+            resyncDocContent: {
+              content: 'hello world',
+              ranges: {
+                comments: [
+                  {
+                    id: commentId,
+                    op: {
+                      c: 'hello',
+                      p: 0,
+                      hpos: 0,
+                      hlen: 5,
+                      t: commentId,
+                    },
+                    meta: {
+                      user_id: 'user-id',
+                      ts: this.timestamp,
+                    },
+                  },
+                ],
+                changes: [],
+              },
+            },
+            doc: this.doc_id,
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update2)
+
+          await ProjectHistoryClient.flushProject(this.project_id)
+
+          assert(
+            addFile.isDone(),
+            `/api/projects/${historyId}/legacy_changes should have been called`
+          )
+        })
+
+        it('should propagate the error during soft resync', async function () {
+          await ProjectHistoryClient.resyncHistory(this.project_id)
+
+          const update1 = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update1)
+
+          const update2 = {
+            path: '/main.tex',
+            projectHistoryId: historyId,
+            resyncDocContent: {
+              content: 'hello world',
+            },
+            doc: this.doc_id,
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update2)
+
+          // Soft resync should fail — the error is propagated so it can be
+          // retried later (the blob store may be temporarily unavailable).
+          const { statusCode } = await ProjectHistoryClient.flushProject(
+            this.project_id,
+            { allowErrors: true }
+          )
+          expect(statusCode).to.equal(500)
+        })
+
+        it('should propagate the error during hard resync without recoverCorruptedFiles flag', async function () {
+          await ProjectHistoryClient.hardResyncHistory(this.project_id)
+
+          const update1 = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update1)
+
+          const update2 = {
+            path: '/main.tex',
+            projectHistoryId: historyId,
+            resyncDocContent: {
+              content: 'hello world',
+            },
+            doc: this.doc_id,
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update2)
+
+          // Hard resync without the recoverCorruptedFiles flag should not
+          // recover — recovery is too destructive to be the default behaviour.
+          const { statusCode } = await ProjectHistoryClient.flushProject(
+            this.project_id,
+            { allowErrors: true }
+          )
+          expect(statusCode).to.equal(500)
+        })
+      })
+
+      describe("when a doc's blob store is temporarily unavailable", function () {
+        beforeEach(function () {
+          MockHistoryStore()
+            .get(`/api/projects/${historyId}/latest/history`)
+            .reply(200, {
+              chunk: {
+                history: {
+                  snapshot: {
+                    files: {
+                      'main.tex': {
+                        hash: '0a207c060e61f3b88eaee0a8cd0696f46fb155eb',
+                        stringLength: 3,
+                      },
+                    },
+                  },
+                  changes: [],
+                },
+                startVersion: 0,
+              },
+            })
+
+          // Blob returns a 500 simulating a transient server error
+          MockHistoryStore()
+            .get(
+              `/api/projects/${historyId}/blobs/0a207c060e61f3b88eaee0a8cd0696f46fb155eb`
+            )
+            .reply(500, 'Internal Server Error')
+        })
+
+        it('should propagate transient errors even during hard resync', async function () {
+          await ProjectHistoryClient.hardResyncHistory(this.project_id)
+
+          const update1 = {
+            projectHistoryId: historyId,
+            resyncProjectStructure: {
+              docs: [{ path: '/main.tex' }],
+              files: [],
+            },
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update1)
+
+          const update2 = {
+            path: '/main.tex',
+            projectHistoryId: historyId,
+            resyncDocContent: {
+              content: 'hello world',
+            },
+            doc: this.doc_id,
+            meta: {
+              ts: this.timestamp,
+            },
+          }
+          await ProjectHistoryClient.pushRawUpdate(this.project_id, update2)
+
+          // Even hard resync should not recover from transient errors (5xx).
+          // The error should propagate so it can be retried.
+          const { statusCode } = await ProjectHistoryClient.flushProject(
+            this.project_id,
+            { allowErrors: true }
+          )
+          expect(statusCode).to.equal(500)
         })
       })
 
@@ -1580,7 +1929,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1682,7 +2031,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1771,7 +2120,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1861,7 +2210,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addComment.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -1977,7 +2326,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             fixTrackedChange.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -2081,7 +2430,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             fixTrackedChange.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
 
@@ -2199,7 +2548,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             fixTrackedChange.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
         })
       })
@@ -2292,7 +2641,7 @@ describe('Syncing with web and doc-updater', function () {
 
           assert(
             addFile.isDone(),
-            `/api/projects/${historyId}/changes should have been called`
+            `/api/projects/${historyId}/legacy_changes should have been called`
           )
           assert(
             !docContentRequest.isDone(),

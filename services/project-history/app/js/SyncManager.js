@@ -7,8 +7,13 @@ import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
 import Metrics from '@overleaf/metrics'
 import OError from '@overleaf/o-error'
-import { File, Range } from 'overleaf-editor-core'
+import { File, Range, TextOperation } from 'overleaf-editor-core'
 import {
+  TooLongError,
+  UnprocessableError,
+} from 'overleaf-editor-core/lib/errors.js'
+import {
+  FileContentEmptyError,
   NeedFullProjectStructureResyncError,
   SYNC_ONGOING_ERROR_MESSAGE,
   SyncError,
@@ -81,7 +86,7 @@ async function startHardResync(projectId, options = {}) {
         await clearResyncState(projectId)
         await RedisManager.promises.clearFirstOpTimestamp(projectId)
         await RedisManager.promises.destroyDocUpdatesQueue(projectId)
-        await startResyncWithoutLock(projectId, options)
+        await startResyncWithoutLock(projectId, { ...options, hard: true })
       }
     )
   } catch (error) {
@@ -138,6 +143,8 @@ async function startResyncWithoutLock(projectId, options) {
   }
   syncState.setOrigin(options.origin || { kind: 'history-resync' })
   syncState.startProjectStructureSync()
+  syncState.hardResync = options.hard === true
+  syncState.recoverCorruptedFiles = options.recoverCorruptedFiles === true
 
   const webOpts = {}
   if (options.historyRangesMigration) {
@@ -345,7 +352,9 @@ async function expandSyncUpdates(
   const expander = new SyncUpdateExpander(
     projectId,
     snapshotFiles,
-    syncState.origin
+    syncState.origin,
+    syncState.hardResync,
+    syncState.recoverCorruptedFiles
   )
 
   // expand updates asynchronously to avoid blocking
@@ -369,7 +378,9 @@ class SyncState {
     history,
     stuckClearCount,
     lastStuckClearAt,
-    lastStuckDocPaths
+    lastStuckDocPaths,
+    hardResync,
+    recoverCorruptedFiles
   ) {
     this.projectId = projectId
     this.resyncProjectStructure = resyncProjectStructure
@@ -382,6 +393,8 @@ class SyncState {
     this.stuckClearCount = stuckClearCount
     this.lastStuckClearAt = lastStuckClearAt
     this.lastStuckDocPaths = lastStuckDocPaths
+    this.hardResync = hardResync || false
+    this.recoverCorruptedFiles = recoverCorruptedFiles || false
   }
 
   static fromRaw(projectId, rawSyncState) {
@@ -414,6 +427,8 @@ class SyncState {
     const stuckClearCount = rawSyncState.stuckClearCount ?? 0
     const lastStuckClearAt = rawSyncState.lastStuckClearAt
     const lastStuckDocPaths = rawSyncState.lastStuckDocPaths
+    const hardResync = rawSyncState.hardResync || false
+    const recoverCorruptedFiles = rawSyncState.recoverCorruptedFiles || false
     return new SyncState(
       projectId,
       resyncProjectStructure,
@@ -425,7 +440,9 @@ class SyncState {
       history,
       stuckClearCount,
       lastStuckClearAt,
-      lastStuckDocPaths
+      lastStuckDocPaths,
+      hardResync,
+      recoverCorruptedFiles
     )
   }
 
@@ -434,6 +451,8 @@ class SyncState {
       resyncProjectStructure: this.resyncProjectStructure,
       resyncDocContents: Array.from(this.resyncDocContents),
       origin: this.origin,
+      hardResync: this.hardResync,
+      recoverCorruptedFiles: this.recoverCorruptedFiles,
     }
   }
 
@@ -562,13 +581,23 @@ class SyncUpdateExpander {
    *
    * @param {string} projectId
    * @param {Record<string, File>} snapshotFiles
-   * @param {string} origin
+   * @param {import('overleaf-editor-core/lib/types.js').RawOrigin} origin
+   * @param {boolean} hardResync
+   * @param {boolean} recoverCorruptedFiles
    */
-  constructor(projectId, snapshotFiles, origin) {
+  constructor(
+    projectId,
+    snapshotFiles,
+    origin,
+    hardResync,
+    recoverCorruptedFiles
+  ) {
     this.projectId = projectId
     this.files = snapshotFiles
     this.expandedUpdates = /** @type ProjectStructureUpdate[] */ []
     this.origin = origin
+    this.hardResync = hardResync || false
+    this.recoverCorruptedFiles = recoverCorruptedFiles || false
   }
 
   // If there's an expected *file* with the same path and either the same hash
@@ -888,17 +917,80 @@ class SyncUpdateExpander {
 
     // compute the difference between the expected and persisted content
     const historyId = await WebApiManager.promises.getHistoryId(this.projectId)
-    const file = await snapshotFile.load(
-      'eager',
-      HistoryStoreManager.getBlobStore(historyId)
-    )
-    const persistedContent = file.getContent()
-    if (persistedContent == null) {
-      // This should not happen given that we loaded the file eagerly. We could
-      // probably refine the types in overleaf-editor-core so that this check
-      // wouldn't be necessary.
-      throw new Error('File was not properly loaded')
+
+    let file
+    try {
+      file = await snapshotFile.load(
+        'eager',
+        HistoryStoreManager.getBlobStore(historyId)
+      )
+      const persistedContent = file.getContent()
+      if (persistedContent == null) {
+        throw new FileContentEmptyError('File was not properly loaded')
+      }
+    } catch (err) {
+      // When the recoverCorruptedFiles flag is set (requires hard resync),
+      // recover from known data corruption errors by removing the file and
+      // re-adding it from docstore. For soft resyncs, hard resyncs without
+      // the flag, or transient errors, re-throw so the operation can be retried.
+      // Also bail out if the expected content exceeds the max string length,
+      // as the re-add would fail when applying text operations. This check
+      // must happen here (not in isDataCorruptionError) because the original
+      // error may be a different corruption type — excluding TooLongError
+      // from detection would cause the file to be removed but not re-added.
+      if (!this.recoverCorruptedFiles || !isDataCorruptionError(err)) {
+        logger.error({
+          name: 'failed to load file from history during resync',
+          projectId: this.projectId,
+          pathname,
+          err,
+        })
+        throw err
+      }
+      if (expectedContent.length > TextOperation.MAX_STRING_LENGTH) {
+        throw new TooLongError(null, expectedContent.length)
+          .withInfo({
+            projectId: this.projectId,
+            pathname,
+            maxLength: TextOperation.MAX_STRING_LENGTH,
+          })
+          .withCause(err)
+      }
+
+      logger.warn(
+        { projectId: this.projectId, pathname, err },
+        'failed to load file from history during hard resync, removing and re-adding from docstore'
+      )
+      Metrics.inc('project_history_resync_operation', 1, {
+        status: 'recover corrupted file',
+      })
+
+      this.expandedUpdates.push({
+        pathname,
+        new_pathname: '',
+        meta: {
+          resync: true,
+          origin: this.origin,
+          ts: update.meta.ts,
+        },
+      })
+      this.expandedUpdates.push({
+        pathname,
+        doc: update.doc,
+        docLines: expectedContent,
+        meta: {
+          resync: true,
+          origin: this.origin,
+          ts: update.meta.ts,
+        },
+      })
+      // Replace in-memory file so the range sync below diffs the empty
+      // persisted state against docstore ranges and restores them.
+      this.files[pathname] = File.fromString(expectedContent)
+      file = this.files[pathname]
     }
+
+    const persistedContent = /** @type {string} */ (file.getContent())
 
     if (!hashesMatch) {
       const expandedUpdate = await this.queueUpdateForOutOfSyncContent(
@@ -1437,6 +1529,44 @@ function trackingDirectivesEqual(a, b) {
   } else {
     return a.type === b.type && a.userId === b.userId && a.ts === b.ts
   }
+}
+
+/**
+ * Determines whether an error from loading a file's blob indicates data
+ * corruption (safe to recover from by removing and re-adding the file) as
+ * opposed to a transient infrastructure failure (which should be retried).
+ *
+ * Known corruption indicators:
+ * - UnprocessableError (and subclasses ApplyError, InvalidInsertionError,
+ *   TooLongError): the stored operations are inconsistent with the blob content
+ * - SyntaxError: the ranges blob contains invalid JSON
+ * - FileContentEmptyError: blob loaded but returned null content
+ *
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isDataCorruptionError(err) {
+  if (!(err instanceof Error)) {
+    return false
+  }
+
+  // Operation apply failures (op/content mismatch). This covers ApplyError,
+  // InvalidInsertionError, and TooLongError from overleaf-editor-core.
+  if (err instanceof UnprocessableError) {
+    return true
+  }
+
+  // Corrupted ranges blob (invalid JSON from BlobStore.getObject)
+  if (err instanceof SyntaxError) {
+    return true
+  }
+
+  // Null content after loading
+  if (err instanceof FileContentEmptyError) {
+    return true
+  }
+
+  return false
 }
 
 // EXPORTS

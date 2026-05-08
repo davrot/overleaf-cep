@@ -164,6 +164,24 @@ export async function resyncHistory(projectId) {
   expect(response.status).to.equal(204)
 }
 
+export async function hardResyncHistory(
+  projectId,
+  { recoverCorruptedFiles } = {}
+) {
+  const params = new URLSearchParams({ force: 'true' })
+  if (recoverCorruptedFiles) {
+    params.set('recoverCorruptedFiles', 'true')
+  }
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}/resync?${params}`,
+    {
+      method: 'POST',
+      json: { origin: { kind: 'test-origin' } },
+    }
+  )
+  expect(response.status).to.equal(204)
+}
+
 export async function createLabel(
   projectId,
   userId,
