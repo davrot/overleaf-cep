@@ -42,7 +42,6 @@
     "mocha-junit-reporter": "^2.2.1",
     "mocha-multi-reporters": "^1.5.1",
     "mongodb": "6.12.0",
-    "sandboxed-module": "2.0.4",
     "sinon": "9.0.2",
     "sinon-chai": "^3.7.0",
     "streamifier": "^0.1.1",
