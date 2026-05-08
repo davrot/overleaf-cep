@@ -374,7 +374,7 @@ describe('ArchiveManager', function () {
       it('should reject with an error', function (ctx) {
         expect(ctx.error)
           .to.be.instanceOf(Error)
-          .and.have.property('message', 'Something went wrong')
+          .and.have.property('message', 'invalid_zip_file')
       })
 
       it('should close the zipfile', function (ctx) {
@@ -411,7 +411,7 @@ describe('ArchiveManager', function () {
       it('should reject with an error', function (ctx) {
         expect(ctx.error)
           .to.be.instanceOf(Error)
-          .and.have.property('message', 'Something went wrong')
+          .and.have.property('message', 'invalid_zip_file')
       })
 
       it('should close the zipfile', function (ctx) {
@@ -449,7 +449,7 @@ describe('ArchiveManager', function () {
       it('should reject with an error', function (ctx) {
         expect(ctx.error)
           .to.be.instanceOf(Error)
-          .and.have.property('message', 'Something went wrong')
+          .and.have.property('message', 'invalid_zip_file')
       })
       it('should destroy the readstream', function (ctx) {
         ctx.readStream.destroy.called.should.equal(true)

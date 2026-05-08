@@ -138,7 +138,7 @@ function _extractZipFiles(source, destination) {
                 destFile,
               })
               zipfile.close() // bail out, stop reading file entries
-              done(err)
+              done(new InvalidZipFileError().withCause(err))
             } else {
               entryFileCount++
               zipfile.readEntry() // continue to the next file
