@@ -264,24 +264,7 @@ function AddEmailViaSSO({
   domainInfo: DomainInfo
   userInstitutions: string[]
 }) {
-  if (domainInfo.university.ssoEnabled) {
-    // Check if the user has already linked this institution
-    if (userInstitutions.includes(domainInfo.university.id.toString())) {
-      return (
-        <Notification
-          type="error"
-          ariaLive="polite"
-          content={
-            <>
-              This institution is already linked with your account via another
-              email address.
-            </>
-          }
-        />
-      )
-    }
-    return <SsoLinkingInfo email={email} domainInfo={domainInfo} />
-  } else if (
+  if (
     domainInfo.group?.domainCaptureEnabled &&
     domainInfo.group?.managedUsersEnabled
   ) {
@@ -298,6 +281,23 @@ function AddEmailViaSSO({
         }
       />
     )
+  } else if (domainInfo.university.ssoEnabled) {
+    // Check if the user has already linked this institution
+    if (userInstitutions.includes(domainInfo.university.id.toString())) {
+      return (
+        <Notification
+          type="error"
+          ariaLive="polite"
+          content={
+            <>
+              This institution is already linked with your account via another
+              email address.
+            </>
+          }
+        />
+      )
+    }
+    return <SsoLinkingInfo email={email} domainInfo={domainInfo} />
   } else if (
     domainInfo.group?.domainCaptureEnabled &&
     domainInfo.group?.ssoConfig?.enabled

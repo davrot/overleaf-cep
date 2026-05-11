@@ -830,8 +830,7 @@ describe('<EmailsSection />', function () {
       })
     })
 
-    describe('if Commons SSO then enabled, that takes priority over group UI', function () {
-      // we shouldn't have SSO config in v1 and in v2 but adding test to ensure Commons takes priority
+    describe('if Commons SSO is enabled and managed users is not enabled, Commons takes priority over group UI', function () {
       beforeEach(async function () {
         await fetchMock.callHistory.flush(true)
         fetchMock.removeRoutes().clearHistory()
@@ -872,6 +871,58 @@ describe('<EmailsSection />', function () {
         await screen.findByRole('button', {
           name: 'Link accounts and add email',
         })
+      })
+    })
+
+    describe('if Commons SSO is enabled and managed users is enabled, group domain capture takes priority', function () {
+      beforeEach(async function () {
+        await fetchMock.callHistory.flush(true)
+        fetchMock.removeRoutes().clearHistory()
+        const institution = {
+          university: {
+            id: 1234,
+            ssoEnabled: true,
+            name: 'Auto Complete University',
+          },
+          hostname: 'autocomplete.edu',
+          confirmed: true,
+          group: {
+            domainCaptureEnabled: true,
+            managedUsersEnabled: true,
+            ssoConfig: {
+              enabled: true,
+            },
+          },
+        }
+
+        fetchMock.get('express:/institutions/domains', [institution])
+      })
+
+      it('renders group domain-capture error instead of Commons UI', async function () {
+        fetchMock.get('/user/emails?ensureAffiliation=true', [])
+        render(<EmailsSection />)
+
+        const button = await screen.findByRole<HTMLButtonElement>('button', {
+          name: 'Add another email',
+        })
+
+        await userEvent.click(button)
+
+        const input = screen.getByRole('textbox', { name: 'Email' })
+        fireEvent.change(input, {
+          target: { value: 'user@autocomplete.edu' },
+        })
+
+        const notification = await screen.findByRole('alert')
+        within(notification).getByText(
+          'Your company email address has been registered under a verified domain, and cannot be added as a secondary email.',
+          { exact: false }
+        )
+        expect(
+          screen.queryByRole('button', {
+            name: 'Link accounts and add email',
+          })
+        ).to.be.null
       })
     })
   })
