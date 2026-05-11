@@ -86,8 +86,36 @@ export default class PDFJSWrapper {
         return
       }
 
-      this.viewer.setDocument(doc)
-      this.linkService.setDocument(doc)
+      // Hold the .pdfViewer element's height steady across the synchronous page-clear
+      // that setDocument() triggers, so the viewer doesn't visually collapse while the
+      // new pages are being initialised. The min-height is released on pagesinit.
+      const viewerEl = this.container.querySelector('.pdfViewer') as HTMLElement
+      const currentHeight = viewerEl.getBoundingClientRect().height
+      if (currentHeight > 0) {
+        viewerEl.style.minHeight = `${currentHeight}px`
+        const clearMinHeight = () => {
+          viewerEl.style.minHeight = ''
+          this.eventBus.off('pagesinit', clearMinHeight)
+        }
+        this.eventBus.on('pagesinit', clearMinHeight)
+      }
+
+      const container = this.container as typeof this.container & {
+        // supported since Chrome 147
+        startViewTransition?: (cb: () => void | Promise<void>) => unknown
+      }
+      if (
+        container.startViewTransition &&
+        typeof container.startViewTransition === 'function'
+      ) {
+        container.startViewTransition(() => {
+          this.viewer.setDocument(doc)
+          this.linkService.setDocument(doc)
+        })
+      } else {
+        this.viewer.setDocument(doc)
+        this.linkService.setDocument(doc)
+      }
 
       return doc
     } catch (error: any) {
@@ -206,14 +234,16 @@ export default class PDFJSWrapper {
       destArray,
     })
 
-    // scroll the page left and down by an extra few pixels to account for the pdf.js viewer page border
+    // scrollPageIntoView aligns PDF content to the container top, ignoring the page margin.
+    // For a top-of-document position this leaves scrollTop = marginTop (margin hidden).
+    // Snap back to 0 so the margin is visible, but only when we are in that margin band —
+    // for any real mid-document scrollTop this condition is false and we leave it untouched.
     const pageIndex = this.viewer.currentPageNumber - 1
     const pageView = this.viewer.getPageView(pageIndex)
-    const offset = parseFloat(getComputedStyle(pageView.div).borderWidth)
-    this.viewer.container.scrollBy({
-      top: -offset,
-      left: -offset,
-    })
+    const marginTop = parseFloat(getComputedStyle(pageView.div).marginTop)
+    if (this.viewer.container.scrollTop <= marginTop) {
+      this.viewer.container.scrollTop = 0
+    }
   }
 
   isVisible() {

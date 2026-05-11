@@ -217,6 +217,7 @@
 
 .pdf-viewer {
   isolation: isolate;
+  view-transition-name: pdf-viewer;
 
   iframe {
     width: 100%;
@@ -255,6 +256,7 @@
     }
 
     .page {
+      display: block; // prevent Overleaf's .loading class (display:inline-flex) from affecting PDF.js page state
       box-sizing: content-box;
       margin: var(--spacing-05) auto;
       box-shadow:
@@ -262,6 +264,13 @@
         0 3px 14px 0 #23282f08,
         0 8px 10px 0 #23282f14;
       border: none;
+
+      // Overleaf has its own loading state UI; suppress the PDF.js page-level loading
+      // spinner so the loadingIcon/loading classes have no layout or visual effect.
+      /* stylelint-disable-next-line selector-class-pattern */
+      &.loadingIcon::after {
+        display: none;
+      }
     }
 
     .pdfjs-viewer-inner {
@@ -314,6 +323,11 @@
       background-color: var(--link-color);
     }
   }
+}
+
+::view-transition-old(pdf-viewer),
+::view-transition-new(pdf-viewer) {
+  animation-duration: 0.25s;
 }
 
 .pdfjs-viewer-controls {
