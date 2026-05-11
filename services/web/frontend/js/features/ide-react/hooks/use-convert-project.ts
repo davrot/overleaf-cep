@@ -6,6 +6,7 @@ import { useCallback } from 'react'
 import {
   hidePreparingExportToast,
   showExportDocumentError,
+  showExportDocumentSuccess,
   showPreparingExportToast,
 } from '../components/toolbar/export-document-toasts'
 
@@ -32,6 +33,9 @@ export default function useConvertProject(type: 'docx' | 'markdown') {
       if (downloadUrl) {
         const url = new URL(downloadUrl, window.location.origin)
         location.assign(url.toString())
+        showExportDocumentSuccess(type)
+      } else {
+        showExportDocumentError()
       }
     } catch (error) {
       hidePreparingToast()

@@ -24,7 +24,7 @@ const MarkdownImportFeedbackToast = () => (
       components={[
         /* eslint-disable-next-line jsx-a11y/anchor-has-content, react/jsx-key */
         <a
-          href="https://forms.gle/B1qrdiD983YcQCJA9"
+          href="https://forms.gle/BQnQ57wB9ddS1FdKA"
           target="_blank"
           rel="noopener noreferrer"
         />,
@@ -39,7 +39,8 @@ const generators: GlobalToastGeneratorEntry[] = [
     generator: () => ({
       content: <DocxImportFeedbackToast />,
       type: 'info',
-      autoHide: false,
+      autoHide: true,
+      delay: 45000,
       isDismissible: true,
     }),
   },
@@ -48,7 +49,8 @@ const generators: GlobalToastGeneratorEntry[] = [
     generator: () => ({
       content: <MarkdownImportFeedbackToast />,
       type: 'info',
-      autoHide: false,
+      autoHide: true,
+      delay: 45000,
       isDismissible: true,
     }),
   },

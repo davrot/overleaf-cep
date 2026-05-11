@@ -6,6 +6,79 @@ const MODULE_PATH = Path.join(
   '../../../app/js/ConversionManager'
 )
 
+const CONVERT_TO_LATEX_CASES = [
+  {
+    type: 'docx',
+    inputFilename: 'input.docx',
+    pandocArgs: [
+      'pandoc',
+      'input.docx',
+      '--output',
+      'main.tex',
+      '--to',
+      'latex',
+      '--standalone',
+      '--extract-media=.',
+      '--from',
+      'docx+citations',
+      '--citeproc',
+    ],
+  },
+  {
+    type: 'markdown',
+    inputFilename: 'input.md',
+    pandocArgs: [
+      'pandoc',
+      'input.md',
+      '--output',
+      'main.tex',
+      '--to',
+      'latex',
+      '--standalone',
+      '--from',
+      'markdown',
+    ],
+  },
+]
+
+const LATEX_TO_DOCUMENT_CASES = [
+  {
+    type: 'docx',
+    extension: 'docx',
+    compressOutput: false,
+    pandocArgs: outputId => [
+      'pandoc',
+      'main.tex',
+      '--output',
+      `${outputId}.docx`,
+      '--from',
+      'latex',
+      '--to',
+      'docx',
+      '--citeproc',
+      '--number-sections',
+      '--resource-path=.',
+    ],
+  },
+  {
+    type: 'markdown',
+    extension: 'md',
+    compressOutput: true,
+    pandocArgs: outputId => [
+      'pandoc',
+      'main.tex',
+      '--output',
+      Path.join(outputId, 'main.md'),
+      '--from',
+      'latex',
+      '--to',
+      'markdown',
+      '--resource-path=.',
+      `--extract-media=${outputId}`,
+    ],
+  },
+]
+
 describe('ConversionManager', function () {
   beforeEach(async function (ctx) {
     ctx.CommandRunner = {
@@ -65,12 +138,41 @@ describe('ConversionManager', function () {
   })
 
   describe('convertToLaTeXWithLock', function () {
-    describe('with conversionType=docx', function () {
+    describe('per conversion type', function () {
+      CONVERT_TO_LATEX_CASES.forEach(({ type, inputFilename, pandocArgs }) => {
+        describe(`type=${type}`, function () {
+          beforeEach(async function (ctx) {
+            ctx.inputPath = `/path/to/${inputFilename}`
+            await ctx.ConversionManager.promises.convertToLaTeXWithLock(
+              ctx.conversionId,
+              ctx.inputPath,
+              type
+            )
+          })
+
+          it('should copy the input file to the conversion directory under the type-specific filename', function (ctx) {
+            sinon.assert.calledWith(
+              ctx.fs.copyFile,
+              ctx.inputPath,
+              Path.join(ctx.conversionDir, inputFilename)
+            )
+          })
+
+          it('should run pandoc with the type-specific args', function (ctx) {
+            expect(ctx.CommandRunner.promises.run.firstCall.args[1]).toEqual(
+              pandocArgs
+            )
+          })
+        })
+      })
+    })
+
+    describe('with conversionType=docx (representative)', function () {
       beforeEach(function (ctx) {
         ctx.inputPath = '/path/to/input.docx'
       })
 
-      describe('file setup and pandoc args', function () {
+      describe('successful conversion', function () {
         beforeEach(async function (ctx) {
           ctx.result =
             await ctx.ConversionManager.promises.convertToLaTeXWithLock(
@@ -80,78 +182,29 @@ describe('ConversionManager', function () {
             )
         })
 
-        it('should acquire a lock', async function (ctx) {
+        it('should acquire a lock on the conversion directory', function (ctx) {
           sinon.assert.calledWith(ctx.LockManager.acquire, ctx.conversionDir)
         })
 
-        it('should copy the input file to the conversion directory with docx filename', async function (ctx) {
+        it('should create the conversion directory', function (ctx) {
           sinon.assert.calledWith(ctx.fs.mkdir, ctx.conversionDir, {
             recursive: true,
           })
-          sinon.assert.calledWith(
-            ctx.fs.copyFile,
-            ctx.inputPath,
-            Path.join(ctx.conversionDir, 'input.docx')
-          )
         })
 
-        it('should convert conversion timeout to milliseconds', async function (ctx) {
+        it('should run pandoc then zip with the conversion timeout in milliseconds', function (ctx) {
+          expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
+          expect(ctx.CommandRunner.promises.run.secondCall.args[1]).toEqual([
+            'zip',
+            '-r',
+            'output-uuid.zip',
+            '.',
+          ])
           expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
           expect(ctx.CommandRunner.promises.run.secondCall.args[4]).toBe(60_000)
         })
 
-        it('should run pandoc with docx args followed by zip', function (ctx) {
-          expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
-          expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
-            ctx.conversionId,
-            [
-              'pandoc',
-              'input.docx',
-              '--output',
-              'main.tex',
-              '--to',
-              'latex',
-              '--standalone',
-              '--extract-media=.',
-              '--from',
-              'docx+citations',
-              '--citeproc',
-            ],
-            ctx.conversionDir,
-            ctx.Settings.pandocImage,
-            60_000,
-            {},
-            'conversions',
-          ])
-          expect(ctx.CommandRunner.promises.run.secondCall.args).toEqual([
-            ctx.conversionId,
-            ['zip', '-r', 'output-uuid.zip', '.'],
-            ctx.conversionDir,
-            ctx.Settings.pandocImage,
-            60_000,
-            {},
-            'conversions',
-          ])
-        })
-      })
-
-      describe('successful conversion', function () {
-        beforeEach(async function (ctx) {
-          ctx.CommandRunner.promises.run.resolves({
-            stdout: 'mock-stdout',
-            stderr: 'mock-stderr',
-            exitCode: 0,
-          })
-
-          ctx.result =
-            await ctx.ConversionManager.promises.convertToLaTeXWithLock(
-              ctx.conversionId,
-              ctx.inputPath,
-              'docx'
-            )
-        })
-
-        it('should remove the source document after conversion', async function (ctx) {
+        it('should remove the source document after conversion', function (ctx) {
           sinon.assert.calledWith(
             ctx.fs.unlink,
             Path.join(ctx.conversionDir, 'input.docx')
@@ -167,14 +220,13 @@ describe('ConversionManager', function () {
         })
       })
 
-      describe('unsuccessful conversion (exitcode)', function () {
+      describe('unsuccessful conversion (pandoc exit code)', function () {
         beforeEach(async function (ctx) {
           ctx.CommandRunner.promises.run.resolves({
-            stdout: 'mock-stdout',
-            stderr: 'mock-stderr',
+            stdout: '',
+            stderr: '',
             exitCode: 63,
           })
-
           await expect(
             ctx.ConversionManager.promises.convertToLaTeXWithLock(
               ctx.conversionId,
@@ -184,7 +236,7 @@ describe('ConversionManager', function () {
           ).to.be.rejectedWith('pandoc conversion failed')
         })
 
-        it('should remove the entire conversion directory', async function (ctx) {
+        it('should remove the entire conversion directory', function (ctx) {
           sinon.assert.calledWith(ctx.fs.rm, ctx.conversionDir, {
             force: true,
             recursive: true,
@@ -196,22 +248,13 @@ describe('ConversionManager', function () {
         })
       })
 
-      describe('unsuccessful compression (exitcode)', function () {
+      describe('unsuccessful compression (zip exit code)', function () {
         beforeEach(async function (ctx) {
           ctx.CommandRunner.promises.run
             .onFirstCall()
-            .resolves({
-              stdout: 'mock-pandoc-stdout',
-              stderr: 'mock-pandoc-stderr',
-              exitCode: 0,
-            })
+            .resolves({ stdout: '', stderr: '', exitCode: 0 })
             .onSecondCall()
-            .resolves({
-              stdout: 'mock-zip-stdout',
-              stderr: 'mock-zip-stderr',
-              exitCode: 12,
-            })
-
+            .resolves({ stdout: '', stderr: '', exitCode: 12 })
           await expect(
             ctx.ConversionManager.promises.convertToLaTeXWithLock(
               ctx.conversionId,
@@ -221,7 +264,7 @@ describe('ConversionManager', function () {
           ).to.be.rejectedWith('pandoc conversion failed')
         })
 
-        it('should remove the entire conversion directory', async function (ctx) {
+        it('should remove the entire conversion directory', function (ctx) {
           sinon.assert.calledWith(ctx.fs.rm, ctx.conversionDir, {
             force: true,
             recursive: true,
@@ -247,7 +290,7 @@ describe('ConversionManager', function () {
           ).to.be.rejectedWith('pandoc conversion failed')
         })
 
-        it('should remove the entire conversion directory', async function (ctx) {
+        it('should remove the entire conversion directory', function (ctx) {
           sinon.assert.calledWith(ctx.fs.rm, ctx.conversionDir, {
             force: true,
             recursive: true,
@@ -260,303 +303,153 @@ describe('ConversionManager', function () {
       })
     })
 
-    describe('with conversionType=markdown', function () {
-      beforeEach(function (ctx) {
-        ctx.inputPath = '/path/to/input.md'
-      })
-
-      describe('file setup and pandoc args', function () {
-        beforeEach(async function (ctx) {
-          ctx.result =
-            await ctx.ConversionManager.promises.convertToLaTeXWithLock(
-              ctx.conversionId,
-              ctx.inputPath,
-              'markdown'
-            )
-        })
-
-        it('should copy the input file to the conversion directory with md filename', async function (ctx) {
-          sinon.assert.calledWith(ctx.fs.mkdir, ctx.conversionDir, {
-            recursive: true,
-          })
-          sinon.assert.calledWith(
-            ctx.fs.copyFile,
-            ctx.inputPath,
-            Path.join(ctx.conversionDir, 'input.md')
-          )
-        })
-
-        it('should run pandoc with markdown args followed by zip', function (ctx) {
-          expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
-          expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
+    describe('with an unsupported conversion type', function () {
+      it('should reject with an unsupported conversion type error', async function (ctx) {
+        await expect(
+          ctx.ConversionManager.promises.convertToLaTeXWithLock(
             ctx.conversionId,
-            [
-              'pandoc',
-              'input.md',
-              '--output',
-              'main.tex',
-              '--to',
-              'latex',
-              '--standalone',
-              '--from',
-              'markdown',
-            ],
-            ctx.conversionDir,
-            ctx.Settings.pandocImage,
-            60_000,
-            {},
-            'conversions',
-          ])
-          expect(ctx.CommandRunner.promises.run.secondCall.args).toEqual([
-            ctx.conversionId,
-            ['zip', '-r', 'output-uuid.zip', '.'],
-            ctx.conversionDir,
-            ctx.Settings.pandocImage,
-            60_000,
-            {},
-            'conversions',
-          ])
-        })
-      })
-
-      describe('successful conversion', function () {
-        beforeEach(async function (ctx) {
-          ctx.CommandRunner.promises.run.resolves({
-            stdout: 'mock-stdout',
-            stderr: 'mock-stderr',
-            exitCode: 0,
-          })
-
-          ctx.result =
-            await ctx.ConversionManager.promises.convertToLaTeXWithLock(
-              ctx.conversionId,
-              ctx.inputPath,
-              'markdown'
-            )
-        })
-
-        it('should remove the source document after conversion', async function (ctx) {
-          sinon.assert.calledWith(
-            ctx.fs.unlink,
-            Path.join(ctx.conversionDir, 'input.md')
+            '/path/to/input.txt',
+            'not-a-real-type'
           )
-        })
-
-        it('should return the output zip path', function (ctx) {
-          expect(ctx.result).toBe(ctx.outputPath)
-        })
+        ).to.be.rejectedWith('unsupported conversion type')
       })
     })
   })
 
   describe('convertLaTeXToDocumentInDirWithLock', function () {
-    describe('successfully', function () {
-      beforeEach(async function (ctx) {
-        ctx.compileDir = '/compiles/test-compile-dir'
-        ctx.rootDocPath = 'main.tex'
-        ctx.type = 'docx'
-        ctx.extension = 'docx'
+    beforeEach(function (ctx) {
+      ctx.compileDir = '/compiles/test-compile-dir'
+      ctx.rootDocPath = 'main.tex'
+    })
 
-        ctx.result =
+    describe('pandoc args per conversion type', function () {
+      LATEX_TO_DOCUMENT_CASES.forEach(({ type, pandocArgs }) => {
+        it(`should run pandoc with the type-specific args for type=${type}`, async function (ctx) {
           await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
             ctx.conversionId,
             ctx.compileDir,
             ctx.rootDocPath,
-            ctx.type
+            type
           )
-      })
-
-      it('should acquire a lock on the compile dir', function (ctx) {
-        sinon.assert.calledWith(ctx.LockManager.acquire, ctx.compileDir)
-      })
-
-      it('should release the lock', function (ctx) {
-        sinon.assert.called(ctx.lock.release)
-      })
-
-      it('should run pandoc with correct arguments', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.callCount).toBe(1)
-        expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
-          ctx.conversionId,
-          [
-            'pandoc',
-            ctx.rootDocPath,
-            '--output',
-            `output-uuid.${ctx.extension}`,
-            '--from',
-            'latex',
-            '--to',
-            ctx.type,
-            '--citeproc',
-            '--number-sections',
-            '--resource-path=.',
-          ],
-          ctx.compileDir,
-          ctx.Settings.pandocImage,
-          60_000,
-          {},
-          'conversions',
-        ])
-      })
-
-      it('should convert conversion timeout to milliseconds', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
-      })
-
-      it('should return path to the output document', function (ctx) {
-        expect(ctx.result).toBe(
-          Path.join(ctx.compileDir, `output-uuid.${ctx.extension}`)
-        )
+          expect(ctx.CommandRunner.promises.run.firstCall.args[1]).toEqual(
+            pandocArgs('output-uuid')
+          )
+        })
       })
     })
 
-    describe('when pandoc fails (non-zero exit code)', function () {
-      it('should reject with an error and release the lock', async function (ctx) {
-        ctx.compileDir = '/compiles/test-compile-dir'
-
-        ctx.CommandRunner.promises.run.resolves({
-          stdout: 'mock-stdout',
-          stderr: 'mock-stderr',
-          exitCode: 1,
+    describe('with type=docx (representative non-compressing type)', function () {
+      describe('successful conversion', function () {
+        beforeEach(async function (ctx) {
+          ctx.result =
+            await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+              ctx.conversionId,
+              ctx.compileDir,
+              ctx.rootDocPath,
+              'docx'
+            )
         })
 
-        await expect(
-          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
-            ctx.conversionId,
-            ctx.compileDir,
-            'main.tex',
-            'docx'
-          )
-        ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
-
-        sinon.assert.called(ctx.lock.release)
-      })
-    })
-  })
-
-  describe('convertLaTeXToDocumentInDirWithLock (type=markdown)', function () {
-    describe('successfully', function () {
-      beforeEach(async function (ctx) {
-        ctx.compileDir = '/compiles/test-compile-dir'
-        ctx.rootDocPath = 'main.tex'
-
-        ctx.result =
-          await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
-            ctx.conversionId,
-            ctx.compileDir,
-            ctx.rootDocPath,
-            'markdown'
-          )
-      })
-
-      it('should acquire a lock on the compile dir', function (ctx) {
-        sinon.assert.calledWith(ctx.LockManager.acquire, ctx.compileDir)
-      })
-
-      it('should release the lock', function (ctx) {
-        sinon.assert.called(ctx.lock.release)
-      })
-
-      it('should create a UUID-named subdirectory', function (ctx) {
-        sinon.assert.calledWith(
-          ctx.fs.mkdir,
-          Path.join(ctx.compileDir, 'output-uuid'),
-          { recursive: true }
-        )
-      })
-
-      it('should run pandoc then zip (two commands total)', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
-      })
-
-      it('should run pandoc outputting main.md into the UUID-named subdir', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.firstCall.args).toEqual([
-          ctx.conversionId,
-          [
-            'pandoc',
-            ctx.rootDocPath,
-            '--output',
-            Path.join('output-uuid', 'main.md'),
-            '--from',
-            'latex',
-            '--to',
-            'markdown',
-            '--resource-path=.',
-            '--extract-media=output-uuid',
-          ],
-          ctx.compileDir,
-          ctx.Settings.pandocImage,
-          60_000,
-          {},
-          'conversions',
-        ])
-      })
-
-      it('should zip the project-named subdirectory', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.secondCall.args).toEqual([
-          ctx.conversionId,
-          ['sh', '-c', 'cd output-uuid && zip -r ../output-uuid.zip .'],
-          ctx.compileDir,
-          ctx.Settings.pandocImage,
-          60_000,
-          {},
-          'conversions',
-        ])
-      })
-
-      it('should return the path to the zip file', function (ctx) {
-        expect(ctx.result).toBe(Path.join(ctx.compileDir, 'output-uuid.zip'))
-      })
-
-      it('should convert conversion timeout to milliseconds', function (ctx) {
-        expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
-        expect(ctx.CommandRunner.promises.run.secondCall.args[4]).toBe(60_000)
-      })
-    })
-
-    describe('when pandoc fails (non-zero exit code)', function () {
-      it('should reject with an error and release the lock', async function (ctx) {
-        ctx.compileDir = '/compiles/test-compile-dir'
-
-        ctx.CommandRunner.promises.run.resolves({
-          stdout: 'mock-stdout',
-          stderr: 'mock-stderr',
-          exitCode: 1,
+        it('should acquire a lock on the compile dir', function (ctx) {
+          sinon.assert.calledWith(ctx.LockManager.acquire, ctx.compileDir)
         })
 
-        await expect(
-          ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
-            ctx.conversionId,
-            ctx.compileDir,
-            'main.tex',
-            'markdown'
-          )
-        ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
+        it('should release the lock', function (ctx) {
+          sinon.assert.called(ctx.lock.release)
+        })
 
-        sinon.assert.called(ctx.lock.release)
+        it('should pass the conversion timeout in milliseconds', function (ctx) {
+          expect(ctx.CommandRunner.promises.run.firstCall.args[4]).toBe(60_000)
+        })
+
+        it('should not create a subdirectory or run zip and should return the document path directly', function (ctx) {
+          sinon.assert.notCalled(ctx.fs.mkdir)
+          expect(ctx.CommandRunner.promises.run.callCount).toBe(1)
+          expect(ctx.result).toBe(Path.join(ctx.compileDir, 'output-uuid.docx'))
+        })
+      })
+
+      describe('when pandoc fails (non-zero exit code)', function () {
+        it('should reject with an error and release the lock', async function (ctx) {
+          ctx.CommandRunner.promises.run.resolves({
+            stdout: '',
+            stderr: '',
+            exitCode: 1,
+          })
+          await expect(
+            ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+              ctx.conversionId,
+              ctx.compileDir,
+              ctx.rootDocPath,
+              'docx'
+            )
+          ).to.be.rejectedWith('pandoc latex-to-document conversion failed')
+          sinon.assert.called(ctx.lock.release)
+        })
       })
     })
 
-    describe('when zip fails (non-zero exit code)', function () {
-      it('should reject with an error and release the lock', async function (ctx) {
-        ctx.compileDir = '/compiles/test-compile-dir'
+    describe('with type=markdown (representative compressing type)', function () {
+      describe('successful conversion', function () {
+        beforeEach(async function (ctx) {
+          ctx.result =
+            await ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+              ctx.conversionId,
+              ctx.compileDir,
+              ctx.rootDocPath,
+              'markdown'
+            )
+        })
 
-        ctx.CommandRunner.promises.run
-          .onFirstCall()
-          .resolves({ stdout: '', stderr: '', exitCode: 0 })
-          .onSecondCall()
-          .resolves({ stdout: '', stderr: 'zip error', exitCode: 1 })
+        it('should create a UUID-named subdirectory for the output', function (ctx) {
+          sinon.assert.calledWith(
+            ctx.fs.mkdir,
+            Path.join(ctx.compileDir, 'output-uuid'),
+            { recursive: true }
+          )
+        })
 
+        it('should run pandoc then zip the subdirectory and return the zip path', function (ctx) {
+          expect(ctx.CommandRunner.promises.run.callCount).toBe(2)
+          expect(ctx.CommandRunner.promises.run.secondCall.args[1]).toEqual([
+            'sh',
+            '-c',
+            'cd output-uuid && zip -r ../output-uuid.zip .',
+          ])
+          expect(ctx.result).toBe(Path.join(ctx.compileDir, 'output-uuid.zip'))
+        })
+      })
+
+      describe('when zip fails (non-zero exit code)', function () {
+        it('should reject with an error and release the lock', async function (ctx) {
+          ctx.CommandRunner.promises.run
+            .onFirstCall()
+            .resolves({ stdout: '', stderr: '', exitCode: 0 })
+            .onSecondCall()
+            .resolves({ stdout: '', stderr: 'zip error', exitCode: 1 })
+          await expect(
+            ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
+              ctx.conversionId,
+              ctx.compileDir,
+              ctx.rootDocPath,
+              'markdown'
+            )
+          ).to.be.rejectedWith('zip compression of export failed')
+          sinon.assert.called(ctx.lock.release)
+        })
+      })
+    })
+
+    describe('with an unsupported conversion type', function () {
+      it('should reject with an unsupported conversion type error', async function (ctx) {
         await expect(
           ctx.ConversionManager.promises.convertLaTeXToDocumentInDirWithLock(
             ctx.conversionId,
             ctx.compileDir,
-            'main.tex',
-            'markdown'
+            ctx.rootDocPath,
+            'not-a-real-type'
           )
-        ).to.be.rejectedWith('zip compression of export failed')
-
-        sinon.assert.called(ctx.lock.release)
+        ).to.be.rejectedWith('unsupported conversion type')
       })
     })
   })

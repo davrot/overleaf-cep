@@ -7,9 +7,6 @@ import { useProjectContext } from '@/shared/context/project-context'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
-import getMeta from '@/utils/meta'
-import { useFeatureFlag } from '@/shared/context/split-test-context'
-import useConvertProject from '../../hooks/use-convert-project'
 
 export const DownloadProjectZip = () => {
   const { t } = useTranslation()
@@ -102,76 +99,4 @@ export const DownloadProjectPDF = () => {
   } else {
     return button
   }
-}
-
-export const ExportProjectDocx = () => {
-  const { t } = useTranslation()
-  const exportDocxEnabled = useFeatureFlag('export-docx')
-  const enablePandocConversions =
-    getMeta('ol-ExposedSettings')?.enablePandocConversions
-  const anonymous = getMeta('ol-anonymous')
-  const downloadConversion = useConvertProject('docx')
-
-  const showExportDocx =
-    exportDocxEnabled && enablePandocConversions && !anonymous
-
-  useCommandProvider(
-    () =>
-      showExportDocx
-        ? [
-            {
-              id: 'export-as-docx',
-              handler: downloadConversion,
-              label: t('export_as_docx'),
-            },
-          ]
-        : [],
-    [t, showExportDocx, downloadConversion]
-  )
-
-  if (!showExportDocx) {
-    return null
-  }
-
-  return (
-    <OLDropdownMenuItem onClick={downloadConversion}>
-      {t('export_as_docx')}
-    </OLDropdownMenuItem>
-  )
-}
-
-export const ExportProjectMarkdown = () => {
-  const { t } = useTranslation()
-  const exportMarkdownEnabled = useFeatureFlag('export-markdown')
-  const enablePandocConversions =
-    getMeta('ol-ExposedSettings')?.enablePandocConversions
-  const anonymous = getMeta('ol-anonymous')
-  const downloadConversion = useConvertProject('markdown')
-
-  const showExportMarkdown =
-    exportMarkdownEnabled && enablePandocConversions && !anonymous
-
-  useCommandProvider(
-    () =>
-      showExportMarkdown
-        ? [
-            {
-              id: 'export-as-markdown',
-              handler: downloadConversion,
-              label: t('export_as_markdown'),
-            },
-          ]
-        : [],
-    [t, showExportMarkdown, downloadConversion]
-  )
-
-  if (!showExportMarkdown) {
-    return null
-  }
-
-  return (
-    <OLDropdownMenuItem onClick={downloadConversion}>
-      {t('export_as_markdown')}
-    </OLDropdownMenuItem>
-  )
 }
