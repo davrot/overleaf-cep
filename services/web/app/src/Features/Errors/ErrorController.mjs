@@ -128,31 +128,32 @@ async function handleError(error, req, res, next) {
 }
 
 function handleApiError(err, req, res, next) {
+  const shouldSendErrorResponse = !res.headersSent
   req.logger.addFields({ err })
   if (
     err instanceof Errors.NotFoundError ||
     err instanceof InvalidParamsError
   ) {
     req.logger.setLevel('warn')
-    res.sendStatus(404)
+    if (shouldSendErrorResponse) res.sendStatus(404)
   } else if (
     err instanceof URIError &&
     err.message.match(/^Failed to decode param/)
   ) {
     req.logger.setLevel('warn')
-    res.sendStatus(400)
+    if (shouldSendErrorResponse) res.sendStatus(400)
   } else if (err instanceof Errors.TooManyRequestsError) {
     req.logger.setLevel('warn')
-    res.sendStatus(429)
+    if (shouldSendErrorResponse) res.sendStatus(429)
   } else if (err instanceof Errors.ForbiddenError) {
     req.logger.setLevel('warn')
-    res.sendStatus(403)
+    if (shouldSendErrorResponse) res.sendStatus(403)
   } else if (err instanceof InvalidRequestError) {
     req.logger.setLevel('warn')
-    res.sendStatus(400)
+    if (shouldSendErrorResponse) res.sendStatus(400)
   } else {
     req.logger.setLevel('error')
-    res.sendStatus(500)
+    if (shouldSendErrorResponse) res.sendStatus(500)
   }
 }
 
