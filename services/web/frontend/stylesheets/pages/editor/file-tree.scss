@@ -485,6 +485,31 @@
         }
       }
 
+      .file-tree-bib-badge {
+        position: absolute;
+        right: var(--spacing-09);
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+
+        .material-symbols {
+          font-size: var(--font-size-03);
+
+          &.labs-badge {
+            color: var(--white);
+          }
+
+          &.info-badge {
+            color: var(--blue-50);
+          }
+        }
+      }
+
+      .file-tree-has-bib-badge .item-name {
+        padding-right: var(--spacing-09);
+      }
+
       .menu-button {
         position: absolute;
         right: 0;

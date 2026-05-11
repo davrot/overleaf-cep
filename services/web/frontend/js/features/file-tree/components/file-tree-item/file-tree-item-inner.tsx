@@ -8,6 +8,8 @@ import { useDraggable } from '../../contexts/file-tree-draggable'
 
 import FileTreeItemName from './file-tree-item-name'
 import FileTreeItemMenu from './file-tree-item-menu'
+import SplitTestBadge from '@/shared/components/split-test-badge'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useFileTreeSelectable } from '../../contexts/file-tree-selectable'
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import { useDragDropManager } from 'react-dnd'
@@ -30,11 +32,14 @@ function FileTreeItemInner({
   const { fileTreeReadOnly } = useFileTreeData()
   const { setContextMenuCoords } = useFileTreeMainContext()
   const { isRenaming } = useFileTreeActionable()
-
   const { selectedEntityIds } = useFileTreeSelectable()
 
   const hasMenu =
     !fileTreeReadOnly && isSelected && selectedEntityIds.size === 1
+  const showBibBadge =
+    useFeatureFlag('bibtex-visual-editor') &&
+    type !== 'folder' &&
+    name.toLowerCase().endsWith('.bib')
 
   const { dragRef, setIsDraggable } = useDraggable(id)
 
@@ -87,7 +92,9 @@ function FileTreeItemInner({
       data-file-type={type}
     >
       <div
-        className="entity-name entity-name-react"
+        className={classNames('entity-name', 'entity-name-react', {
+          'file-tree-has-bib-badge': showBibBadge,
+        })}
         role="presentation"
         ref={itemRef}
       >
@@ -98,6 +105,14 @@ function FileTreeItemInner({
           onClick={onClick}
           setIsDraggable={setIsDraggable}
         />
+        {showBibBadge && (
+          <div className="file-tree-bib-badge text-white">
+            <SplitTestBadge
+              splitTestName="bibtex-visual-editor"
+              displayOnVariants={['enabled']}
+            />
+          </div>
+        )}
         {hasMenu ? <FileTreeItemMenu id={id} name={name} /> : null}
       </div>
     </div>
