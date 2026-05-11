@@ -1,11 +1,15 @@
 import Settings from '@overleaf/settings'
 import CompileManager from '../Compile/CompileManager.mjs'
 import ClsiManager from '../Compile/ClsiManager.mjs'
+import { getOutputFileURL } from '../Compile/ClsiURLHelpers.mjs'
 import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import logger from '@overleaf/logger'
 import Path from 'node:path'
-import { fetchStreamWithResponse } from '@overleaf/fetch-utils'
+import {
+  fetchJsonWithResponse,
+  fetchStreamWithResponse,
+} from '@overleaf/fetch-utils'
 import { pipeline } from 'node:stream/promises'
 import OError from '@overleaf/o-error'
 import FormData from 'form-data'
@@ -85,6 +89,7 @@ async function convertProjectToDocument(projectId, userId, type) {
   const clsiUrl = new URL(Settings.apis.clsi.url)
   clsiUrl.pathname = `/project/${projectId}/user/${userId}/download/project-to-document`
   clsiUrl.searchParams.set('type', type)
+  clsiUrl.searchParams.set('responseFormat', 'json')
   clsiUrl.searchParams.set('compileBackendClass', limits.compileBackendClass)
   clsiUrl.searchParams.set('compileGroup', limits.compileGroup)
 
@@ -93,11 +98,33 @@ async function convertProjectToDocument(projectId, userId, type) {
     'sending project to CLSI for document conversion'
   )
 
-  const { stream, response } = await fetchStreamWithResponse(clsiUrl, {
+  const { json, response } = await fetchJsonWithResponse(clsiUrl, {
     method: 'POST',
     json: clsiRequest,
   })
+  const { conversionId, buildId, file } = json
+  const clsiServerId = ClsiManager.CLSI_COOKIES_ENABLED
+    ? ClsiManager.getClsiServerIdFromResponse(response)
+    : undefined
 
+  return { conversionId, buildId, clsiServerId, file }
+}
+
+async function streamConvertedProjectDocument({
+  conversionId,
+  buildId,
+  clsiServerId,
+  file,
+}) {
+  const downloadUrl = getOutputFileURL(
+    conversionId,
+    null,
+    buildId,
+    file,
+    clsiServerId ?? undefined
+  )
+
+  const { stream, response } = await fetchStreamWithResponse(downloadUrl)
   const contentLength = parseInt(response.headers.get('Content-Length'), 10)
 
   return { stream, contentLength }
@@ -107,5 +134,6 @@ export default {
   promises: {
     convertDocumentToLaTeXZipArchive,
     convertProjectToDocument,
+    streamConvertedProjectDocument,
   },
 }

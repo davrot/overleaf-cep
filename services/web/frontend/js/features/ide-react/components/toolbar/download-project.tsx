@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
 import getMeta from '@/utils/meta'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
+import useConvertProject from '../../hooks/use-convert-project'
 
 export const DownloadProjectZip = () => {
   const { t } = useTranslation()
@@ -105,11 +106,11 @@ export const DownloadProjectPDF = () => {
 
 export const ExportProjectDocx = () => {
   const { t } = useTranslation()
-  const { projectId } = useProjectContext()
   const exportDocxEnabled = useFeatureFlag('export-docx')
   const enablePandocConversions =
     getMeta('ol-ExposedSettings')?.enablePandocConversions
   const anonymous = getMeta('ol-anonymous')
+  const downloadConversion = useConvertProject('docx')
 
   const showExportDocx =
     exportDocxEnabled && enablePandocConversions && !anonymous
@@ -120,12 +121,12 @@ export const ExportProjectDocx = () => {
         ? [
             {
               id: 'export-as-docx',
-              href: `/project/${projectId}/download/conversion/docx`,
+              handler: downloadConversion,
               label: t('export_as_docx'),
             },
           ]
         : [],
-    [t, showExportDocx, projectId]
+    [t, showExportDocx, downloadConversion]
   )
 
   if (!showExportDocx) {
@@ -133,11 +134,7 @@ export const ExportProjectDocx = () => {
   }
 
   return (
-    <OLDropdownMenuItem
-      href={`/project/${projectId}/download/conversion/docx`}
-      target="_blank"
-      rel="noreferrer"
-    >
+    <OLDropdownMenuItem onClick={downloadConversion}>
       {t('export_as_docx')}
     </OLDropdownMenuItem>
   )
@@ -145,11 +142,11 @@ export const ExportProjectDocx = () => {
 
 export const ExportProjectMarkdown = () => {
   const { t } = useTranslation()
-  const { projectId } = useProjectContext()
   const exportMarkdownEnabled = useFeatureFlag('export-markdown')
   const enablePandocConversions =
     getMeta('ol-ExposedSettings')?.enablePandocConversions
   const anonymous = getMeta('ol-anonymous')
+  const downloadConversion = useConvertProject('markdown')
 
   const showExportMarkdown =
     exportMarkdownEnabled && enablePandocConversions && !anonymous
@@ -160,12 +157,12 @@ export const ExportProjectMarkdown = () => {
         ? [
             {
               id: 'export-as-markdown',
-              href: `/project/${projectId}/download/conversion/markdown`,
+              handler: downloadConversion,
               label: t('export_as_markdown'),
             },
           ]
         : [],
-    [t, showExportMarkdown, projectId]
+    [t, showExportMarkdown, downloadConversion]
   )
 
   if (!showExportMarkdown) {
@@ -173,11 +170,7 @@ export const ExportProjectMarkdown = () => {
   }
 
   return (
-    <OLDropdownMenuItem
-      href={`/project/${projectId}/download/conversion/markdown`}
-      target="_blank"
-      rel="noreferrer"
-    >
+    <OLDropdownMenuItem onClick={downloadConversion}>
       {t('export_as_markdown')}
     </OLDropdownMenuItem>
   )

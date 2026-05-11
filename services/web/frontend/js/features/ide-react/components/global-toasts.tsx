@@ -40,7 +40,7 @@ let toastCounter = 1
 
 export const GlobalToasts = memo(function GlobalToasts() {
   const [toasts, setToasts] = useState<
-    { component: ReactElement; id: string }[]
+    { component: ReactElement; id: string; handle?: string }[]
   >([])
 
   const removeToast = useCallback((id: string) => {
@@ -72,13 +72,13 @@ export const GlobalToasts = memo(function GlobalToasts() {
   )
 
   const addToast = useCallback(
-    (key: string, data?: any) => {
+    (key: string, handle?: string, data?: any) => {
       const id = `toast-${toastCounter++}`
       const component = createToast(id, key, data)
       if (!component) {
         return
       }
-      setToasts(current => [...current, { id, component }])
+      setToasts(current => [...current, { id, handle, component }])
     },
     [createToast]
   )
@@ -89,13 +89,24 @@ export const GlobalToasts = memo(function GlobalToasts() {
         debugConsole.error('No key provided for toast')
         return
       }
-      const { key, ...rest } = event.detail
-      addToast(key, rest)
+      const { key, handle, ...rest } = event.detail
+      addToast(key, handle, rest)
     },
     [addToast]
   )
 
   useEventListener('ide:show-toast', showToastListener)
+
+  const dismissToastListener = useCallback((event: CustomEvent) => {
+    const { handle } = event.detail || {}
+    if (!handle) {
+      debugConsole.error('No handle provided for dismissing toast')
+      return
+    }
+    setToasts(current => current.filter(toast => toast.handle !== handle))
+  }, [])
+
+  useEventListener('ide:dismiss-toast', dismissToastListener)
 
   return (
     <OLToastContainer className="global-toasts">

@@ -68,10 +68,17 @@ describe('ProjectDownloadsController', function () {
         default: (ctx.DocumentConversionManager = {
           promises: {
             convertProjectToDocument: sinon.stub(),
+            streamConvertedProjectDocument: sinon.stub(),
           },
         }),
       })
     )
+
+    vi.doMock('@overleaf/settings', () => ({
+      default: (ctx.Settings = {
+        siteUrl: 'https://overleaf.example.com',
+      }),
+    }))
 
     vi.doMock('node:stream/promises', () => ({
       pipeline: (ctx.pipeline = sinon.stub().resolves()),
@@ -240,39 +247,23 @@ describe('ProjectDownloadsController', function () {
   })
 
   describe('exportProjectConversion', function () {
-    describe('when an unsupported type is requested', function () {
+    describe('with a supported type (default streaming)', function () {
       beforeEach(async function (ctx) {
-        ctx.req.params = { Project_id: 'test-project-id', type: 'unsupported' }
-        ctx.req.session = { user: { _id: 'test-user-id' } }
-
-        await ctx.ProjectDownloadsController.exportProjectConversion(
-          ctx.req,
-          ctx.res,
-          ctx.next
-        )
-      })
-
-      it('should return 400', function (ctx) {
-        expect(ctx.res.statusCode).to.equal(400)
-      })
-
-      it('should not call the conversion manager', function (ctx) {
-        sinon.assert.notCalled(
-          ctx.DocumentConversionManager.promises.convertProjectToDocument
-        )
-      })
-    })
-
-    describe('with a supported type', function () {
-      beforeEach(async function (ctx) {
-        ctx.projectId = 'test-project-id'
+        ctx.projectId = '5e9b1c2a3b4c5d6e7f8a9b0c'
         ctx.userId = 'test-user-id'
         ctx.projectName = 'My Test Project'
         ctx.exportStream = { pipe: sinon.stub() }
         ctx.contentLength = 9876
+        ctx.conversionIds = {
+          conversionId: '12345678-1234-4234-8234-123456789012',
+          buildId: '0123456789a-0123456789abcdef',
+          clsiServerId: 'clsi-server-1',
+          file: 'output.docx',
+        }
 
         ctx.req.params = { Project_id: ctx.projectId, type: 'docx' }
         ctx.req.session = { user: { _id: ctx.userId } }
+        ctx.req.query = {}
         ctx.req.ip = '192.168.1.1'
 
         ctx.res.attachment = sinon.stub().returns(ctx.res)
@@ -282,6 +273,9 @@ describe('ProjectDownloadsController', function () {
           name: ctx.projectName,
         })
         ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          ctx.conversionIds
+        )
+        ctx.DocumentConversionManager.promises.streamConvertedProjectDocument.resolves(
           {
             stream: ctx.exportStream,
             contentLength: ctx.contentLength,
@@ -301,6 +295,13 @@ describe('ProjectDownloadsController', function () {
           ctx.projectId,
           ctx.userId,
           'docx'
+        )
+      })
+
+      it('should fetch the prepared document via streamConvertedProjectDocument', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.DocumentConversionManager.promises.streamConvertedProjectDocument,
+          ctx.conversionIds
         )
       })
 
@@ -341,9 +342,93 @@ describe('ProjectDownloadsController', function () {
       })
     })
 
+    describe('with responseFormat=json', function () {
+      beforeEach(async function (ctx) {
+        ctx.projectId = '5e9b1c2a3b4c5d6e7f8a9b0c'
+        ctx.userId = 'test-user-id'
+        ctx.req.params = { Project_id: ctx.projectId, type: 'docx' }
+        ctx.req.query = { responseFormat: 'json' }
+        ctx.req.session = { user: { _id: ctx.userId } }
+        ctx.req.ip = '192.168.1.1'
+
+        ctx.res.json = sinon.stub().returns(ctx.res)
+
+        ctx.SessionManager.getLoggedInUserId.returns(ctx.userId)
+        ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          {
+            conversionId: '12345678-1234-4234-8234-123456789012',
+            buildId: '0123456789a-0123456789abcdef',
+            clsiServerId: 'clsi-server-1',
+            file: 'output.docx',
+          }
+        )
+
+        await ctx.ProjectDownloadsController.exportProjectConversion(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should call convertProjectToDocument', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.DocumentConversionManager.promises.convertProjectToDocument,
+          ctx.projectId,
+          ctx.userId,
+          'docx'
+        )
+      })
+
+      it('should not stream a document', function (ctx) {
+        sinon.assert.notCalled(
+          ctx.DocumentConversionManager.promises.streamConvertedProjectDocument
+        )
+        sinon.assert.notCalled(ctx.pipeline)
+      })
+
+      it('should add an audit log entry', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ProjectAuditLogHandler.addEntryInBackground,
+          ctx.projectId,
+          'project-exported-docx',
+          ctx.userId,
+          ctx.req.ip
+        )
+      })
+
+      it('should respond with a download URL pointing at the prepared output route', function (ctx) {
+        sinon.assert.calledOnce(ctx.res.json)
+        const arg = ctx.res.json.firstCall.args[0]
+        expect(arg.downloadUrl).to.equal(
+          '/project/5e9b1c2a3b4c5d6e7f8a9b0c/download/conversion/12345678-1234-4234-8234-123456789012/docx/build/0123456789a-0123456789abcdef/output/output.docx?clsiserverid=clsi-server-1'
+        )
+      })
+
+      it('should omit the clsiserverid param when no clsiServerId is returned', async function (ctx) {
+        ctx.res.json.resetHistory()
+        ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          {
+            conversionId: '12345678-1234-4234-8234-123456789012',
+            buildId: '0123456789a-0123456789abcdef',
+            clsiServerId: null,
+            file: 'output.docx',
+          }
+        )
+
+        await ctx.ProjectDownloadsController.exportProjectConversion(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+        const arg = ctx.res.json.firstCall.args[0]
+        const url = new URL(arg.downloadUrl, 'http://localhost')
+        expect(url.searchParams.has('clsiserverid')).to.equal(false)
+      })
+    })
+
     describe('with type=markdown', function () {
       beforeEach(async function (ctx) {
-        ctx.projectId = 'test-project-id'
+        ctx.projectId = '5e9b1c2a3b4c5d6e7f8a9b0c'
         ctx.userId = 'test-user-id'
         ctx.projectName = 'My Test Project'
         ctx.exportStream = { pipe: sinon.stub() }
@@ -351,6 +436,7 @@ describe('ProjectDownloadsController', function () {
 
         ctx.req.params = { Project_id: ctx.projectId, type: 'markdown' }
         ctx.req.session = { user: { _id: ctx.userId } }
+        ctx.req.query = {}
         ctx.req.ip = '192.168.1.1'
 
         ctx.res.attachment = sinon.stub().returns(ctx.res)
@@ -360,6 +446,14 @@ describe('ProjectDownloadsController', function () {
           name: ctx.projectName,
         })
         ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          {
+            conversionId: '12345678-1234-4234-8234-123456789012',
+            buildId: '0123456789a-0123456789abcdef',
+            clsiServerId: 'clsi-server-1',
+            file: 'output.zip',
+          }
+        )
+        ctx.DocumentConversionManager.promises.streamConvertedProjectDocument.resolves(
           {
             stream: ctx.exportStream,
             contentLength: ctx.contentLength,
@@ -404,6 +498,74 @@ describe('ProjectDownloadsController', function () {
 
       it('should stream the document to the response', function (ctx) {
         sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
+      })
+    })
+  })
+
+  describe('downloadPreparedProjectExport', function () {
+    describe('with a supported type', function () {
+      beforeEach(async function (ctx) {
+        ctx.projectId = '5e9b1c2a3b4c5d6e7f8a9b0c'
+        ctx.projectName = 'My Test Project'
+        ctx.exportStream = { pipe: sinon.stub() }
+        ctx.contentLength = 9876
+
+        ctx.req.params = {
+          Project_id: ctx.projectId,
+          type: 'docx',
+          conversionId: '12345678-1234-4234-8234-123456789012',
+          buildId: '0123456789a-0123456789abcdef',
+          file: 'output.docx',
+        }
+        ctx.req.query = {
+          clsiserverid: 'clsi-server-1',
+        }
+
+        ctx.res.attachment = sinon.stub().returns(ctx.res)
+
+        ctx.ProjectGetter.promises.getProject.resolves({
+          name: ctx.projectName,
+        })
+        ctx.DocumentConversionManager.promises.streamConvertedProjectDocument.resolves(
+          {
+            stream: ctx.exportStream,
+            contentLength: ctx.contentLength,
+          }
+        )
+
+        await ctx.ProjectDownloadsController.downloadPreparedProjectExport(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should call streamConvertedProjectDocument with the query params', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.DocumentConversionManager.promises.streamConvertedProjectDocument,
+          {
+            conversionId: '12345678-1234-4234-8234-123456789012',
+            buildId: '0123456789a-0123456789abcdef',
+            clsiServerId: 'clsi-server-1',
+            file: 'output.docx',
+          }
+        )
+      })
+
+      it('should set the attachment filename with safe project name', function (ctx) {
+        sinon.assert.calledWith(ctx.res.attachment, 'My_Test_Project.docx')
+      })
+
+      it('should set the Content-Length header', function (ctx) {
+        expect(ctx.res.headers['Content-Length']).to.equal(ctx.contentLength)
+      })
+
+      it('should stream the document to the response', function (ctx) {
+        sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
+      })
+
+      it('should not log an audit entry', function (ctx) {
+        sinon.assert.notCalled(ctx.ProjectAuditLogHandler.addEntryInBackground)
       })
     })
   })

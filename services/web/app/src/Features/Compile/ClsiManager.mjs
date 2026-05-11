@@ -444,7 +444,7 @@ async function _makeRequest(
   timer.done()
   let newClsiServerId
   if (CLSI_COOKIES_ENABLED) {
-    newClsiServerId = _getClsiServerIdFromResponse(response)
+    newClsiServerId = getClsiServerIdFromResponse(response)
     await ClsiCookieManager.promises.setServerId(
       projectId,
       userId,
@@ -603,7 +603,7 @@ async function _makeNewBackendRequest(
   timer.done()
   let newClsiServerId
   if (CLSI_COOKIES_ENABLED) {
-    newClsiServerId = _getClsiServerIdFromResponse(response)
+    newClsiServerId = getClsiServerIdFromResponse(response)
     await NewBackendCloudClsiCookieManager.promises.setServerId(
       projectId,
       userId,
@@ -1268,7 +1268,7 @@ async function syncTeX(
   }
 }
 
-function _getClsiServerIdFromResponse(response) {
+function getClsiServerIdFromResponse(response) {
   const setCookieHeaders = response.headers.raw()['set-cookie'] ?? []
   for (const header of setCookieHeaders) {
     const cookie = Cookie.parse(header)
@@ -1307,6 +1307,8 @@ export default {
   getOutputFileStream: callbackify(getOutputFileStream),
   wordCount: callbackify(wordCount),
   syncTeX: callbackify(syncTeX),
+  getClsiServerIdFromResponse,
+  CLSI_COOKIES_ENABLED,
   promises: {
     sendRequest,
     sendExternalRequest,

@@ -1,4 +1,5 @@
 import Metrics from '@overleaf/metrics'
+import Settings from '@overleaf/settings'
 import ProjectGetter from '../Project/ProjectGetter.mjs'
 import ProjectZipStreamManager from './ProjectZipStreamManager.mjs'
 import DocumentUpdaterHandler from '../DocumentUpdater/DocumentUpdaterHandler.mjs'
@@ -6,56 +7,130 @@ import { prepareZipAttachment } from '../../infrastructure/Response.mjs'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
 import DocumentConversionManager from '../Uploads/DocumentConversionManager.mjs'
+import Validation from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { pipeline } from 'node:stream/promises'
+
+const { z, zz, parseReq } = Validation
 
 const SUPPORTED_CONVERSION_TYPES = new Map([
   ['docx', 'docx'],
   ['markdown', 'zip'],
 ])
 
+const exportProjectConversionSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+    type: z.enum([...SUPPORTED_CONVERSION_TYPES.keys()]),
+  }),
+  query: z.object({
+    responseFormat: z.enum(['json', 'stream']).optional().default('stream'),
+  }),
+})
+
+const downloadPreparedProjectExportSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+    buildId: zz.buildId(),
+    conversionId: z.uuid(),
+    file: zz.filepath(),
+    type: z.enum([...SUPPORTED_CONVERSION_TYPES.keys()]),
+  }),
+  query: z.object({
+    clsiserverid: zz.clsiServerId().optional(),
+  }),
+})
+
 // Keep in sync with the logic for PDF files in CompileController
 function getSafeProjectName(project) {
   return project.name.replace(/[^\p{L}\p{Nd}]/gu, '_')
 }
 
-async function exportProjectConversion(req, res) {
-  const type = req.params.type
+async function _streamConvertedDocumentToResponse(
+  res,
+  { projectId, type, conversionId, buildId, clsiServerId, file }
+) {
   const extension = SUPPORTED_CONVERSION_TYPES.get(type)
-  if (!extension) {
-    return res.sendStatus(400)
-  }
-  const userId = SessionManager.getLoggedInUserId(req.session)
-  const projectId = req.params.Project_id
-  Metrics.inc('document-exports', 1, { type })
-
   const project = await ProjectGetter.promises.getProject(projectId, {
     name: true,
   })
-
   const safeFileName = getSafeProjectName(project)
 
   const { stream, contentLength } =
+    await DocumentConversionManager.promises.streamConvertedProjectDocument({
+      conversionId,
+      buildId,
+      clsiServerId,
+      file,
+    })
+  res.setHeader('Content-Length', contentLength)
+  res.attachment(`${safeFileName}.${extension}`)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Accel-Buffering', 'no')
+  await pipeline(stream, res)
+}
+
+async function exportProjectConversion(req, res) {
+  const { params, query } = parseReq(req, exportProjectConversionSchema)
+  const { Project_id: projectId, type } = params
+  const { responseFormat } = query
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  Metrics.inc('document-exports', 1, { type })
+
+  const { conversionId, buildId, clsiServerId, file } =
     await DocumentConversionManager.promises.convertProjectToDocument(
       projectId,
       userId,
       type
     )
-  res.setHeader('Content-Length', contentLength)
-  res.attachment(`${safeFileName}.${extension}`)
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  res.setHeader('X-Accel-Buffering', 'no')
   ProjectAuditLogHandler.addEntryInBackground(
     projectId,
     `project-exported-${type}`,
     userId,
     req.ip
   )
-  await pipeline(stream, res)
+
+  if (responseFormat === 'json') {
+    const downloadUrl = new URL(
+      `/project/${projectId}/download/conversion/${conversionId}/${type}/build/${buildId}/output/${file}`,
+      Settings.siteUrl
+    )
+    if (clsiServerId) {
+      downloadUrl.searchParams.set('clsiserverid', clsiServerId)
+    }
+    return res.json({
+      downloadUrl: downloadUrl.pathname + downloadUrl.search,
+    })
+  }
+
+  await _streamConvertedDocumentToResponse(res, {
+    projectId,
+    type,
+    conversionId,
+    buildId,
+    clsiServerId,
+    file,
+  })
+}
+
+async function downloadPreparedProjectExport(req, res) {
+  const { params, query } = parseReq(req, downloadPreparedProjectExportSchema)
+  const { Project_id: projectId, conversionId, buildId, file, type } = params
+  const { clsiserverid: clsiServerId } = query
+
+  await _streamConvertedDocumentToResponse(res, {
+    projectId,
+    type,
+    conversionId,
+    buildId,
+    clsiServerId,
+    file,
+  })
 }
 
 export default {
   exportProjectConversion: expressify(exportProjectConversion),
+  downloadPreparedProjectExport: expressify(downloadPreparedProjectExport),
 
   downloadProject(req, res, next) {
     const userId = SessionManager.getLoggedInUserId(req.session)

@@ -197,6 +197,10 @@ const rateLimiters = {
     points: 5,
     duration: 60,
   }),
+  documentExportDownload: new RateLimiter('document-export-download', {
+    points: 30,
+    duration: 60,
+  }),
 }
 
 async function initialize(webRouter, privateApiRouter, publicApiRouter) {
@@ -758,6 +762,15 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
       }),
       AuthorizationMiddleware.ensureUserCanReadProject,
       ProjectDownloadsController.exportProjectConversion
+    )
+    webRouter.get(
+      '/project/:Project_id/download/conversion/:conversionId/:type/build/:buildId/output/:file(.*)',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiters.documentExportDownload, {
+        params: ['Project_id'],
+      }),
+      AuthorizationMiddleware.ensureUserCanReadProject,
+      ProjectDownloadsController.downloadPreparedProjectExport
     )
   }
 
