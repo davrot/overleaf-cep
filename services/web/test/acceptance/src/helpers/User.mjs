@@ -100,37 +100,6 @@ class User {
     })
   }
 
-  getSplitTestAssignment(splitTestName, query, callback) {
-    if (!callback) {
-      callback = query
-    }
-    const params = new URLSearchParams({
-      splitTestName,
-      ...query,
-    }).toString()
-    this.request.get(
-      {
-        url: `/dev/split_test/get_assignment?${params}`,
-      },
-      (err, response, body) => {
-        if (err != null) {
-          return callback(err)
-        }
-        if (response.statusCode !== 200) {
-          return callback(
-            new Error(
-              `get split test assignment failed: status=${
-                response.statusCode
-              } body=${JSON.stringify(body)}`
-            )
-          )
-        }
-        const assignment = JSON.parse(response.body)
-        callback(null, assignment)
-      }
-    )
-  }
-
   doSessionMaintenance(callback) {
     this.request.post(
       {
@@ -1348,6 +1317,31 @@ User.promises.prototype.doRequest = async function (method, params) {
       }
     })
   })
+}
+
+User.promises.prototype.getSplitTestAssignment = async function (
+  splitTestName,
+  query,
+  referer,
+  includeReferer
+) {
+  const params = new URLSearchParams({
+    splitTestName,
+    includeReferer,
+    ...query,
+  }).toString()
+  const { response, body } = await this.doRequest('GET', {
+    url: `/dev/split_test/get_assignment?${params}`,
+    headers: { referer },
+  })
+  if (response.statusCode !== 200) {
+    throw new Error(
+      `get split test assignment failed: status=${
+        response.statusCode
+      } body=${JSON.stringify(body)}`
+    )
+  }
+  return JSON.parse(response.body)
 }
 
 export default User

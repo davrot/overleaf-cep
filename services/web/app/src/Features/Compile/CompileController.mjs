@@ -1,4 +1,3 @@
-import { URL } from 'node:url'
 import { pipeline } from 'node:stream/promises'
 import Metrics from '@overleaf/metrics'
 import ProjectGetter from '../Project/ProjectGetter.mjs'
@@ -46,23 +45,12 @@ function getOutputFilesArchiveSpecification(projectId, userId, buildId) {
   }
 }
 
-function getPdfCachingMinChunkSize(req, res) {
-  return Settings.pdfCachingMinChunkSize
-}
-
 async function _getSplitTestOptions(req, res) {
-  // Use the query flags from the editor request for overriding the split test.
-  let query = {}
-  try {
-    const u = new URL(req.headers.referer || req.url, Settings.siteUrl)
-    query = Object.fromEntries(u.searchParams.entries())
-  } catch (e) {}
-  const editorReq = { ...req, query }
-
   const { variant } = await SplitTestHandler.promises.getAssignment(
-    editorReq,
+    req,
     res,
-    'compile-from-history'
+    'compile-from-history',
+    { includeReferer: true }
   )
   const compileFromHistory = variant === 'enabled'
 
@@ -78,7 +66,7 @@ async function _getSplitTestOptions(req, res) {
     }
   }
 
-  const pdfCachingMinChunkSize = getPdfCachingMinChunkSize(editorReq, res)
+  const pdfCachingMinChunkSize = Settings.pdfCachingMinChunkSize
   return {
     compileFromHistory,
     pdfDownloadDomain,

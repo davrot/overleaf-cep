@@ -47,11 +47,17 @@ const DEFAULT_ASSIGNMENT = {
  * @param req the request
  * @param res the Express response object
  * @param splitTestName the unique name of the split test
- * @param options {Object<sync: boolean>} - for test purposes only, to force the synchronous update of the user's profile
+ * @param {Object} options
+ * @param {boolean} options.sync - for test purposes only, to force the synchronous update of the user's profile
+ * @param {boolean} options.includeReferer For ajax requests and downloads include the split test overrides of the page
  * @returns {Promise<Assignment>}
  */
-async function getAssignment(req, res, splitTestName, { sync = false } = {}) {
-  const query = req.query || {}
+async function getAssignment(
+  req,
+  res,
+  splitTestName,
+  { sync = false, includeReferer = false } = {}
+) {
   let assignment
 
   try {
@@ -59,6 +65,20 @@ async function getAssignment(req, res, splitTestName, { sync = false } = {}) {
       assignment = _getNonSaasAssignment(splitTestName)
     } else {
       await _loadSplitTestInfoInLocals(res.locals, splitTestName, req.session)
+
+      let query = req.query || {}
+      if (includeReferer && req.headers.referer) {
+        // Pick up the query of the top-level page, i.e. what's in the browsers address bar, from ajax requests.
+        // E.g. /project/:id?split-test=foo -> ajax /project/:id/compile should see split-test=foo.
+        // E.g. /project/:id?split-test=foo -> redirect /project/:id/download/zip should see split-test=foo.
+        try {
+          const u = new URL(req.headers.referer, Settings.siteUrl)
+          query = {
+            ...Object.fromEntries(u.searchParams.entries()),
+            ...query,
+          }
+        } catch {}
+      }
 
       // Check the query string for an override, ignoring an invalid value
       const queryVariant = query[splitTestName]
