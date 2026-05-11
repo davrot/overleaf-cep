@@ -167,7 +167,9 @@ async function _findElementByPathWithProject(
       }
     }
     if (!found) {
-      throw new Errors.NotFoundError('parent folder not found in project', {
+      throw new Errors.NotFoundError(
+        'parent folder not found in project'
+      ).withInfo({
         projectId: project._id,
         needlePath,
         needleFolderName,
@@ -204,7 +206,7 @@ async function _findElementByPathWithProject(
     if (result != null) {
       return { element: result, type, folder }
     }
-    throw new Errors.NotFoundError('element not found in project', {
+    throw new Errors.NotFoundError('element not found in project').withInfo({
       projectId: project._id,
       needlePath,
       entityName,
