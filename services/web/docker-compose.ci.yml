@@ -108,6 +108,8 @@ services:
     volumes:
       - /dev/shm/overleaf:/overleaf
       - ./data/reports:/overleaf/services/web/data/reports
+    tmpfs:
+      - /overleaf/services/web/node_modules/.cache:uid=1000,gid=1000
     entrypoint: yarn
     command:
       - "run"

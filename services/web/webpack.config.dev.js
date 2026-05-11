@@ -5,6 +5,9 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin')
 
 const base = require('./webpack.config')
+const cypressCacheVariant = require('./frontend/macros/cypress-cache-variant')
+
+const cypressVariant = cypressCacheVariant()
 
 // if WEBPACK_ENTRYPOINTS is defined, remove any entrypoints that aren't included
 if (process.env.WEBPACK_ENTRYPOINTS) {
@@ -26,6 +29,17 @@ module.exports = merge(base, {
 
   cache: {
     type: 'filesystem',
+    // Use a unique cache directory per Cypress CT variant to avoid
+    // parallel jobs corrupting the shared PackFileCacheStrategy pack files.
+    ...(cypressVariant
+      ? {
+          cacheDirectory: path.resolve(
+            __dirname,
+            'node_modules/.cache/webpack',
+            cypressVariant
+          ),
+        }
+      : {}),
     buildDependencies: {
       config: [
         __filename,

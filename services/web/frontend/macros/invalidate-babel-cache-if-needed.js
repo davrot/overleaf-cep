@@ -1,9 +1,13 @@
 const fs = require('fs')
 const Path = require('path')
 const Settings = require('@overleaf/settings')
+const cypressCacheVariant = require('./cypress-cache-variant')
 
 module.exports = function invalidateBabelCacheIfNeeded() {
-  const cacheDir = Path.join(__dirname, '../../node_modules/.cache')
+  // Use a unique subdirectory per Cypress CT variant to avoid parallel jobs
+  // racing on the shared babel cache and state file.
+  const suffix = cypressCacheVariant() ?? ''
+  const cacheDir = Path.join(__dirname, '../../node_modules/.cache', suffix)
   const cachePath = Path.join(cacheDir, 'babel-loader')
   const statePath = Path.join(cacheDir, 'last-overleafModuleImports.json')
   let lastState = ''

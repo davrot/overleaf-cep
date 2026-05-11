@@ -10,9 +10,17 @@ const {
 
 const PackageVersions = require('./app/src/infrastructure/PackageVersions.js')
 const invalidateBabelCacheIfNeeded = require('./frontend/macros/invalidate-babel-cache-if-needed')
+const cypressCacheVariant = require('./frontend/macros/cypress-cache-variant')
 
 // Make sure that babel-macros are re-evaluated after changing the modules config
 invalidateBabelCacheIfNeeded()
+
+// Use a unique babel-loader cache directory per Cypress CT variant to avoid
+// parallel jobs corrupting the shared cache.
+const cypressVariant = cypressCacheVariant()
+const babelCacheDirectory = cypressVariant
+  ? path.join(__dirname, 'node_modules/.cache', cypressVariant, 'babel-loader')
+  : true
 
 // Generate a hash of entry points, including modules
 const entryPoints = {
@@ -123,7 +131,7 @@ module.exports = {
           {
             loader: 'babel-loader',
             options: {
-              cacheDirectory: true,
+              cacheDirectory: babelCacheDirectory,
               configFile: path.join(__dirname, './babel.config.json'),
             },
           },
@@ -156,7 +164,7 @@ module.exports = {
             options: {
               // Configure babel-loader to cache compiled output so that
               // subsequent compile runs are much faster
-              cacheDirectory: true,
+              cacheDirectory: babelCacheDirectory,
               configFile: path.join(__dirname, './babel.config.json'),
               plugins: [
                 process.env.REACT_REFRESH_ENABLED === 'true' &&
