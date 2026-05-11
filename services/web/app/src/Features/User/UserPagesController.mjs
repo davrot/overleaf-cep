@@ -117,7 +117,11 @@ async function settingsPage(req, res) {
   }
 
   await SplitTestHandler.promises.getAssignment(req, res, 'email-notifications')
-
+  await SplitTestHandler.promises.getAssignment(
+    req,
+    res,
+    'domain-captured-by-group'
+  )
   res.render('user/settings', {
     title: 'account_settings',
     user: {
