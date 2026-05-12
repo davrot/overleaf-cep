@@ -10,17 +10,17 @@
             <fieldNames>
                 <timestamp>time</timestamp>
                 <version>[ignore]</version>
-                <message>msg</message>
-                <logger>[ignore]</logger>
-                <thread>[ignore]</thread>
+                <message>message</message>
+                <logger>logger</logger>
+                <thread>thread</thread>
                 <level>[ignore]</level>
                 <levelValue>[ignore]</levelValue>
                 <stackTrace>stack_trace</stackTrace>
             </fieldNames>
             <provider class="net.logstash.logback.composite.loggingevent.LoggingEventPatternJsonProvider">
-                <pattern>{"v":0,"name":"git-bridge","hostname":"${HOSTNAME:-unknown}","pid":${PID:-0}}</pattern>
+                <pattern>{"severity":"%replace(%replace(%level){'WARN','WARNING'}){'TRACE','DEBUG'}"}</pattern>
             </provider>
-            <provider class="uk.ac.ic.wlgitbridge.server.BunyanLevelJsonProvider" />
+            <provider class="uk.ac.ic.wlgitbridge.server.GcpLabelsJsonProvider" />
         </encoder>
     </appender>
 
@@ -35,17 +35,17 @@
             <fieldNames>
                 <timestamp>time</timestamp>
                 <version>[ignore]</version>
-                <message>msg</message>
-                <logger>[ignore]</logger>
-                <thread>[ignore]</thread>
+                <message>message</message>
+                <logger>logger</logger>
+                <thread>thread</thread>
                 <level>[ignore]</level>
                 <levelValue>[ignore]</levelValue>
                 <stackTrace>stack_trace</stackTrace>
             </fieldNames>
             <provider class="net.logstash.logback.composite.loggingevent.LoggingEventPatternJsonProvider">
-                <pattern>{"v":0,"name":"git-bridge","hostname":"${HOSTNAME:-unknown}","pid":${PID:-0}}</pattern>
+                <pattern>{"severity":"%replace(%replace(%level){'WARN','WARNING'}){'TRACE','DEBUG'}"}</pattern>
             </provider>
-            <provider class="uk.ac.ic.wlgitbridge.server.BunyanLevelJsonProvider" />
+            <provider class="uk.ac.ic.wlgitbridge.server.GcpLabelsJsonProvider" />
         </encoder>
     </appender>
 

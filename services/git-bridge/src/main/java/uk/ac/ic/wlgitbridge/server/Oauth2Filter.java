@@ -287,11 +287,7 @@ public class Oauth2Filter implements Filter {
    * Gets the remote IP from the request.
    */
   private String getClientIp(HttpServletRequest request) {
-    String clientIp = request.getHeader("X-Forwarded-For");
-    if (clientIp == null) {
-      clientIp = request.getRemoteAddr();
-    }
-    return clientIp;
+    return Util.getClientIp(request);
   }
 
   /*

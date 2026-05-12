@@ -1,5 +1,6 @@
 package uk.ac.ic.wlgitbridge.server;
 
+import ch.qos.logback.classic.Level;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.ServletException;
@@ -45,6 +46,8 @@ public class GitBridgeServer {
 
   private final Server jettyServer;
 
+  private final GceMetadataLogLevelChecker logLevelChecker;
+
   private final int port;
   private String rootGitDirectoryPath;
   private String apiBaseURL;
@@ -72,6 +75,11 @@ public class GitBridgeServer {
     Util.setServiceName(config.getServiceName());
     Util.setPostbackURL(config.getPostbackURL());
     Util.setPort(config.getPort());
+    String configuredLogLevel = System.getenv().getOrDefault("LOG_LEVEL", "INFO");
+    String normalizedLogLevel =
+        "WARNING".equalsIgnoreCase(configuredLogLevel) ? "WARN" : configuredLogLevel;
+    Level defaultLogLevel = Level.toLevel(normalizedLogLevel, Level.INFO);
+    logLevelChecker = new GceMetadataLogLevelChecker(config.getServiceName(), defaultLogLevel);
   }
 
   /*
@@ -82,6 +90,7 @@ public class GitBridgeServer {
       bridge.checkDB();
       jettyServer.start();
       bridge.startBackgroundJobs();
+      logLevelChecker.start();
       Log.info(Util.getServiceName() + "-Git Bridge server started");
       Log.info("Listening on port: " + port);
       Log.info("Bridged to: " + apiBaseURL);
@@ -95,6 +104,7 @@ public class GitBridgeServer {
   }
 
   public void stop() {
+    logLevelChecker.stop();
     try {
       jettyServer.stop();
     } catch (Exception e) {
@@ -152,6 +162,8 @@ public class GitBridgeServer {
       throws ServletException {
     final ServletContextHandler servletContextHandler = new ServletContextHandler();
     servletContextHandler.setSessionHandler(new SessionHandler());
+    servletContextHandler.addFilter(
+        new FilterHolder(new MdcLoggingFilter()), "/*", EnumSet.of(DispatcherType.REQUEST));
     if (config.getOauth2Server() != null) {
       Filter filter =
           new Oauth2Filter(snapshotApi, config.getOauth2Server(), config.isUserPasswordEnabled());
