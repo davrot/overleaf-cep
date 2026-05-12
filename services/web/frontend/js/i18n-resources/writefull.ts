@@ -22,6 +22,7 @@ const en = {
     or: 'or',
     close: 'Close',
     submit: 'Submit',
+    loading: 'Loading...',
     'add-ai-assist':
       'Add AI assist to your plan to get unlimited access to all AI tools',
     'add-unlimited-ai': 'Add unlimited AI',
@@ -540,6 +541,7 @@ const es = {
     or: 'o',
     close: 'Cerrar',
     submit: 'Enviar',
+    loading: 'Cargando...',
     add: 'Añadir',
     'add-ai-assist':
       'Añade AI assist a tu plan para obtener acceso ilimitado a todas las herramientas AI',
