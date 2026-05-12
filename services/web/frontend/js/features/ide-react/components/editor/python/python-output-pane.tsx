@@ -31,9 +31,9 @@ export default function PythonOutputPane() {
 
   return (
     <div className="ide-redesign-python-output-pane">
-      <OLButtonToolbar className="toolbar toolbar-pdf toolbar-pdf-hybrid">
-        <div className="toolbar-pdf-left">
-          <div className="compile-button-group">
+      <OLButtonToolbar className="ide-redesign-python-output-pane-toolbar">
+        <div className="ide-redesign-python-output-pane-toolbar-left">
+          <div className="ide-redesign-python-output-pane-run-button-wrapper">
             <OLButton
               onClick={() => {
                 if (status === 'running') {
@@ -43,7 +43,7 @@ export default function PythonOutputPane() {
                 }
               }}
               variant={status === 'running' ? 'danger' : 'primary'}
-              className="compile-button align-items-center py-0 px-3"
+              className="align-items-center py-0 px-3"
               disabled={status === 'loading'}
               aria-label={
                 status === 'running'
