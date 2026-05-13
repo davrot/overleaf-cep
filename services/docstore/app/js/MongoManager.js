@@ -7,13 +7,18 @@ const { db, ObjectId, BSON } = mongodb
 
 const ARCHIVING_LOCK_DURATION_MS = Settings.archivingLockDurationMs
 
-async function findDoc(projectId, docId, projection) {
+function readPreference(useSecondary) {
+  if (useSecondary) return { readPreference: mongodb.READ_PREFERENCE_SECONDARY }
+  return {}
+}
+
+async function findDoc(projectId, docId, projection, useSecondary = false) {
   const doc = await db.docs.findOne(
     {
       _id: new ObjectId(docId.toString()),
       project_id: new ObjectId(projectId.toString()),
     },
-    { projection }
+    { projection, ...readPreference(useSecondary) }
   )
   if (doc && projection.version && !doc.version) {
     doc.version = 0
@@ -45,6 +50,7 @@ async function getProjectsDocs(projectId, options, projection) {
   }
   const queryOptions = {
     projection,
+    ...readPreference(options.useSecondary),
   }
   if (options.limit) {
     queryOptions.limit = options.limit

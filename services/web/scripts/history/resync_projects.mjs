@@ -3,7 +3,6 @@
 import minimist from 'minimist'
 import { scriptRunner } from '../lib/ScriptRunner.mjs'
 import logger from '@overleaf/logger'
-import ProjectGetter from '../../app/src/Features/Project/ProjectGetter.mjs'
 import {
   db,
   ObjectId,
@@ -268,7 +267,7 @@ async function hasHistoryMetadata(projectId) {
     if (await hasLinkedFileData(projectId)) {
       return true
     }
-    if (await DocstoreManager.promises.projectHasRanges(projectId)) {
+    if (await DocstoreManager.promises.projectHasRanges(projectId, true)) {
       return true
     }
     return false
@@ -296,10 +295,11 @@ async function hasHistoryMetadata(projectId) {
  * @returns {Promise<boolean>}
  */
 async function hasLinkedFileData(projectId) {
-  const project = await ProjectGetter.promises.getProjectWithoutLock(
-    projectId,
+  const project = await db.projects.findOne(
+    { _id: new ObjectId(projectId) },
     {
-      rootFolder: 1,
+      projection: { rootFolder: 1 },
+      readPreference: READ_PREFERENCE_SECONDARY,
     }
   )
   if (!project) {

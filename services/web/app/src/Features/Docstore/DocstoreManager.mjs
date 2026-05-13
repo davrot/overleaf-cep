@@ -323,10 +323,12 @@ async function updateDoc(
  * Asks docstore whether any doc in the project has ranges
  *
  * @param {string} projectId
+ * @param {boolean} useSecondary
  */
-async function projectHasRanges(projectId) {
+async function projectHasRanges(projectId, useSecondary = false) {
   const url = new URL(settings.apis.docstore.url)
   url.pathname = path.posix.join('project', projectId, 'has-ranges')
+  if (useSecondary) url.searchParams.set('useSecondary', 'true')
   try {
     const body = await fetchJson(url, { signal: AbortSignal.timeout(TIMEOUT) })
     return body.projectHasRanges
