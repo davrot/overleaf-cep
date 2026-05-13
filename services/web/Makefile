@@ -5,7 +5,7 @@ BUILD_NUMBER ?= local
 ifeq ($(BRANCH_NAME),)
   export BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 endif
-BRANCH_NAME_TAG_SAFE := $(subst /,--,$(BRANCH_NAME))
+BRANCH_NAME_TAG_SAFE := $(shell echo "$(BRANCH_NAME)" | sed 's/\//\-\-/g' | cut -c1-96)
 ifeq ($(COMMIT_SHA),)
   export COMMIT_SHA := $(shell git rev-parse HEAD)
 endif
