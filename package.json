@@ -209,7 +209,8 @@
     "retry-request@npm:^8.0.0": "patch:retry-request@npm%3A8.0.2#~/.yarn/patches/retry-request-npm-8.0.2-448ad084c8.patch",
     "retry-request@npm:^7.0.0": "patch:retry-request@npm%3A7.0.2#~/.yarn/patches/retry-request-npm-7.0.2-a41087680c.patch",
     "teeny-request@npm:^10.0.0": "patch:teeny-request@npm%3A10.1.0#~/.yarn/patches/teeny-request-npm-10.1.0.patch",
-    "teeny-request@npm:^9.0.0": "patch:teeny-request@npm%3A9.0.0#~/.yarn/patches/teeny-request-npm-9.0.0-4d571e3c55.patch"
+    "teeny-request@npm:^9.0.0": "patch:teeny-request@npm%3A9.0.0#~/.yarn/patches/teeny-request-npm-9.0.0-4d571e3c55.patch",
+    "ip-address": "10.1.1"
   },
   "scripts": {
     "format": "prettier --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache --check",
