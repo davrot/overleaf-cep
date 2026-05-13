@@ -92,6 +92,15 @@ describe('ProjectDownloadsController', function () {
       pipeline: (ctx.pipeline = sinon.stub().resolves()),
     }))
 
+    vi.doMock(
+      '../../../../app/src/Features/Analytics/AnalyticsManager.mjs',
+      () => ({
+        default: (ctx.AnalyticsManager = {
+          recordEventForUserInBackground: sinon.stub(),
+        }),
+      })
+    )
+
     ctx.ProjectDownloadsController = (await import(modulePath)).default
   })
 
@@ -348,6 +357,20 @@ describe('ProjectDownloadsController', function () {
 
       it('should stream the document to the response', function (ctx) {
         sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
+      })
+
+      it('should record a successful convert-format analytics event', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.AnalyticsManager.recordEventForUserInBackground,
+          ctx.userId,
+          'convert-format',
+          {
+            sourceFormat: 'latex',
+            targetFormat: 'docx',
+            status: 'success',
+            operation: 'export',
+          }
+        )
       })
     })
 

@@ -112,6 +112,16 @@ describe('ProjectUploadController', function () {
       })
     )
 
+    ctx.AnalyticsManager = {
+      recordEventForUserInBackground: sinon.stub(),
+    }
+    vi.doMock(
+      '../../../../app/src/Features/Analytics/AnalyticsManager.mjs',
+      () => ({
+        default: ctx.AnalyticsManager,
+      })
+    )
+
     vi.doMock('node:fs', () => ({
       default: (ctx.fs = {}),
     }))
@@ -525,6 +535,20 @@ describe('ProjectUploadController', function () {
             ctx.req.file.path
           )
         })
+
+        it('should record a successful convert-format analytics event', function (ctx) {
+          sinon.assert.calledWith(
+            ctx.AnalyticsManager.recordEventForUserInBackground,
+            ctx.user_id,
+            'convert-format',
+            {
+              sourceFormat: 'docx',
+              targetFormat: 'latex',
+              status: 'success',
+              operation: 'import',
+            }
+          )
+        })
       })
     })
 
@@ -580,6 +604,20 @@ describe('ProjectUploadController', function () {
 
       it('should unlink the uploaded file', function (ctx) {
         expect(ctx.fsPromises.unlink).to.have.been.calledWith(ctx.req.file.path)
+      })
+
+      it('should record a successful convert-format analytics event', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.AnalyticsManager.recordEventForUserInBackground,
+          ctx.user_id,
+          'convert-format',
+          {
+            sourceFormat: 'markdown',
+            targetFormat: 'latex',
+            status: 'success',
+            operation: 'import',
+          }
+        )
       })
     })
 
@@ -638,6 +676,20 @@ describe('ProjectUploadController', function () {
 
       it('should return http 500', function (ctx) {
         expect(ctx.res.statusCode).to.equal(500)
+      })
+
+      it('should record a failed convert-format analytics event', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.AnalyticsManager.recordEventForUserInBackground,
+          ctx.user_id,
+          'convert-format',
+          {
+            sourceFormat: 'docx',
+            targetFormat: 'latex',
+            status: 'failure',
+            operation: 'import',
+          }
+        )
       })
     })
 

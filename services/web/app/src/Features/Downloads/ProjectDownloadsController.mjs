@@ -7,6 +7,7 @@ import { prepareZipAttachment } from '../../infrastructure/Response.mjs'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
 import DocumentConversionManager from '../Uploads/DocumentConversionManager.mjs'
+import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 import Validation from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { pipeline } from 'node:stream/promises'
@@ -78,12 +79,30 @@ async function exportProjectConversion(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   Metrics.inc('document-exports', 1, { type })
 
-  const { conversionId, buildId, clsiServerId, file } =
-    await DocumentConversionManager.promises.convertProjectToDocument(
-      projectId,
-      userId,
-      type
-    )
+  let conversionResult
+  try {
+    conversionResult =
+      await DocumentConversionManager.promises.convertProjectToDocument(
+        projectId,
+        userId,
+        type
+      )
+    AnalyticsManager.recordEventForUserInBackground(userId, 'convert-format', {
+      sourceFormat: 'latex',
+      targetFormat: type,
+      status: 'success',
+      operation: 'export',
+    })
+  } catch (error) {
+    AnalyticsManager.recordEventForUserInBackground(userId, 'convert-format', {
+      sourceFormat: 'latex',
+      targetFormat: type,
+      status: 'failure',
+      operation: 'export',
+    })
+    throw error
+  }
+  const { conversionId, buildId, clsiServerId, file } = conversionResult
   ProjectAuditLogHandler.addEntryInBackground(
     projectId,
     `project-exported-${type}`,

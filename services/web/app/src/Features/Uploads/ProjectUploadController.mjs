@@ -16,6 +16,7 @@ import { expressify } from '@overleaf/promise-utils'
 import { DuplicateNameError, FileTooLargeError } from '../Errors/Errors.js'
 import DocumentConversionManager from './DocumentConversionManager.mjs'
 import ProjectOptionsHandler from '../Project/ProjectOptionsHandler.mjs'
+import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 
 const defaultsDeep = lodash.defaultsDeep
 
@@ -202,6 +203,16 @@ async function importDocument(req, res, next) {
           archivePath
         )
       await ProjectOptionsHandler.promises.setCompiler(project._id, 'lualatex')
+      AnalyticsManager.recordEventForUserInBackground(
+        userId,
+        'convert-format',
+        {
+          sourceFormat: conversionType,
+          targetFormat: 'latex',
+          status: 'success',
+          operation: 'import',
+        }
+      )
       res.json({ success: true, project_id: project._id })
     } finally {
       await fsPromises.unlink(archivePath).catch(unlinkErr => {
@@ -213,6 +224,12 @@ async function importDocument(req, res, next) {
     }
   } catch (error) {
     logger.error({ error }, 'error importing document file')
+    AnalyticsManager.recordEventForUserInBackground(userId, 'convert-format', {
+      sourceFormat: conversionType,
+      targetFormat: 'latex',
+      status: 'failure',
+      operation: 'import',
+    })
     if (
       error instanceof FileTooLargeError ||
       error?.name === 'FileTooLargeError'
