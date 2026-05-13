@@ -105,6 +105,12 @@ router.get(
 )
 
 router.get(
+  '/projects/:project_id/latest/zip',
+  handleTokenAuth,
+  projectsController.getLatestZip
+)
+
+router.get(
   '/projects/:project_id/version/:version/zip',
   handleTokenAuth,
   projectsController.getZip

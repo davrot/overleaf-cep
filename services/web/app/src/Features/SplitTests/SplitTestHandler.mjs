@@ -338,6 +338,30 @@ async function getOneTimeAssignment(splitTestName) {
  *
  * Retrieves the feature flag assignment for a user and determines if the assigned variant is 'enabled'
  *
+ * @param req the request
+ * @param res the Express response object
+ * @param {string} splitTestName - The unique name of the feature flag
+ * @param {Object} options
+ * @param {boolean} options.includeReferer For ajax requests and downloads include the split test overrides of the page
+ * @returns {Promise<boolean>} True if the user's assigned variant is 'enabled', false otherwise
+ */
+async function featureFlagEnabled(
+  req,
+  res,
+  splitTestName,
+  { includeReferer = false } = { includeReferer: false }
+) {
+  const { variant } = await getAssignment(req, res, splitTestName, {
+    includeReferer,
+  })
+  return variant === 'enabled'
+}
+
+/**
+ * Checks if a feature flag is enabled for a specific user
+ *
+ * Retrieves the feature flag assignment for a user and determines if the assigned variant is 'enabled'
+ *
  * @param {string} userId - The ID of the user to check the feature flag for
  * @param {string} splitTestName - The unique name of the feature flag
  * @returns {Promise<boolean>} True if the user's assigned variant is 'enabled', false otherwise
@@ -997,6 +1021,7 @@ export default {
   getPercentile,
   getAssignment: callbackify(getAssignment),
   getAssignmentForUser: callbackify(getAssignmentForUser),
+  featureFlagEnabled: callbackify(featureFlagEnabled),
   featureFlagEnabledForUser: callbackify(featureFlagEnabledForUser),
   getOneTimeAssignment: callbackify(getOneTimeAssignment),
   getActiveAssignmentsForUser: callbackify(getActiveAssignmentsForUser),
@@ -1006,6 +1031,7 @@ export default {
   promises: {
     getAssignment,
     getAssignmentForUser,
+    featureFlagEnabled,
     featureFlagEnabledForUser,
     getOneTimeAssignment,
     getActiveAssignmentsForUser,

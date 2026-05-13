@@ -201,6 +201,12 @@ const schemas = {
     }),
   }),
 
+  getLatestZip: z.object({
+    params: z.object({
+      project_id: z.string(),
+    }),
+  }),
+
   getZip: z.object({
     params: z.object({
       project_id: z.string(),

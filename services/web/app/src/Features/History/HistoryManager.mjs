@@ -1,4 +1,4 @@
-import { callbackify } from 'node:util'
+import { callbackify, callbackifyMultiResult } from '@overleaf/promise-utils'
 import {
   fetchJson,
   fetchNothing,
@@ -303,6 +303,22 @@ async function getLatestHistoryWithHistoryId(historyId) {
   )
 }
 
+/**
+ * Get the latest chunk from history using already resolved historyId
+ *
+ * @param {string} historyId
+ */
+async function getLatestZipWithHistoryId(historyId) {
+  const { response, stream } = await fetchStreamWithResponse(
+    `${HISTORY_V1_URL}/projects/${historyId}/latest/zip`,
+    {
+      basicAuth: HISTORY_V1_BASIC_AUTH,
+      signal: AbortSignal.timeout(10 * 60 * 1000),
+    }
+  )
+  return { stream, historyVersion: response.headers.get('X-History-Version') }
+}
+
 async function ensureNoResyncPending(projectId) {
   const { resyncPending } = await fetchJson(
     `${settings.apis.project_history.url}/project/${projectId}/resync-pending`
@@ -475,6 +491,10 @@ export default {
   requestBlob: callbackify(requestBlob),
   requestBlobWithProjectId: callbackify(requestBlobWithProjectId),
   getLatestHistory: callbackify(getLatestHistory),
+  getLatestZipWithHistoryId: callbackifyMultiResult(getLatestZipWithHistoryId, [
+    'stream',
+    'historyVersion',
+  ]),
   getChanges: callbackify(getChanges),
   promises: {
     initializeProject,
@@ -491,6 +511,7 @@ export default {
     requestBlob,
     requestBlobWithProjectId,
     getLatestHistory,
+    getLatestZipWithHistoryId,
     getChanges,
     getChangesWithHistoryId,
     getProjectBlobStats,

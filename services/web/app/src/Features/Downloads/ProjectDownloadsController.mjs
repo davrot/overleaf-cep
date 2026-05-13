@@ -10,6 +10,7 @@ import DocumentConversionManager from '../Uploads/DocumentConversionManager.mjs'
 import Validation from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { pipeline } from 'node:stream/promises'
+import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 
 const { z, zz, parseReq } = Validation
 
@@ -142,7 +143,7 @@ export default {
       }
       ProjectGetter.getProject(
         projectId,
-        { name: true },
+        { name: true, 'overleaf.history.id': true },
         function (error, project) {
           if (error) {
             return next(error)
@@ -153,14 +154,33 @@ export default {
             userId,
             req.ip
           )
-          ProjectZipStreamManager.createZipStreamForProject(
-            projectId,
-            function (error, stream) {
+          SplitTestHandler.featureFlagEnabled(
+            req,
+            res,
+            'zip-from-history',
+            { includeReferer: true },
+            function (error, enabled) {
               if (error) {
                 return next(error)
               }
-              prepareZipAttachment(res, `${getSafeProjectName(project)}.zip`)
-              stream.pipe(res)
+              ProjectZipStreamManager.createZipStreamForProject(
+                projectId,
+                enabled,
+                project.overleaf.history.id,
+                function (error, stream, historyVersion) {
+                  if (error) {
+                    return next(error)
+                  }
+                  prepareZipAttachment(
+                    res,
+                    `${getSafeProjectName(project)}.zip`
+                  )
+                  if (historyVersion != null) {
+                    res.setHeader('X-History-Version', historyVersion)
+                  }
+                  stream.pipe(res)
+                }
+              )
             }
           )
         }
@@ -187,17 +207,29 @@ export default {
             req.ip
           )
         }
-        ProjectZipStreamManager.createZipStreamForMultipleProjects(
-          projectIds,
-          function (error, stream) {
+        SplitTestHandler.featureFlagEnabled(
+          req,
+          res,
+          'zip-from-history',
+          { includeReferer: true },
+          function (error, enabled) {
             if (error) {
               return next(error)
             }
-            prepareZipAttachment(
-              res,
-              `Overleaf Projects (${projectIds.length} items).zip`
+            ProjectZipStreamManager.createZipStreamForMultipleProjects(
+              projectIds,
+              enabled,
+              function (error, stream) {
+                if (error) {
+                  return next(error)
+                }
+                prepareZipAttachment(
+                  res,
+                  `Overleaf Projects (${projectIds.length} items).zip`
+                )
+                stream.pipe(res)
+              }
             )
-            stream.pipe(res)
           }
         )
       }

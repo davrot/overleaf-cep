@@ -244,6 +244,29 @@ async function getChanges(req, res, next) {
   }
 }
 
+async function getLatestZip(req, res, next) {
+  const { params } = parseReq(req, schemas.getLatestZip)
+  const projectId = params.project_id
+  const blobStore = new BlobStore(projectId)
+
+  let snapshot
+  try {
+    const chunk = await chunkStore.loadLatest(projectId)
+    snapshot = chunk.getSnapshot()
+    snapshot.applyAll(chunk.getChanges())
+
+    res.setHeader('X-History-Version', chunk.getEndVersion())
+  } catch (err) {
+    if (err instanceof Chunk.NotFoundError) {
+      return render.notFound(res)
+    } else {
+      throw err
+    }
+  }
+
+  await streamZip(snapshot, blobStore, res)
+}
+
 async function getZip(req, res, next) {
   const { params } = parseReq(req, schemas.getZip)
   const projectId = params.project_id
@@ -261,6 +284,10 @@ async function getZip(req, res, next) {
     }
   }
 
+  await streamZip(snapshot, blobStore, res)
+}
+
+async function streamZip(snapshot, blobStore, res) {
   await withTmpDir('get-zip-', async tmpDir => {
     const tmpFilename = Path.join(tmpDir, 'project.zip')
     const archive = new ProjectArchive(snapshot)
@@ -578,6 +605,7 @@ module.exports = {
   getHistory: expressify(getHistory),
   getHistoryBefore: expressify(getHistoryBefore),
   getChanges: expressify(getChanges),
+  getLatestZip: expressify(getLatestZip),
   getZip: expressify(getZip),
   createZip: expressify(createZip),
   deleteProject: expressify(deleteProject),

@@ -73,6 +73,14 @@ describe('ProjectDownloadsController', function () {
         }),
       })
     )
+    vi.doMock(
+      '../../../../app/src/Features/SplitTests/SplitTestHandler.mjs',
+      () => ({
+        default: (ctx.SplitTestHandler = {
+          featureFlagEnabled: sinon.stub().yields(null, false),
+        }),
+      })
+    )
 
     vi.doMock('@overleaf/settings', () => ({
       default: (ctx.Settings = {
@@ -92,7 +100,7 @@ describe('ProjectDownloadsController', function () {
       ctx.stream = { pipe: sinon.stub() }
       ctx.ProjectZipStreamManager.createZipStreamForProject = sinon
         .stub()
-        .callsArgWith(1, null, ctx.stream)
+        .yields(null, ctx.stream)
       ctx.req.params = { Project_id: ctx.project_id }
       ctx.req.ip = '192.168.1.1'
       ctx.req.session = {
@@ -102,9 +110,10 @@ describe('ProjectDownloadsController', function () {
         },
       }
       ctx.project_name = 'project name with accênts and % special characters'
-      ctx.ProjectGetter.getProject = sinon
-        .stub()
-        .callsArgWith(2, null, { name: ctx.project_name })
+      ctx.ProjectGetter.getProject = sinon.stub().callsArgWith(2, null, {
+        name: ctx.project_name,
+        overleaf: { history: { id: 123 } },
+      })
       ctx.DocumentUpdaterHandler.flushProjectToMongo = sinon
         .stub()
         .callsArgWith(1)
@@ -138,7 +147,7 @@ describe('ProjectDownloadsController', function () {
 
     it("should look up the project's name", function (ctx) {
       return ctx.ProjectGetter.getProject
-        .calledWith(ctx.project_id, { name: true })
+        .calledWith(ctx.project_id, { name: true, 'overleaf.history.id': true })
         .should.equal(true)
     })
 
@@ -172,7 +181,7 @@ describe('ProjectDownloadsController', function () {
       ctx.stream = { pipe: sinon.stub() }
       ctx.ProjectZipStreamManager.createZipStreamForMultipleProjects = sinon
         .stub()
-        .callsArgWith(1, null, ctx.stream)
+        .yields(null, ctx.stream)
       ctx.project_ids = ['project-1', 'project-2']
       ctx.req.query = { project_ids: ctx.project_ids.join(',') }
       ctx.req.ip = '192.168.1.1'
