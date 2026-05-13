@@ -1,4 +1,5 @@
 const { RuleTester } = require('eslint')
+const noThrowInCallback = require('./no-throw-in-callback')
 const preferKebabUrl = require('./prefer-kebab-url')
 const noUnnecessaryTrans = require('./no-unnecessary-trans')
 const shouldUnescapeTrans = require('./should-unescape-trans')
@@ -267,3 +268,53 @@ ruleTester.run(
     ],
   }
 )
+
+const noThrowInCallbackMessage =
+  'Pass the error to the callback instead of throwing in callback-based code.'
+ruleTester.run('no-throw-in-callback', noThrowInCallback, {
+  valid: [
+    // Calling the callback with an error is fine
+    { code: `function foo(cb) { cb(new Error()) }` },
+    // async functions may throw (they return a rejected promise)
+    { code: `async function foo(cb) { throw new Error() }` },
+    // Last param not a callback name — not a callback-style function
+    { code: `function foo(data) { throw new Error() }` },
+    // No params at all
+    { code: `function foo() { throw new Error() }` },
+    // throw inside a nested non-callback function is fine
+    { code: `function foo(cb) { [1].map(function() { throw new Error() }) }` },
+    // throw inside a nested async arrow is fine
+    { code: `function foo(cb) { [1].map(async () => { throw new Error() }) }` },
+  ],
+  invalid: [
+    {
+      code: `function foo(cb) { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    {
+      code: `function foo(callback) { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    {
+      code: `function foo(done) { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    {
+      code: `function foo(next) { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    {
+      code: `function foo(data, cb) { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    {
+      code: `const foo = (cb) => { throw new Error() }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+    // throw in a nested callback-style function inside another callback function
+    {
+      code: `function foo(cb) { bar(function(done) { throw new Error() }) }`,
+      errors: [{ message: noThrowInCallbackMessage }],
+    },
+  ],
+})

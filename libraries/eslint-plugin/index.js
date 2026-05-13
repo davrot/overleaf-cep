@@ -8,5 +8,6 @@ module.exports = {
     'require-vi-doMock-valid-path': require('./require-vi-doMock-valid-path'),
     'require-loading-label': require('./require-loading-label'),
     'require-cio-snake-case-properties': require('./require-cio-snake-case-properties'),
+    'no-throw-in-callback': require('./no-throw-in-callback'),
   },
 }

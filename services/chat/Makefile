@@ -16,6 +16,7 @@ IMAGE_REPO_FINAL ?= $(IMAGE_REPO):$(BRANCH_NAME_TAG_SAFE)-$(BUILD_NUMBER)
 IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
 	$(MONOREPO)/package.json \
 	$(MONOREPO)/yarn.lock \
+	$(MONOREPO)/libraries/eslint-plugin/package.json \
 	$(MONOREPO)/libraries/fetch-utils/package.json \
 	$(MONOREPO)/libraries/logger/package.json \
 	$(MONOREPO)/libraries/metrics/package.json \

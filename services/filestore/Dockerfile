@@ -21,6 +21,7 @@ RUN mkdir /home/node/.config && chown node:node /home/node/.config
 FROM base AS app
 
 COPY package.json yarn.lock .yarnrc.yml /overleaf/
+COPY libraries/eslint-plugin/package.json /overleaf/libraries/eslint-plugin/package.json
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
 COPY libraries/logger/package.json /overleaf/libraries/logger/package.json
 COPY libraries/metrics/package.json /overleaf/libraries/metrics/package.json
@@ -32,6 +33,7 @@ COPY services/filestore/package.json /overleaf/services/filestore/package.json
 COPY .yarn/patches/ /overleaf/.yarn/patches/
 
 RUN cd /overleaf && yarn workspaces focus @overleaf/filestore overleaf
+COPY libraries/eslint-plugin/ /overleaf/libraries/eslint-plugin/
 COPY libraries/fetch-utils/ /overleaf/libraries/fetch-utils/
 COPY libraries/logger/ /overleaf/libraries/logger/
 COPY libraries/metrics/ /overleaf/libraries/metrics/
