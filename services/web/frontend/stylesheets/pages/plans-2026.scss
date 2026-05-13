@@ -688,6 +688,7 @@
   .plans-feature-table-section-icons {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-04);
   }
 
