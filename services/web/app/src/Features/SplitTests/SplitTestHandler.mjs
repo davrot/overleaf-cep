@@ -978,6 +978,21 @@ async function decrementLabsVariantCounter(splitTestName) {
   }
 }
 
+async function userMaintenanceOnLogin(user) {
+  const splitTests = (await SplitTestCache.get('')).values()
+  const toCleanup = {}
+  for (const splitTest of splitTests) {
+    if (splitTest.archived && user.splitTests?.[splitTest.name]) {
+      toCleanup[`splitTests.${splitTest.name}`] = 1
+    }
+  }
+  if (Object.keys(toCleanup).length > 0) {
+    await UserUpdater.promises.updateUser(user._id, {
+      $unset: toCleanup,
+    })
+  }
+}
+
 export default {
   getPercentile,
   getAssignment: callbackify(getAssignment),
@@ -997,5 +1012,6 @@ export default {
     hasUserBeenAssignedToVariant,
     decrementLabsVariantCounter,
     incrementLabsVariantCounterIfBelowLimit,
+    userMaintenanceOnLogin,
   },
 }

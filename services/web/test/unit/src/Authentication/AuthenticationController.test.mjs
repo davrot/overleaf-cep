@@ -102,6 +102,17 @@ describe('AuthenticationController', function () {
       })
     )
 
+    vi.doMock(
+      '../../../../app/src/Features/SplitTests/SplitTestHandler',
+      () => ({
+        default: (ctx.SplitTestHandler = {
+          promises: {
+            userMaintenanceOnLogin: sinon.stub().resolves(),
+          },
+        }),
+      })
+    )
+
     vi.doMock('../../../../app/src/Features/User/UserUpdater', () => ({
       default: (ctx.UserUpdater = {
         updateUser: sinon.stub(),

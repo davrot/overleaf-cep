@@ -25,6 +25,7 @@ import Modules from '../../infrastructure/Modules.mjs'
 import { expressify, promisify } from '@overleaf/promise-utils'
 import { handleAuthenticateErrors } from './AuthenticationErrors.mjs'
 import EmailHelper from '../Helpers/EmailHelper.mjs'
+import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 
 const { hasAdminAccess } = AdminAuthorizationHelper
 
@@ -646,6 +647,10 @@ const _afterLoginSessionSetupAsync = promisify(_afterLoginSessionSetup)
 function _loginAsyncHandlers(req, user, anonymousAnalyticsId, isNewUser) {
   UserHandler.promises.populateTeamInvites(user).catch(err => {
     logger.warn({ err }, 'error setting up login data')
+  })
+  SplitTestHandler.promises.userMaintenanceOnLogin(user).catch(err => {
+    const userId = user._id
+    logger.warn({ err, userId }, 'error cleaning up split-tests on login')
   })
   LoginRateLimiter.recordSuccessfulLogin(user.email, () => {})
   AuthenticationController._recordSuccessfulLogin(user._id, () => {})
