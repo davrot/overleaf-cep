@@ -287,7 +287,7 @@ describe('RangesManager', function () {
           newDocLines,
           { historyRangesSupport: true }
         )
-        expect(result.removedChangeIds).to.deep.equal(['1'])
+        expect(result.removedChangeIds).to.deep.equal([ranges.changes[0].id])
       })
     })
 

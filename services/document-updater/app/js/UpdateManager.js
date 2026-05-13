@@ -204,7 +204,13 @@ const UpdateManager = {
 
       // applyUpdate is not triggered by accept change operations, so any
       // tracked change removed by the ops we just applied was rejected.
+      // Look up the authors of those rejected changes from the pre-update
+      // ranges so we can notify web below.
       if (removedChangeIds.length > 0) {
+        const rejectedChangeAuthorIds = (ranges?.changes || [])
+          .filter(change => removedChangeIds.includes(change.id))
+          .map(change => change.metadata.user_id)
+
         // Fire-and-forget without awaiting because
         // we hold the doc lock here, and the result of the
         // notification doesn't affect the update
@@ -212,12 +218,12 @@ const UpdateManager = {
           .notifyTrackChangesRejected(
             projectId,
             docId,
-            removedChangeIds,
+            rejectedChangeAuthorIds,
             update.meta?.user_id
           )
           .catch(err => {
             logger.warn(
-              { err, projectId, docId, removedChangeIds },
+              { err, projectId, docId, rejectedChangeAuthorIds },
               'failed to notify web of rejected track changes'
             )
           })

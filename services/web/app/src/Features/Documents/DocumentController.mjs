@@ -107,13 +107,13 @@ async function setDocument(req, res) {
 
 async function trackChangesRejected(req, res) {
   const { Project_id: projectId, doc_id: docId } = req.params
-  const { rejectedChangeIds, userId } = req.body
+  const { rejectedChangeAuthorIds, userId } = req.body
   await Modules.promises.hooks.fire(
     'trackChangesRejected',
     projectId,
     docId,
-    rejectedChangeIds,
-    userId
+    userId,
+    rejectedChangeAuthorIds
   )
   res.sendStatus(204)
 }
