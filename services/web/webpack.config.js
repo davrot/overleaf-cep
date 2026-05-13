@@ -2,7 +2,7 @@ const path = require('path')
 const { globSync } = require('glob')
 const webpack = require('webpack')
 const CopyPlugin = require('copy-webpack-plugin')
-const WebpackAssetsManifest = require('webpack-assets-manifest')
+const { WebpackAssetsManifest } = require('webpack-assets-manifest')
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const {
   LezerGrammarCompilerPlugin,
