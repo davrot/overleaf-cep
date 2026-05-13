@@ -75,7 +75,7 @@ describe('autocomplete', { scrollBehavior: false }, function () {
 
     cy.get('.cm-editor').as('editor')
 
-    cy.contains('\\section{Results}')
+    cy.get('.tok-keyword') // wait for parsing and syntax highlighting
 
     // no autocomplete
     cy.findAllByRole('listbox').should('have.length', 0)
@@ -222,7 +222,7 @@ describe('autocomplete', { scrollBehavior: false }, function () {
 
     cy.get('.cm-editor').as('editor')
 
-    cy.contains('\\section{Results}')
+    cy.get('.tok-keyword') // wait for parsing and syntax highlighting
 
     // put the cursor on a blank line to type in
     cy.get('.cm-line').eq(16).as('line')
@@ -461,7 +461,7 @@ describe('autocomplete', { scrollBehavior: false }, function () {
 
     cy.get('.cm-editor').as('editor')
 
-    cy.contains('\\section{Results}')
+    cy.get('.tok-keyword') // wait for parsing and syntax highlighting
 
     // no autocomplete
     cy.findAllByRole('listbox').should('have.length', 0)
