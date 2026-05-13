@@ -220,7 +220,7 @@
       background-color: var(--bg-light-primary);
       border: 1px solid var(--neutral-30);
       border-radius: var(--border-radius-medium);
-      color: var(--neutral-60);
+      color: var(--content-secondary);
       display: grid;
       grid-row: span 4;
       grid-template-rows: subgrid;
@@ -340,7 +340,7 @@
     }
 
     .card-description {
-      color: var(--neutral-60);
+      color: var(--content-secondary);
       margin-block: 0;
     }
 
