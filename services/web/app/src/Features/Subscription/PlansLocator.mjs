@@ -120,10 +120,19 @@ const recurlyPlanCodeToPlanTypeAndPeriod = {
 }
 
 /**
- * @param {RecurlyPlanCode} recurlyPlanCode
+ * @param {string} key
+ * @returns {key is RecurlyPlanCode}
+ */
+function isRecurlyPlanCode(key) {
+  return Object.hasOwn(recurlyPlanCodeToPlanTypeAndPeriod, key)
+}
+
+/**
+ * @param {string} recurlyPlanCode
  * @returns {PlanTypeAndPeriod | undefined}
  */
 function getPlanTypeAndPeriodFromRecurlyPlanCode(recurlyPlanCode) {
+  if (!isRecurlyPlanCode(recurlyPlanCode)) return undefined
   return recurlyPlanCodeToPlanTypeAndPeriod[recurlyPlanCode]
 }
 
