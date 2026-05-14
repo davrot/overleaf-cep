@@ -17,6 +17,10 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  TAB_USER_EDIT_EVENT,
+  tabsEvents,
+} from '@/features/source-editor/extensions/tabs-listener'
 
 type TabProps = {
   tab: EditorFileTab
@@ -186,9 +190,9 @@ export const Tab = memo(function Tab({
       const handler = () => {
         makeTabPermanent(tab.id)
       }
-      document.body.addEventListener('keydown', handler)
+      tabsEvents.addEventListener(TAB_USER_EDIT_EVENT, handler)
       return () => {
-        document.body.removeEventListener('keydown', handler)
+        tabsEvents.removeEventListener(TAB_USER_EDIT_EVENT, handler)
       }
     }
   }, [isSelected, makeTabPermanent, tab])
