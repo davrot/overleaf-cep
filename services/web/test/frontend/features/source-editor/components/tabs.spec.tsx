@@ -947,6 +947,33 @@ describe('File Tabs', function () {
     })
   })
 
+  describe('Pruning deleted files', function () {
+    it('prunes persisted tabs whose files are no longer in the tree', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.appendix))
+
+      cy.findAllByRole('tab').should('have.length', 3)
+
+      // Re-mount with a tree containing only appendix.tex, then verify
+      // the last remaining tab cannot be closed
+      const trimmedRootFolder = makeRootFolder([
+        { _id: DOC_IDS.appendix, name: 'appendix.tex' },
+      ])
+      mountTabs({ rootFolder: trimmedRootFolder })
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
+
+      cy.findByRole('tab', { name: /appendix\.tex/ }).within(() => {
+        cy.findByRole('button', { name: 'Close tab' }).click()
+      })
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
+    })
+  })
+
   describe('SplitTestBadge', function () {
     it('renders the labs badge icon in the tabs container', function () {
       cy.window().then(win => {

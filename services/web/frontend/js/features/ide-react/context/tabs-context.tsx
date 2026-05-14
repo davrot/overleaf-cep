@@ -241,6 +241,24 @@ export const TabsProvider: FC<React.PropsWithChildren> = ({ children }) => {
     })
   }, [openEntity, previewTabs, setOpenTabs, tabsEnabled])
 
+  useEffect(() => {
+    if (!tabsEnabled) {
+      return
+    }
+    // Make sure file tree is ready for lookup before pruning tabs, to avoid
+    // accidentally closing tabs that are still valid but not yet available
+    if (!fileTreeData?._id) {
+      return
+    }
+    setOpenTabs(current => {
+      const pruned = current.filter(tab => findInTree(fileTreeData, tab.id))
+      if (pruned.length === current.length) {
+        return current
+      }
+      return pruned
+    })
+  }, [fileTreeData, setOpenTabs, tabsEnabled])
+
   const value = useMemo(
     () => ({
       tabs,
