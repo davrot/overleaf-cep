@@ -19,6 +19,7 @@ export default ExportsHandler = {
     const body = await ExportsHandler._requestExport(exportData)
 
     exportData.v1_id = body.exportId
+    exportData.token = body.token
     exportData.message = body.message
     // TODO: possibly store the export data in Mongo
     return exportData
@@ -161,9 +162,12 @@ export default ExportsHandler = {
     }
   },
 
-  async fetchExport(exportId) {
+  async fetchExport(exportId, token) {
     const url = new URL(settings.apis.v1.url)
     url.pathname = `/api/v1/overleaf/exports/${exportId}`
+    if (token) {
+      url.searchParams.append('token', token)
+    }
 
     try {
       return await fetchString(url, {
@@ -186,9 +190,12 @@ export default ExportsHandler = {
     }
   },
 
-  async fetchDownload(exportId, type) {
+  async fetchDownload(exportId, type, token) {
     const url = new URL(settings.apis.v1.url)
     url.pathname = `/api/v1/overleaf/exports/${exportId}/${type}_url`
+    if (token) {
+      url.searchParams.append('token', token)
+    }
 
     try {
       return await fetchString(url, {

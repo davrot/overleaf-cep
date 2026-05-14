@@ -466,7 +466,11 @@ describe('ExportsHandler', function () {
       }
       ctx.export_data = { iAmAnExport: true }
       ctx.export_id = 4096
-      ctx.fetchUtils.fetchJson.resolves({ exportId: ctx.export_id })
+      ctx.export_token = 'mock-export-token'
+      ctx.fetchUtils.fetchJson.resolves({
+        exportId: ctx.export_id,
+        token: ctx.export_token,
+      })
     })
 
     describe('when all goes well', function () {
@@ -490,8 +494,11 @@ describe('ExportsHandler', function () {
         )
       })
 
-      it('should return the body with v1 export id', function (ctx) {
-        expect(response).to.eql({ exportId: ctx.export_id })
+      it('should return the body with v1 export id and token', function (ctx) {
+        expect(response).to.eql({
+          exportId: ctx.export_id,
+          token: ctx.export_token,
+        })
       })
     })
 
@@ -554,19 +561,50 @@ describe('ExportsHandler', function () {
         },
       }
       ctx.export_id = 897
+      ctx.export_token = 'mock-export-token'
       ctx.body = '{"id":897, "status_summary":"completed"}'
-      ctx.fetchUtils.fetchString = sinon
-        .stub()
-        .resolves(JSON.stringify({ body: ctx.body }))
+      ctx.fetchUtils.fetchString = sinon.stub().resolves(ctx.body)
     })
 
-    describe('when all goes well', function () {
+    describe('when all goes well with token', function () {
+      let exportResponse
+      beforeEach(async function (ctx) {
+        exportResponse = await ctx.ExportsHandler.fetchExport(
+          ctx.export_id,
+          ctx.export_token
+        )
+      })
+
+      it('should issue the request with token', function (ctx) {
+        const expectedUrl = new URL(
+          '/api/v1/overleaf/exports/' + ctx.export_id,
+          ctx.settings.apis.v1.url
+        )
+        expectedUrl.searchParams.append('token', ctx.export_token)
+        expect(ctx.fetchUtils.fetchString).to.have.been.calledWith(
+          expectedUrl,
+          {
+            basicAuth: {
+              user: ctx.settings.apis.v1.user,
+              password: ctx.settings.apis.v1.pass,
+            },
+            signal: sinon.match.instanceOf(AbortSignal),
+          }
+        )
+      })
+
+      it('should return the v1 export id', function (ctx) {
+        expect(exportResponse).to.eql(ctx.body)
+      })
+    })
+
+    describe('when called without token', function () {
       let exportResponse
       beforeEach(async function (ctx) {
         exportResponse = await ctx.ExportsHandler.fetchExport(ctx.export_id)
       })
 
-      it('should issue the request', function (ctx) {
+      it('should issue the request without token', function (ctx) {
         expect(ctx.fetchUtils.fetchString).to.have.been.calledWith(
           new URL(
             '/api/v1/overleaf/exports/' + ctx.export_id,
@@ -583,7 +621,7 @@ describe('ExportsHandler', function () {
       })
 
       it('should return the v1 export id', function (ctx) {
-        expect(exportResponse).to.eql(JSON.stringify({ body: ctx.body }))
+        expect(exportResponse).to.eql(ctx.body)
       })
     })
   })
@@ -599,12 +637,48 @@ describe('ExportsHandler', function () {
         },
       }
       ctx.export_id = 897
+      ctx.export_token = 'mock-export-token'
       ctx.body =
         'https://writelatex-conversions-dev.s3.amazonaws.com/exports/ieee_latexqc/tnb/2912/xggmprcrpfwbsnqzqqmvktddnrbqkqkr.zip?X-Amz-Expires=14400&X-Amz-Date=20180730T181003Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAJDGDIJFGLNVGZH6A/20180730/us-east-1/s3/aws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=dec990336913cef9933f0e269afe99722d7ab2830ebf2c618a75673ee7159fee'
       ctx.fetchUtils.fetchString = sinon.stub().resolves(ctx.body)
     })
 
-    describe('when all goes well', function () {
+    describe('when all goes well with token', function () {
+      let downloadResponse
+      beforeEach(async function (ctx) {
+        downloadResponse = await ctx.ExportsHandler.fetchDownload(
+          ctx.export_id,
+          'zip',
+          ctx.export_token
+        )
+      })
+
+      it('should issue the request with token', function (ctx) {
+        const expectedUrl = new URL(
+          ctx.settings.apis.v1.url +
+            '/api/v1/overleaf/exports/' +
+            ctx.export_id +
+            '/zip_url'
+        )
+        expectedUrl.searchParams.append('token', ctx.export_token)
+        expect(ctx.fetchUtils.fetchString).to.have.been.calledWith(
+          expectedUrl,
+          {
+            basicAuth: {
+              user: ctx.settings.apis.v1.user,
+              password: ctx.settings.apis.v1.pass,
+            },
+            signal: sinon.match.instanceOf(AbortSignal),
+          }
+        )
+      })
+
+      it('should return the download URL', function (ctx) {
+        expect(downloadResponse).to.eql(ctx.body)
+      })
+    })
+
+    describe('when called without token', function () {
       let downloadResponse
       beforeEach(async function (ctx) {
         downloadResponse = await ctx.ExportsHandler.fetchDownload(
@@ -613,7 +687,7 @@ describe('ExportsHandler', function () {
         )
       })
 
-      it('should issue the request', function (ctx) {
+      it('should issue the request without token', function (ctx) {
         expect(ctx.fetchUtils.fetchString).to.have.been.calledWith(
           new URL(
             ctx.settings.apis.v1.url +
@@ -631,7 +705,7 @@ describe('ExportsHandler', function () {
         )
       })
 
-      it('should return the v1 export id', function (ctx) {
+      it('should return the download URL', function (ctx) {
         expect(downloadResponse).to.eql(ctx.body)
       })
     })
