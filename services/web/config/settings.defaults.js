@@ -1216,6 +1216,7 @@ module.exports = {
     'authentication/saml',
     'authentication/oidc',
     'admin-tools', // import after authentication
+    'registration-page', // import after authentication
     'template-gallery',
     'git-bridge',
     'github-sync',
