@@ -87,29 +87,13 @@ const bibEditorPlugin = ViewPlugin.fromClass(
     }
 
     private detectBibFile(): boolean {
-      // Check the document name from the docName StateField
-      try {
-        // The docName extension stores the filename in a StateField
-        // We check if the state has a field whose value ends with .bib
-        const state = this.view.state
-        for (const field of Object.keys(state)) {
-          // We can't directly access docName field, so use a heuristic:
-          // check the document content for BibTeX patterns
-        }
-      } catch {
-        // fall back to content-based detection
-      }
-
-      // Content-based detection: check if document starts with @ entries
+      // Scan the beginning of the document for a BibTeX entry marker.
+      // Checking the full content (not just the first line) handles files that
+      // start with a blank line or a comment, and empty .bib files that later
+      // receive their first entry.
       const doc = this.view.state.doc
-      const firstLine = doc.lineAt(0).text.trim()
-      if (firstLine.startsWith('%') || firstLine.startsWith('@')) {
-        // Check for at least one @type{
-        const sample = doc.sliceString(0, Math.min(doc.length, 2000))
-        return /@\s*[\w-]+\s*\{/i.test(sample)
-      }
-
-      return false
+      const sample = doc.sliceString(0, Math.min(doc.length, 2000))
+      return /@\s*[\w-]+\s*\{/i.test(sample)
     }
 
     private parseAndEmit() {

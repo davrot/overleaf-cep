@@ -1,6 +1,6 @@
 /**
- * List of BibTeX entries shown in the sidebar panel.
- * Shows a compact card for each entry, with edit/delete actions.
+ * List of BibTeX entries shown in the visual editor.
+ * Each entry card is clickable — clicking opens the entry editor.
  */
 import React, { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,19 +10,16 @@ import { getEntryType } from '../utils/bib-types'
 type Props = {
   entries: ParsedBibEntry[]
   onSelect: (entry: ParsedBibEntry) => void
-  onDelete: (entry: ParsedBibEntry) => void
   onAdd: () => void
 }
 
 export default function BibEntryList({
   entries,
   onSelect,
-  onDelete,
   onAdd,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const filteredEntries = useMemo(() => {
     if (!search.trim()) return entries
@@ -42,21 +39,6 @@ export default function BibEntryList({
       )
     })
   }, [entries, search])
-
-  const handleDelete = useCallback(
-    (entry: ParsedBibEntry, e: React.MouseEvent) => {
-      e.stopPropagation()
-      if (confirmDelete === entry.id) {
-        onDelete(entry)
-        setConfirmDelete(null)
-      } else {
-        setConfirmDelete(entry.id)
-        // Auto-clear confirmation after 3 seconds
-        setTimeout(() => setConfirmDelete(null), 3000)
-      }
-    },
-    [confirmDelete, onDelete]
-  )
 
   return (
     <div className="bib-entry-list">
@@ -99,8 +81,6 @@ export default function BibEntryList({
             key={`${entry.id}-${entry.sourceStart}`}
             entry={entry}
             onSelect={onSelect}
-            onDelete={handleDelete}
-            isConfirmingDelete={confirmDelete === entry.id}
           />
         ))}
       </div>
@@ -111,13 +91,9 @@ export default function BibEntryList({
 function BibEntryCard({
   entry,
   onSelect,
-  onDelete,
-  isConfirmingDelete,
 }: {
   entry: ParsedBibEntry
   onSelect: (e: ParsedBibEntry) => void
-  onDelete: (e: ParsedBibEntry, ev: React.MouseEvent) => void
-  isConfirmingDelete: boolean
 }) {
   const { t } = useTranslation()
   const typeDef = getEntryType(entry.type)
@@ -157,29 +133,6 @@ function BibEntryCard({
           {venue && <span> · {venue}</span>}
         </div>
       )}
-      <div className="bib-entry-card-actions">
-        <button
-          className="btn btn-success btn-sm"
-          onClick={e => {
-            e.stopPropagation()
-            onSelect(entry)
-          }}
-          title={t('Edit entry')}
-        >
-          {t('Edit')}
-        </button>
-        <button
-          className="btn btn-danger btn-sm"
-          onClick={e => onDelete(entry, e)}
-          title={
-            isConfirmingDelete
-              ? t('Click again to confirm deletion')
-              : t('Delete entry')
-          }
-        >
-          {isConfirmingDelete ? t('Confirm Delete') : t('Delete')}
-        </button>
-      </div>
     </div>
   )
 }

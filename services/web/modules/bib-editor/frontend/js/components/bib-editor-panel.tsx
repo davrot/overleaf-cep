@@ -1,28 +1,26 @@
 /**
- * BibEditor sidebar panel — the main component rendered in the rail tab.
- * Similar in structure to ChatPane: header + scrollable content.
+ * BibEditor visual component — rendered in the main editor window when
+ * the user switches to "Visual" mode on a .bib file.
  *
  * States:
- * - Not a .bib file: shows an informative placeholder
- * - List mode: shows searchable entry list with add/delete
- * - Edit mode: shows the entry form
- * - Add mode: shows an empty entry form
+ * - List mode: searchable entry list; clicking an entry opens the editor
+ * - Edit mode: entry form with Delete/Cancel/Save in the footer
+ * - Add mode: empty entry form with Cancel/Add in the footer
  */
 import React, { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import RailPanelHeader from '@/features/ide-react/components/rail/rail-panel-header'
-import MaterialIcon from '@/shared/components/material-icon'
 import withErrorBoundary from '@/infrastructure/error-boundary'
+import EditorSwitch from '@/features/source-editor/components/editor-switch'
 import { useBibEditorContext } from '../context/bib-editor-context'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
+import './bib-editor-panel.css'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 
 function BibEditorPanel() {
   const { t } = useTranslation()
   const {
-    isBibFile,
     entries,
     selectedEntry,
     mode,
@@ -65,43 +63,37 @@ function BibEditorPanel() {
     [selectEntry]
   )
 
-  const handleDelete = useCallback(
-    (entry: ParsedBibEntry) => {
-      deleteEntry(entry)
-    },
-    [deleteEntry]
-  )
-
-  // Header actions: back button when editing
-  const headerActions =
-    mode !== 'list' ? (
-      <button
-        className="btn btn-sm rail-panel-header-button-subdued"
-        onClick={handleCancel}
-        title={t('Back to list')}
-      >
-        <MaterialIcon type="arrow_back" />
-      </button>
-    ) : undefined
-
-  const headerTitle =
-    mode === 'edit'
-      ? t('Edit Entry')
-      : mode === 'add'
-        ? t('New Entry')
-        : t('Bibliography')
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedEntry) {
+      deleteEntry(selectedEntry)
+    }
+  }, [selectedEntry, deleteEntry])
 
   return (
     <div className="bib-editor-panel">
-      <RailPanelHeader title={headerTitle} actions={headerActions} />
+      <div className="bib-editor-visual-nav">
+        <div className="bib-editor-visual-nav-left">
+          {mode !== 'list' && (
+            <>
+              <button
+                className="btn btn-link btn-sm bib-editor-back-btn"
+                onClick={handleCancel}
+              >
+                ← {t('Back')}
+              </button>
+              <span className="bib-editor-visual-nav-title">
+                {mode === 'edit' ? t('Edit Entry') : t('New Entry')}
+              </span>
+            </>
+          )}
+        </div>
+        <EditorSwitch />
+      </div>
       <div className="bib-editor-panel-content">
-        {!isBibFile ? (
-          <BibEditorPlaceholder />
-        ) : mode === 'list' ? (
+        {mode === 'list' ? (
           <BibEntryList
             entries={entries}
             onSelect={handleSelect}
-            onDelete={handleDelete}
             onAdd={handleAdd}
           />
         ) : mode === 'edit' && selectedEntry ? (
@@ -113,6 +105,7 @@ function BibEditorPanel() {
             }}
             onSave={handleSaveEdit}
             onCancel={handleCancel}
+            onDelete={handleDeleteSelected}
             existingIds={entries.map(e => e.id)}
           />
         ) : mode === 'add' ? (
@@ -124,29 +117,6 @@ function BibEditorPanel() {
             existingIds={entries.map(e => e.id)}
           />
         ) : null}
-      </div>
-    </div>
-  )
-}
-
-function BibEditorPlaceholder() {
-  const { t } = useTranslation()
-  return (
-    <div className="bib-editor-placeholder">
-      <div>
-        <span className="bib-editor-placeholder-icon">
-          <MaterialIcon type="book_5" />
-        </span>
-      </div>
-      <div className="bib-editor-placeholder-text">
-        <div className="bib-editor-placeholder-title">
-          {t('Bibliography Editor')}
-        </div>
-        <div className="bib-editor-placeholder-body">
-          {t(
-            'Open a .bib file to manage your bibliography entries with a visual editor.'
-          )}
-        </div>
       </div>
     </div>
   )

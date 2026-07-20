@@ -18,6 +18,7 @@ type Props = {
   entry: BibEntry
   onSave: (entry: BibEntry) => void
   onCancel: () => void
+  onDelete?: () => void
   isNew?: boolean
   /** IDs of all existing entries (to detect citation key collisions) */
   existingIds?: string[]
@@ -61,6 +62,7 @@ export default function BibEntryForm({
   entry,
   onSave,
   onCancel,
+  onDelete,
   isNew = false,
   existingIds = [],
 }: Props) {
@@ -112,9 +114,9 @@ export default function BibEntryForm({
   const visibleFields = showAllFields
     ? getFieldsForType(type)
     : [
-        ...requiredFields,
-        ...optionalFields.filter(f => fields[f]?.trim()),
-      ]
+      ...requiredFields,
+      ...optionalFields.filter(f => fields[f]?.trim()),
+    ]
 
   // Deduplicate
   const uniqueVisible = [...new Set(visibleFields)]
@@ -336,22 +338,35 @@ export default function BibEntryForm({
         </button>
       </div>
 
-      {/* Action buttons */}
-      <div className="bib-form-actions">
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={handleSave}
-        >
-          {isNew ? t('Add Entry') : t('Save Changes')}
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={onCancel}
-        >
-          {t('Cancel')}
-        </button>
+      {/* Footer: Delete on left, Cancel/Save on right */}
+      <div className="bib-form-footer">
+        <div className="bib-form-footer-left">
+          {!isNew && onDelete && (
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={onDelete}
+            >
+              {t('Delete')}
+            </button>
+          )}
+        </div>
+        <div className="bib-form-footer-right">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onCancel}
+          >
+            {t('Cancel')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleSave}
+          >
+            {isNew ? t('Add Entry') : t('Save Changes')}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -415,7 +430,7 @@ function AuthorField({
     const to = idx + dir
     if (to < 0 || to >= authors.length) return
     const next = [...authors]
-    ;[next[idx], next[to]] = [next[to], next[idx]]
+      ;[next[idx], next[to]] = [next[to], next[idx]]
     setAuthors(next)
     commit(next)
   }

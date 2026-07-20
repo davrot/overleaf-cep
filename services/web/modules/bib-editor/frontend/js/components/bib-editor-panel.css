@@ -1,4 +1,4 @@
-/* BibEditor sidebar panel styles */
+/* BibEditor visual editor styles */
 
 /* --- Theme variables (dark by default, overridden for light theme) --- */
 :root {
@@ -17,6 +17,41 @@
   --bib-panel-border: var(--border-divider);
   --bib-panel-card-hover-border: var(--neutral-80);
   --bib-panel-card-hover-bg: var(--bg-light-secondary);
+}
+
+/* Visual nav header — always visible; contains Back/title on the left and
+   the Code/Visual EditorSwitch on the right. */
+.bib-editor-visual-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--bib-panel-border);
+  flex-shrink: 0;
+}
+
+.bib-editor-visual-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bib-editor-back-btn {
+  padding: 0;
+  font-size: 13px;
+  color: var(--bib-panel-secondary-color);
+  text-decoration: none;
+}
+
+.bib-editor-back-btn:hover {
+  color: var(--bib-panel-color);
+  text-decoration: none;
+}
+
+.bib-editor-visual-nav-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bib-panel-color);
 }
 
 .bib-editor-panel {
@@ -166,17 +201,6 @@
   white-space: nowrap;
 }
 
-.bib-entry-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.bib-entry-card-actions .btn {
-  font-size: 12px;
-  padding: 2px 8px;
-}
-
 /* Entry Form */
 .bib-entry-form {
   display: flex;
@@ -260,11 +284,17 @@
   font-size: 12px;
 }
 
-.bib-form-actions {
+.bib-form-footer {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
   padding-top: 6px;
   border-top: 1px solid var(--border-primary);
+}
+
+.bib-form-footer-right {
+  display: flex;
+  gap: 8px;
 }
 
 /* Author field */
