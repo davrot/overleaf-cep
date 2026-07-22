@@ -12,6 +12,7 @@ import {
   FC,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -149,6 +150,15 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
     },
     [dispatchFn, source]
   )
+
+  // Bug fix: if mode is 'edit' but selectedEntry became null (e.g. after
+  // file-tree navigation away and back), reset to list so the panel renders
+  // the entry list rather than a blank header.
+  useEffect(() => {
+    if (mode === 'edit' && selectedEntry === null) {
+      setMode('list')
+    }
+  }, [mode, selectedEntry])
 
   const value = useMemo(
     () => ({

@@ -17,6 +17,7 @@ import { parseBibFile, ParsedBibEntry } from '../utils/bib-parser'
 const BIB_ENTRIES_EVENT = 'bib-editor:entries-updated'
 const BIB_DISPATCH_EVENT = 'bib-editor:dispatch'
 const BIB_DOC_CHANGE_EVENT = 'bib-editor:doc-changed'
+const BIB_SCROLL_TO_EVENT = 'bib-editor:scroll-to'
 
 /**
  * StateField to track whether the current document is a .bib file.
@@ -46,10 +47,12 @@ const bibEditorPlugin = ViewPlugin.fromClass(
     private isBibFile = false
     private debounceTimer: ReturnType<typeof setTimeout> | null = null
     private dispatchHandler: ((ev: Event) => void) | null = null
+    private scrollHandler: ((ev: Event) => void) | null = null
 
     constructor(private view: EditorView) {
       this.checkAndParse()
       this.setupDispatchListener()
+      this.setupScrollListener()
     }
 
     update(update: ViewUpdate) {
@@ -63,6 +66,9 @@ const bibEditorPlugin = ViewPlugin.fromClass(
       if (this.debounceTimer) clearTimeout(this.debounceTimer)
       if (this.dispatchHandler) {
         document.removeEventListener(BIB_DISPATCH_EVENT, this.dispatchHandler)
+      }
+      if (this.scrollHandler) {
+        document.removeEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
       }
     }
 
@@ -125,6 +131,26 @@ const bibEditorPlugin = ViewPlugin.fromClass(
     }
 
     /**
+     * Listen for scroll-to requests from the React panel.
+     * The panel sends {position: number} to focus an entry in code mode.
+     */
+    private setupScrollListener() {
+      this.scrollHandler = (ev: Event) => {
+        const detail = (ev as CustomEvent).detail
+        if (!detail) return
+        const { position } = detail as { position: number }
+        if (typeof position !== 'number') return
+        const pos = Math.min(Math.max(0, position), this.view.state.doc.length)
+        this.view.dispatch({
+          selection: { anchor: pos },
+          effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+        })
+        this.view.focus()
+      }
+      document.addEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
+    }
+
+    /**
      * Listen for dispatch requests from the React sidebar.
      * The sidebar sends {from, to, insert} objects.
      */
@@ -153,4 +179,4 @@ export const extension = (): Extension => {
 /**
  * Event constants exported for use by the React context.
  */
-export { BIB_ENTRIES_EVENT, BIB_DISPATCH_EVENT, BIB_DOC_CHANGE_EVENT }
+export { BIB_ENTRIES_EVENT, BIB_DISPATCH_EVENT, BIB_DOC_CHANGE_EVENT, BIB_SCROLL_TO_EVENT }
