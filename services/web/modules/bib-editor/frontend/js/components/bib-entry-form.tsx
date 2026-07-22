@@ -5,14 +5,25 @@
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { BibEntry } from '../utils/bib-types'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLIconButton from '@/shared/components/ol/ol-icon-button'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import {
+  Dropdown,
+  DropdownToggle,
+  DropdownMenu,
+  DropdownItem,
+} from '@/shared/components/dropdown/dropdown-menu'
+import { generateCitationKey } from '../utils/bib-parser'
+import { fetchEntryFromDoi } from '../utils/doi-fetcher'
 import {
   ENTRY_TYPES,
   getEntryType,
   getFieldsForType,
 } from '../utils/bib-types'
-import { generateCitationKey } from '../utils/bib-parser'
-import { fetchEntryFromDoi } from '../utils/doi-fetcher'
+import type { BibEntry } from '../utils/bib-types'
 
 type Props = {
   entry: BibEntry
@@ -27,7 +38,7 @@ type Props = {
 /** Human-readable labels for field names */
 const FIELD_LABELS: Record<string, string> = {
   author: 'Author(s)',
-  title: 'Title',
+  title: 'title',
   journal: 'Journal',
   booktitle: 'Book Title',
   year: 'Year',
@@ -52,8 +63,8 @@ const FIELD_LABELS: Record<string, string> = {
   keywords: 'Keywords',
   abstract: 'Abstract',
   note: 'Note',
-  language: 'Language',
-  file: 'File',
+  language: 'language',
+  file: 'file',
 }
 
 const LARGE_FIELDS = new Set(['abstract', 'note', 'keywords'])
@@ -166,7 +177,7 @@ export default function BibEntryForm({
 
     for (const f of requiredFields) {
       if (!fields[f]?.trim()) {
-        errs[f] = t('{{field}} is required', { field: FIELD_LABELS[f] || f })
+        errs[f] = t(FIELD_LABELS[f] || f) + ' ' + t('is required')
       }
     }
 
@@ -195,39 +206,44 @@ export default function BibEntryForm({
     onSave({ type, id: id.trim(), fields })
   }, [type, id, fields, validate, onSave])
 
+  const selectedType = ENTRY_TYPES.find(et => et.name === type)
+
   return (
     <div className="bib-entry-form">
       {/* DOI import row */}
       <div className="bib-form-row">
-        <label className="bib-form-label" htmlFor="bib-doi-import">
+        <OLFormLabel className="bib-form-label" htmlFor="bib-doi-import">
           {t('Import from DOI')}
-        </label>
+        </OLFormLabel>
         <div className="bib-doi-row">
-          <input
+          <OLFormControl
             id="bib-doi-import"
-            className="form-control bib-form-input"
+            className="bib-form-input"
+            maxLength="128"
+            type="text"
             value={doiInput}
             onChange={e => {
               setDoiInput(e.target.value)
               setDoiFetchSuccess(false)
               setDoiFetchError(null)
             }}
-            placeholder="10.1038/s41586-021-03819-2"
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 void handleFetchDoi()
               }
             }}
+            placeholder="10.1038/s41586-021-03819-2"
           />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void handleFetchDoi()}
+          <OLButton
+            variant="secondary"
+            size="sm"
             disabled={doiFetching || !doiInput.trim()}
+            onClick={handleFetchDoi}
+            form="clone-project-form"
           >
             {doiFetching ? '…' : t('Fetch')}
-          </button>
+          </OLButton>
         </div>
         {doiFetchError && (
           <span className="bib-form-error">{doiFetchError}</span>
@@ -241,69 +257,94 @@ export default function BibEntryForm({
 
       {/* Entry type selector */}
       <div className="bib-form-row">
-        <label className="bib-form-label" htmlFor="bib-type">
+        <OLFormLabel className="bib-form-label" htmlFor="bib-type">
           {t('Type')}
-        </label>
-        <select
-          id="bib-type"
-          className="form-control bib-form-select"
-          value={type}
-          onChange={e => setType(e.target.value)}
-        >
-          {ENTRY_TYPES.map(et => (
-            <option key={et.name} value={et.name}>
-              @{et.name} — {et.label}
-            </option>
-          ))}
-        </select>
+        </OLFormLabel>
+        <Dropdown>
+          <DropdownToggle
+            id="bib-type-dropdown"
+            className="btn-secondary"
+            aria-label="Select bibliography entry type"
+          >
+            <span className="text-truncate" aria-hidden>
+              @{selectedType?.name} — {selectedType?.label}
+            </span>
+          </DropdownToggle>
+
+          <DropdownMenu flip={false}>
+            {ENTRY_TYPES.map(et => (
+              <DropdownItem
+                key={et.name}
+                active={et.name === type}
+                onClick={() => setType(et.name)}
+              >
+                @{et.name} — {et.label}
+              </DropdownItem>
+            ))}
+          </DropdownMenu>
+        </Dropdown>
       </div>
 
       {/* Citation key */}
       <div className="bib-form-row">
-        <label className="bib-form-label" htmlFor="bib-key">
+        <OLFormLabel className="bib-form-label" htmlFor="bib-key">
           {t('Citation Key')}
+          <span className="bib-form-required"> *</span>
           {errors.id && (
             <span className="bib-form-error"> — {errors.id}</span>
           )}
-        </label>
+        </OLFormLabel>
         <div className="bib-form-key-row">
-          <input
+          <OLFormControl
+            className={`bib-form-input ${errors.id ? 'bib-form-input-error' : ''}`}
+            maxLength="128"
+            autoComplete="off"
+            type="text"
             id="bib-key"
-            className={`form-control bib-form-input ${errors.id ? 'bib-form-input-error' : ''}`}
             value={id}
             onChange={e => setId(e.target.value)}
             placeholder="e.g. smith2024"
           />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={handleGenerateKey}
-            title={t('Auto-generate from author/year')}
+          <OLTooltip
+            key={'tooltip-generate'}
+            id={'tooltip-generate'}
+            description={t('Auto-generate from author/year')}
+            overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
           >
-            {t('Generate')}
-          </button>
+            <OLButton
+              variant="secondary"
+              size="sm"
+              onClick={handleGenerateKey}
+            >
+              {t('Generate')}
+            </OLButton>
+          </OLTooltip>
         </div>
       </div>
 
       {/* Entry fields */}
       {uniqueVisible.map(fieldName => (
         <div className="bib-form-row" key={fieldName}>
-          <label
+          <OLFormLabel
             className="bib-form-label"
             htmlFor={`bib-field-${fieldName}`}
           >
-            {FIELD_LABELS[fieldName] || fieldName}
+            {t(FIELD_LABELS[fieldName]) || fieldName}
             {requiredFields.includes(fieldName) && (
               <span className="bib-form-required"> *</span>
             )}
             {errors[fieldName] && (
               <span className="bib-form-error"> — {errors[fieldName]}</span>
             )}
-          </label>
+          </OLFormLabel>
           {LARGE_FIELDS.has(fieldName) ? (
-            <textarea
+            <OLFormControl
+              as="textarea"
               id={`bib-field-${fieldName}`}
-              className={`form-control bib-form-textarea ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
+              className={`bib-form-textarea ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
+              maxLength="4096"
+              autoComplete="off"
+              type="text"
               value={fields[fieldName] || ''}
               onChange={e => handleFieldChange(fieldName, e.target.value)}
               rows={3}
@@ -315,9 +356,11 @@ export default function BibEntryForm({
               error={errors[fieldName]}
             />
           ) : (
-            <input
+            <OLFormControl
               id={`bib-field-${fieldName}`}
-              className={`form-control bib-form-input ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
+              className={`bib-form-input ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
+              maxLength="512"
+              type="text"
               value={fields[fieldName] || ''}
               onChange={e => handleFieldChange(fieldName, e.target.value)}
             />
@@ -327,45 +370,46 @@ export default function BibEntryForm({
 
       {/* Toggle optional fields */}
       <div className="bib-form-row">
-        <button
-          type="button"
-          className="btn btn-link btn-sm bib-form-toggle"
+        <OLButton
+          variant="link"
+          size="sm"
+          className="bib-form-toggle-opt-fields"
           onClick={() => setShowAllFields(!showAllFields)}
         >
           {showAllFields
             ? t('Show fewer fields')
             : t('Show all fields')}
-        </button>
+        </OLButton>
       </div>
 
       {/* Footer: Delete on left, Cancel/Save on right */}
       <div className="bib-form-footer">
         <div className="bib-form-footer-left">
           {!isNew && onDelete && (
-            <button
-              type="button"
-              className="btn btn-danger btn-sm"
+            <OLButton
+              variant="danger"
+              size="sm"
               onClick={onDelete}
             >
-              {t('Delete')}
-            </button>
+              {t('delete')}
+            </OLButton>
           )}
         </div>
         <div className="bib-form-footer-right">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <OLButton
+            variant="secondary"
+            size="sm"
             onClick={onCancel}
           >
-            {t('Cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
+            {t('cancel')}
+          </OLButton>
+          <OLButton
+            variant="primary"
+            size="sm"
             onClick={handleSave}
           >
-            {isNew ? t('Add Entry') : t('Save Changes')}
-          </button>
+            {isNew ? t('add') : t('save')}
+          </OLButton>
         </div>
       </div>
     </div>
@@ -439,48 +483,51 @@ function AuthorField({
     <div className="bib-author-field">
       {authors.map((a, i) => (
         <div key={i} className="bib-author-row">
-          <input
-            className={`form-control bib-form-input ${error ? 'bib-form-input-error' : ''}`}
+          <OLFormControl
+            className={`bib-form-input ${error ? 'bib-form-input-error' : ''}`}
+            maxLength="128"
+            type="text"
+            id={`bib-field-author-${i}`}
             value={a}
             onChange={e => setAuthorAt(i, e.target.value)}
             placeholder={t('Last, First') || 'Last, First'}
           />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm bib-author-move"
+          <div className="bib-author-actions">
+          <OLIconButton
+            icon="arrow_upward_alt"
+            variant="secondary"
+            size="sm"
+            accessibilityLabel={t('Move up')}
             onClick={() => moveAuthor(i, -1)}
             disabled={i === 0}
-            title={t('Move up')}
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm bib-author-move"
+          />
+          <OLIconButton
+            icon="arrow_downward_alt"
+            variant="secondary"
+            size="sm"
+            accessibilityLabel={t('Move down')}
             onClick={() => moveAuthor(i, 1)}
             disabled={i === authors.length - 1}
-            title={t('Move down')}
-          >
-            ▼
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger btn-sm bib-author-remove"
+          />
+          <OLIconButton
+            icon="close"
+            variant="danger-ghost"
+            size="sm"
+            accessibilityLabel={t('Remove author')}
             onClick={() => removeAuthor(i)}
-            title={t('Remove author')}
             disabled={authors.length === 1 && !a.trim()}
-          >
-            ✕
-          </button>
+          />
+          </div>
         </div>
       ))}
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
+      <OLButton
+        variant="secondary"
+        size="sm"
+        className="bib-author-add"
         onClick={addAuthor}
       >
-        + {t('Add author')}
-      </button>
+        {t('Add author')}
+      </OLButton>
     </div>
   )
 }

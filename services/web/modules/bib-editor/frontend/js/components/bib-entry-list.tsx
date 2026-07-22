@@ -4,19 +4,19 @@
  */
 import React, { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import OLButton from '@/shared/components/ol/ol-button'
+import SearchForm from './search-form.tsx'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { getEntryType } from '../utils/bib-types'
 
 type Props = {
   entries: ParsedBibEntry[]
   onSelect: (entry: ParsedBibEntry) => void
-  onAdd: () => void
 }
 
 export default function BibEntryList({
   entries,
   onSelect,
-  onAdd,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -42,23 +42,12 @@ export default function BibEntryList({
 
   return (
     <div className="bib-entry-list">
-      {/* Search + Add bar */}
-      <div className="bib-list-toolbar">
-        <input
-          className="form-control bib-list-search"
-          placeholder={t('Search entries...') || 'Search entries...'}
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          aria-label={t('Search bibliography entries') || undefined}
-        />
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={onAdd}
-          title={t('Add new entry')}
-        >
-          + {t('Add')}
-        </button>
-      </div>
+      {/* Search bar */}
+      <SearchForm
+        inputValue={search}
+        setInputValue={setSearch}
+        className={"bib-list-search"}
+      />
 
       {/* Entry count */}
       <div className="bib-list-count">
@@ -72,7 +61,7 @@ export default function BibEntryList({
         {filteredEntries.length === 0 && (
           <div className="bib-list-empty">
             {entries.length === 0
-              ? t('No bibliography entries yet. Click "Add" to create one.')
+              ? t('No bibliography entries yet. Click "Add new entry" to create one.')
               : t('No entries match your search.')}
           </div>
         )}

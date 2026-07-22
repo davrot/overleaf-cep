@@ -13,7 +13,7 @@ import { getFileExtension } from '@/features/source-editor/utils/file'
  * Stable lazy-loaded reference to the visual editor component.
  * Must be created at module level so the reference is stable across renders.
  */
-const BibEditorVisual = React.lazy(() => import('./bib-editor-visual'))
+const BibEditorVisual = React.lazy(() => import('./components/bib-editor-panel'))
 
 /** Unique id used for the per-file editor mode storage key. */
 export const id = 'bib-editor'

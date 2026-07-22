@@ -1087,7 +1087,7 @@ module.exports = {
     rootContextProviders: [
       Path.resolve(
         __dirname,
-        '../modules/bib-editor/frontend/js/components/bib-editor-root-provider.tsx'
+        '../modules/bib-editor/frontend/js/context/bib-editor-provider.tsx'
       ),
     ],
     mainEditorLayoutModals: [
@@ -1147,7 +1147,7 @@ module.exports = {
     visualEditorProviders: [
       Path.resolve(
         __dirname,
-        '../modules/bib-editor/frontend/js/components/bib-editor-visual-provider.ts'
+        '../modules/bib-editor/frontend/js/bib-editor-visual-provider.ts'
       ),
     ],
     usGovBanner: [],

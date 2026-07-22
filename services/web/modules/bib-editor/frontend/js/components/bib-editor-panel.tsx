@@ -9,12 +9,13 @@
  */
 import React, { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import OLButton from '@/shared/components/ol/ol-button'
 import withErrorBoundary from '@/infrastructure/error-boundary'
 import EditorSwitch from '@/features/source-editor/components/editor-switch'
 import { useBibEditorContext } from '../context/bib-editor-context'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
-import './bib-editor-panel.css'
+import '../../stylesheets/bib-editor-panel.css'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 
@@ -72,21 +73,34 @@ function BibEditorPanel() {
   return (
     <div className="bib-editor-panel">
       <div className="bib-editor-visual-nav">
-        <div className="bib-editor-visual-nav-left">
-          {mode !== 'list' && (
-            <>
-              <button
-                className="btn btn-link btn-sm bib-editor-back-btn"
-                onClick={handleCancel}
-              >
-                ← {t('Back')}
-              </button>
-              <span className="bib-editor-visual-nav-title">
-                {mode === 'edit' ? t('Edit Entry') : t('New Entry')}
-              </span>
-            </>
-          )}
-        </div>
+        {mode !== 'list' && (
+          <>
+            <OLButton
+              className="bib-editor-back-btn"
+              size="sm"
+              variant="link"
+              leadingIcon="arrow_top_left"
+              onClick={handleCancel}
+            >
+            {t('back')}
+            </OLButton>
+          </>
+        )}
+        {mode === 'list' && (
+          <>
+            <OLButton
+              size="sm"
+              variant="primary"
+              onClick={handleAdd}
+            >
+            {t('Add new entry')}
+            </OLButton>
+          </>
+        )}
+        <span className="bib-editor-visual-nav-title">
+          {mode === 'edit' && t('Edit Entry')}
+          {mode === 'add' && t('New Entry')}
+        </span>
         <EditorSwitch />
       </div>
       <div className="bib-editor-panel-content">
@@ -94,7 +108,6 @@ function BibEditorPanel() {
           <BibEntryList
             entries={entries}
             onSelect={handleSelect}
-            onAdd={handleAdd}
           />
         ) : mode === 'edit' && selectedEntry ? (
           <BibEntryForm
