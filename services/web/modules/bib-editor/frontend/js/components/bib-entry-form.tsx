@@ -33,6 +33,8 @@ type Props = {
   isNew?: boolean
   /** IDs of all existing entries (to detect citation key collisions) */
   existingIds?: string[]
+  /** Called on every form-state change so the parent can persist a draft */
+  onDraftChange?: (entry: BibEntry) => void
 }
 
 /** Human-readable labels for field names */
@@ -76,6 +78,7 @@ export default function BibEntryForm({
   onDelete,
   isNew = false,
   existingIds = [],
+  onDraftChange,
 }: Props) {
   const { t } = useTranslation()
   const [type, setType] = useState(entry.type || 'article')
@@ -85,6 +88,11 @@ export default function BibEntryForm({
   })
   const [showAllFields, setShowAllFields] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Report form-state changes for draft persistence across file-tree navigation
+  useEffect(() => {
+    onDraftChange?.({ type, id, fields })
+  }, [type, id, fields, onDraftChange])
 
   // DOI fetch state
   const [doiInput, setDoiInput] = useState(entry.fields.doi || '')
@@ -493,30 +501,30 @@ function AuthorField({
             placeholder={t('Last, First') || 'Last, First'}
           />
           <div className="bib-author-actions">
-          <OLIconButton
-            icon="arrow_upward_alt"
-            variant="secondary"
-            size="sm"
-            accessibilityLabel={t('Move up')}
-            onClick={() => moveAuthor(i, -1)}
-            disabled={i === 0}
-          />
-          <OLIconButton
-            icon="arrow_downward_alt"
-            variant="secondary"
-            size="sm"
-            accessibilityLabel={t('Move down')}
-            onClick={() => moveAuthor(i, 1)}
-            disabled={i === authors.length - 1}
-          />
-          <OLIconButton
-            icon="close"
-            variant="danger-ghost"
-            size="sm"
-            accessibilityLabel={t('Remove author')}
-            onClick={() => removeAuthor(i)}
-            disabled={authors.length === 1 && !a.trim()}
-          />
+            <OLIconButton
+              icon="arrow_upward_alt"
+              variant="secondary"
+              size="sm"
+              accessibilityLabel={t('Move up')}
+              onClick={() => moveAuthor(i, -1)}
+              disabled={i === 0}
+            />
+            <OLIconButton
+              icon="arrow_downward_alt"
+              variant="secondary"
+              size="sm"
+              accessibilityLabel={t('Move down')}
+              onClick={() => moveAuthor(i, 1)}
+              disabled={i === authors.length - 1}
+            />
+            <OLIconButton
+              icon="close"
+              variant="danger-ghost"
+              size="sm"
+              accessibilityLabel={t('Remove author')}
+              onClick={() => removeAuthor(i)}
+              disabled={authors.length === 1 && !a.trim()}
+            />
           </div>
         </div>
       ))}

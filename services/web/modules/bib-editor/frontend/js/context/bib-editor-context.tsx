@@ -38,6 +38,10 @@ export type BibEditorState = {
   mode: BibEditorMode
   /** The full source text of the .bib document */
   source: string
+  /** Unsaved add-form draft preserved across file-tree navigation */
+  pendingAddDraft: BibEntry | null
+  /** Unsaved edit-form draft preserved across file-tree navigation */
+  pendingEditDraft: { originalId: string; entry: BibEntry } | null
 }
 
 export type BibEditorActions = {
@@ -55,6 +59,10 @@ export type BibEditorActions = {
   deleteEntry: (entry: ParsedBibEntry) => void
   /** Register a dispatch function to push changes to the editor */
   registerDispatch: (fn: DispatchFn) => void
+  /** Persist/clear unsaved add-form draft (called by the panel on unmount/cancel) */
+  setPendingAddDraft: (draft: BibEntry | null) => void
+  /** Persist/clear unsaved edit-form draft (called by the panel on unmount/cancel) */
+  setPendingEditDraft: (draft: { originalId: string; entry: BibEntry } | null) => void
 }
 
 type DispatchFn = (changes: { from: number; to: number; insert: string }) => void
@@ -70,6 +78,11 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
   const [mode, setMode] = useState<BibEditorMode>('list')
   const [source, setSource] = useState('')
   const [dispatchFn, setDispatchFn] = useState<DispatchFn | null>(null)
+  const [pendingAddDraft, setPendingAddDraft] = useState<BibEntry | null>(null)
+  const [pendingEditDraft, setPendingEditDraft] = useState<{
+    originalId: string
+    entry: BibEntry
+  } | null>(null)
 
   const registerDispatch = useCallback((fn: DispatchFn) => {
     setDispatchFn(() => fn)
@@ -109,6 +122,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       })
       setMode('list')
       setSelectedEntry(null)
+      setPendingEditDraft(null)
     },
     [dispatchFn]
   )
@@ -125,6 +139,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
         insert: newText,
       })
       setMode('list')
+      setPendingAddDraft(null)
     },
     [dispatchFn, source]
   )
@@ -167,6 +182,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       selectedEntry,
       mode,
       source,
+      pendingAddDraft,
+      pendingEditDraft,
       setEditorState,
       selectEntry,
       setMode,
@@ -174,6 +191,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       addEntry,
       deleteEntry,
       registerDispatch,
+      setPendingAddDraft,
+      setPendingEditDraft,
     }),
     [
       isBibFile,
@@ -181,6 +200,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       selectedEntry,
       mode,
       source,
+      pendingAddDraft,
+      pendingEditDraft,
       setEditorState,
       selectEntry,
       setMode,
@@ -188,6 +209,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       addEntry,
       deleteEntry,
       registerDispatch,
+      setPendingAddDraft,
+      setPendingEditDraft,
     ]
   )
 

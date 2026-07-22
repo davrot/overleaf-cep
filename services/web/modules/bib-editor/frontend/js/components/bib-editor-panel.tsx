@@ -7,7 +7,7 @@
  * - Edit mode: entry form with Delete/Cancel/Save in the footer
  * - Add mode: empty entry form with Cancel/Add in the footer
  */
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import withErrorBoundary from '@/infrastructure/error-boundary'
@@ -33,6 +33,10 @@ function BibEditorPanel() {
     saveEntry,
     addEntry,
     deleteEntry,
+    pendingAddDraft,
+    setPendingAddDraft,
+    pendingEditDraft,
+    setPendingEditDraft,
   } = useBibEditorContext()
   const { setShowVisual } = useEditorPropertiesContext()
 
@@ -42,6 +46,38 @@ function BibEditorPanel() {
   // store the scroll position to focus in Code after a confirmed Visual→Code switch
   const pendingScrollPosition = useRef<number | null>(null)
 
+  // ── Draft persistence across file-tree navigation ───────────────────────
+  // currentDraftRef holds the latest form values (updated via onDraftChange).
+  // On unmount, if the user navigated away without saving/cancelling, we write
+  // it to the context so it can be restored when they return.
+  const currentDraftRef = useRef<BibEntry | null>(null)
+  const modeRef = useRef(mode)
+  const selectedEntryRef = useRef(selectedEntry)
+  useEffect(() => { modeRef.current = mode }, [mode])
+  useEffect(() => { selectedEntryRef.current = selectedEntry }, [selectedEntry])
+
+  // On mount: read the pending add draft (used as the form's initial entry
+  // below) then clear it from context so fresh "Add new entry" opens are empty.
+  useEffect(() => {
+    if (pendingAddDraft) setPendingAddDraft(null)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On unmount: save the current draft to context so it survives the unmount.
+  useEffect(() => {
+    return () => {
+      if (!currentDraftRef.current) return // cancelled or saved — nothing to preserve
+      if (modeRef.current === 'add') {
+        setPendingAddDraft(currentDraftRef.current)
+      } else if (modeRef.current === 'edit' && selectedEntryRef.current) {
+        setPendingEditDraft({
+          originalId: selectedEntryRef.current.id,
+          entry: currentDraftRef.current,
+        })
+      }
+    }
+  }, [setPendingAddDraft, setPendingEditDraft])
+  // ────────────────────────────────────────────────────────────────────────
+
   const handleAdd = useCallback(() => {
     setMode('add')
   }, [setMode])
@@ -49,6 +85,7 @@ function BibEditorPanel() {
   const handleSaveEdit = useCallback(
     (updated: BibEntry) => {
       if (selectedEntry) {
+        currentDraftRef.current = null
         saveEntry(selectedEntry, updated)
       }
     },
@@ -57,12 +94,14 @@ function BibEditorPanel() {
 
   const handleSaveNew = useCallback(
     (entry: BibEntry) => {
+      currentDraftRef.current = null
       addEntry(entry)
     },
     [addEntry]
   )
 
   const handleCancel = useCallback(() => {
+    currentDraftRef.current = null // explicitly cancelled — don't preserve draft
     selectEntry(null)
     setMode('list')
   }, [selectEntry, setMode])
@@ -82,6 +121,7 @@ function BibEditorPanel() {
   }, [selectedEntry])
 
   const handleConfirmDelete = useCallback(() => {
+    currentDraftRef.current = null // deleting — no draft needed
     if (selectedEntry) {
       deleteEntry(selectedEntry)
     }
@@ -111,6 +151,7 @@ function BibEditorPanel() {
 
   const handleConfirmLeave = useCallback(() => {
     setShowLeaveConfirm(false)
+    currentDraftRef.current = null // switching to Code — discard draft
     selectEntry(null)
     setMode('list')
     setShowVisual(false)
@@ -125,6 +166,38 @@ function BibEditorPanel() {
       pendingScrollPosition.current = null
     }
   }, [selectEntry, setMode, setShowVisual])
+
+  // Callback passed to BibEntryForm — updates the draft ref on every change.
+  // Uses a ref (not state) so it doesn't cause re-renders.
+  const handleDraftChange = useCallback((entry: BibEntry) => {
+    currentDraftRef.current = entry
+  }, [])
+
+  // Initial entry for the edit form: use the pending edit draft if it matches
+  // the currently selected entry, otherwise fall back to the saved entry values.
+  const editFormEntry = useMemo(() => {
+    if (!selectedEntry) return null
+    if (pendingEditDraft?.originalId === selectedEntry.id) {
+      return pendingEditDraft.entry
+    }
+    return {
+      type: selectedEntry.type,
+      id: selectedEntry.id,
+      fields: { ...selectedEntry.fields },
+    }
+  }, [selectedEntry, pendingEditDraft])
+
+  // Once the edit form has rendered with the draft, clear it from context so
+  // the next time the user opens this entry they start from the saved state.
+  useEffect(() => {
+    if (
+      mode === 'edit' &&
+      selectedEntry &&
+      pendingEditDraft?.originalId === selectedEntry.id
+    ) {
+      setPendingEditDraft(null)
+    }
+  }, [mode, selectedEntry, pendingEditDraft, setPendingEditDraft])
 
   return (
     <div className="bib-editor-panel">
@@ -168,25 +241,23 @@ function BibEditorPanel() {
             entries={entries}
             onSelect={handleSelect}
           />
-        ) : mode === 'edit' && selectedEntry ? (
+        ) : mode === 'edit' && selectedEntry && editFormEntry ? (
           <BibEntryForm
-            entry={{
-              type: selectedEntry.type,
-              id: selectedEntry.id,
-              fields: { ...selectedEntry.fields },
-            }}
+            entry={editFormEntry}
             onSave={handleSaveEdit}
             onCancel={handleCancel}
             onDelete={handleDeleteSelected}
             existingIds={entries.map(e => e.id)}
+            onDraftChange={handleDraftChange}
           />
         ) : mode === 'add' ? (
           <BibEntryForm
-            entry={{ type: 'article', id: '', fields: {} }}
+            entry={pendingAddDraft || { type: 'article', id: '', fields: {} }}
             onSave={handleSaveNew}
             onCancel={handleCancel}
             isNew
             existingIds={entries.map(e => e.id)}
+            onDraftChange={handleDraftChange}
           />
         ) : null}
       </div>
