@@ -27,6 +27,7 @@ import { generateCitationKey } from '../utils/bib-parser'
 function BibEditorPanel() {
   const { t } = useTranslation()
   const {
+    isBibFile,
     entries,
     selectedEntry,
     mode,
@@ -35,6 +36,10 @@ function BibEditorPanel() {
     saveEntry,
     addEntry,
     deleteEntry,
+    pendingAddDraft,
+    pendingEditDraft,
+    setPendingAddDraft,
+    setPendingEditDraft,
   } = useBibEditorContext()
   const { setShowVisual } = useEditorPropertiesContext()
   const { openDocName } = useEditorOpenDocContext()
@@ -60,28 +65,50 @@ function BibEditorPanel() {
       if (!currentDraftRef.current) return
       const draft = ensureEntryId(currentDraftRef.current)
       if (modeRef.current === 'edit' && selectedEntryRef.current) {
-        saveEntry(selectedEntryRef.current, draft)
+        setPendingEditDraft({ originalId: selectedEntryRef.current.id, entry: draft })
       } else if (modeRef.current === 'add') {
-        addEntry(draft)
+        setPendingAddDraft(draft)
       }
     }
-  }, [saveEntry, addEntry])
+  }, [setPendingEditDraft, setPendingAddDraft])
 
   useEffect(() => {
     if (openDocNameRef.current !== null && openDocName !== openDocNameRef.current) {
       // The opened document changed while the visual editor stayed mounted.
-      // Persist the current draft before the file switch completes.
+      // Persist the current draft instead of writing it directly back to source.
       if (currentDraftRef.current) {
         const draft = ensureEntryId(currentDraftRef.current)
         if (modeRef.current === 'edit' && selectedEntryRef.current) {
-          saveEntry(selectedEntryRef.current, draft)
+          setPendingEditDraft({ originalId: selectedEntryRef.current.id, entry: draft })
         } else if (modeRef.current === 'add') {
-          addEntry(draft)
+          setPendingAddDraft(draft)
         }
         currentDraftRef.current = null
       }
     }
-  }, [openDocName, saveEntry, addEntry])
+  }, [openDocName, setPendingEditDraft, setPendingAddDraft])
+
+  useEffect(() => {
+    if (!isBibFile && mode !== 'list') {
+      setMode('list')
+      return
+    }
+
+    if (mode === 'list') {
+      if (pendingEditDraft && entries.some(entry => entry.id === pendingEditDraft.originalId)) {
+        const restored = entries.find(entry => entry.id === pendingEditDraft.originalId)
+        if (restored) {
+          selectEntry(restored)
+          setMode('edit')
+          return
+        }
+      }
+      if (pendingAddDraft) {
+        setMode('add')
+      }
+    }
+  }, [isBibFile, mode, entries, pendingAddDraft, pendingEditDraft, selectEntry, setMode])
+
   // ────────────────────────────────────────────────────────────────────────
 
   const ensureEntryId = useCallback((entry: BibEntry): BibEntry => {
@@ -94,12 +121,12 @@ function BibEditorPanel() {
     if (!currentDraftRef.current) return
     const draft = ensureEntryId(currentDraftRef.current)
     if (modeRef.current === 'edit' && selectedEntryRef.current) {
-      saveEntry(selectedEntryRef.current, draft)
+      setPendingEditDraft({ originalId: selectedEntryRef.current.id, entry: draft })
     } else if (modeRef.current === 'add') {
-      addEntry(draft)
+      setPendingAddDraft(draft)
     }
     currentDraftRef.current = null
-  }, [ensureEntryId, saveEntry, addEntry])
+  }, [ensureEntryId, setPendingAddDraft, setPendingEditDraft])
 
   const handleAdd = useCallback(() => {
     setMode('add')
@@ -109,25 +136,29 @@ function BibEditorPanel() {
     (updated: BibEntry) => {
       if (selectedEntry) {
         currentDraftRef.current = null
+        setPendingEditDraft(null)
         saveEntry(selectedEntry, updated)
       }
     },
-    [selectedEntry, saveEntry]
+    [selectedEntry, saveEntry, setPendingEditDraft]
   )
 
   const handleSaveNew = useCallback(
     (entry: BibEntry) => {
       currentDraftRef.current = null
+      setPendingAddDraft(null)
       addEntry(entry)
     },
-    [addEntry]
+    [addEntry, setPendingAddDraft]
   )
 
   const handleCancel = useCallback(() => {
     currentDraftRef.current = null // explicitly cancelled — don't preserve draft
+    setPendingAddDraft(null)
+    setPendingEditDraft(null)
     selectEntry(null)
     setMode('list')
-  }, [selectEntry, setMode])
+  }, [selectEntry, setMode, setPendingAddDraft, setPendingEditDraft])
 
   const handleSelect = useCallback(
     (entry: ParsedBibEntry) => {
@@ -189,12 +220,19 @@ function BibEditorPanel() {
   // Initial entry for the edit form: use the selected entry's current values.
   const editFormEntry = useMemo(() => {
     if (!selectedEntry) return null
+    if (pendingEditDraft?.originalId === selectedEntry.id) {
+      return pendingEditDraft.entry
+    }
     return {
       type: selectedEntry.type,
       id: selectedEntry.id,
       fields: { ...selectedEntry.fields },
     }
-  }, [selectedEntry])
+  }, [selectedEntry, pendingEditDraft])
+
+  const addFormEntry = useMemo(() => {
+    return pendingAddDraft ?? { type: 'article', id: '', fields: {} }
+  }, [pendingAddDraft])
 
   return (
     <div className="bib-editor-panel">
@@ -249,7 +287,7 @@ function BibEditorPanel() {
           />
         ) : mode === 'add' ? (
           <BibEntryForm
-            entry={{ type: 'article', id: '', fields: {} }}
+            entry={addFormEntry}
             onSave={handleSaveNew}
             onCancel={handleCancel}
             isNew
