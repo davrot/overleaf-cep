@@ -14,6 +14,7 @@ import withErrorBoundary from '@/infrastructure/error-boundary'
 import EditorSwitch from '@/features/source-editor/components/editor-switch'
 import GenericConfirmModal from '@/features/ide-react/components/modals/generic-confirm-modal'
 import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
+import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import { useBibEditorContext } from '../context/bib-editor-context'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
@@ -21,6 +22,7 @@ import { BIB_SCROLL_TO_EVENT } from '../extensions/bib-editor-extension'
 import '../../stylesheets/bib-editor-panel.css'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
+import { generateCitationKey } from '../utils/bib-parser'
 
 function BibEditorPanel() {
   const { t } = useTranslation()
@@ -33,50 +35,71 @@ function BibEditorPanel() {
     saveEntry,
     addEntry,
     deleteEntry,
-    pendingAddDraft,
-    setPendingAddDraft,
-    pendingEditDraft,
-    setPendingEditDraft,
   } = useBibEditorContext()
   const { setShowVisual } = useEditorPropertiesContext()
+  const { openDocName } = useEditorOpenDocContext()
 
   // --- confirmation modal state ---
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
-  // store the scroll position to focus in Code after a confirmed Visual→Code switch
+  // store the scroll position to focus in Code after a Visual→Code switch
   const pendingScrollPosition = useRef<number | null>(null)
 
-  // ── Draft persistence across file-tree navigation ───────────────────────
   // currentDraftRef holds the latest form values (updated via onDraftChange).
-  // On unmount, if the user navigated away without saving/cancelling, we write
-  // it to the context so it can be restored when they return.
   const currentDraftRef = useRef<BibEntry | null>(null)
   const modeRef = useRef(mode)
   const selectedEntryRef = useRef(selectedEntry)
+  const openDocNameRef = useRef(openDocName)
   useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { selectedEntryRef.current = selectedEntry }, [selectedEntry])
+  useEffect(() => { openDocNameRef.current = openDocName }, [openDocName])
 
-  // On mount: read the pending add draft (used as the form's initial entry
-  // below) then clear it from context so fresh "Add new entry" opens are empty.
-  useEffect(() => {
-    if (pendingAddDraft) setPendingAddDraft(null)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // On unmount: save the current draft to context so it survives the unmount.
+  // Ensure unfinished forms are persisted directly into the .bib source
+  // when the panel unmounts or when the current file changes.
   useEffect(() => {
     return () => {
-      if (!currentDraftRef.current) return // cancelled or saved — nothing to preserve
-      if (modeRef.current === 'add') {
-        setPendingAddDraft(currentDraftRef.current)
-      } else if (modeRef.current === 'edit' && selectedEntryRef.current) {
-        setPendingEditDraft({
-          originalId: selectedEntryRef.current.id,
-          entry: currentDraftRef.current,
-        })
+      if (!currentDraftRef.current) return
+      const draft = ensureEntryId(currentDraftRef.current)
+      if (modeRef.current === 'edit' && selectedEntryRef.current) {
+        saveEntry(selectedEntryRef.current, draft)
+      } else if (modeRef.current === 'add') {
+        addEntry(draft)
       }
     }
-  }, [setPendingAddDraft, setPendingEditDraft])
+  }, [saveEntry, addEntry])
+
+  useEffect(() => {
+    if (openDocNameRef.current !== null && openDocName !== openDocNameRef.current) {
+      // The opened document changed while the visual editor stayed mounted.
+      // Persist the current draft before the file switch completes.
+      if (currentDraftRef.current) {
+        const draft = ensureEntryId(currentDraftRef.current)
+        if (modeRef.current === 'edit' && selectedEntryRef.current) {
+          saveEntry(selectedEntryRef.current, draft)
+        } else if (modeRef.current === 'add') {
+          addEntry(draft)
+        }
+        currentDraftRef.current = null
+      }
+    }
+  }, [openDocName, saveEntry, addEntry])
   // ────────────────────────────────────────────────────────────────────────
+
+  const ensureEntryId = useCallback((entry: BibEntry): BibEntry => {
+    if (entry.id?.trim()) return entry
+    const generated = generateCitationKey(entry.fields)
+    return { ...entry, id: generated }
+  }, [])
+
+  const saveCurrentDraft = useCallback(() => {
+    if (!currentDraftRef.current) return
+    const draft = ensureEntryId(currentDraftRef.current)
+    if (modeRef.current === 'edit' && selectedEntryRef.current) {
+      saveEntry(selectedEntryRef.current, draft)
+    } else if (modeRef.current === 'add') {
+      addEntry(draft)
+    }
+    currentDraftRef.current = null
+  }, [ensureEntryId, saveEntry, addEntry])
 
   const handleAdd = useCallback(() => {
     setMode('add')
@@ -133,39 +156,29 @@ function BibEditorPanel() {
   const handleEditorSwitchCapture = useCallback(
     (e: React.MouseEvent) => {
       if (mode === 'list') return
-      // Only intercept clicks aimed at activating the Code-editor option.
-      // Labels are the visible/clickable part; the radio inputs are hidden.
       const label = (e.target as HTMLElement).closest('label') as HTMLLabelElement | null
       if (!label) return
       const radio = document.getElementById(label.htmlFor) as HTMLInputElement | null
       if (radio?.value !== 'cm6') return
-      // Prevent the label from activating the radio → EditorSwitch onChange won't fire
       e.preventDefault()
-      // Store where to scroll in the code editor (only relevant in edit mode)
       pendingScrollPosition.current =
         mode === 'edit' && selectedEntry ? selectedEntry.sourceStart : null
-      setShowLeaveConfirm(true)
+      saveCurrentDraft()
+      selectEntry(null)
+      setMode('list')
+      setShowVisual(false)
+      const pos = pendingScrollPosition.current
+      if (pos !== null) {
+        window.setTimeout(() => {
+          document.dispatchEvent(
+            new CustomEvent(BIB_SCROLL_TO_EVENT, { detail: { position: pos } })
+          )
+        }, 0)
+        pendingScrollPosition.current = null
+      }
     },
-    [mode, selectedEntry]
+    [mode, selectedEntry, saveCurrentDraft, selectEntry, setMode, setShowVisual]
   )
-
-  const handleConfirmLeave = useCallback(() => {
-    setShowLeaveConfirm(false)
-    currentDraftRef.current = null // switching to Code — discard draft
-    selectEntry(null)
-    setMode('list')
-    setShowVisual(false)
-    // After the visual switch settles, scroll the code editor to the entry
-    const pos = pendingScrollPosition.current
-    if (pos !== null) {
-      window.setTimeout(() => {
-        document.dispatchEvent(
-          new CustomEvent(BIB_SCROLL_TO_EVENT, { detail: { position: pos } })
-        )
-      }, 0)
-      pendingScrollPosition.current = null
-    }
-  }, [selectEntry, setMode, setShowVisual])
 
   // Callback passed to BibEntryForm — updates the draft ref on every change.
   // Uses a ref (not state) so it doesn't cause re-renders.
@@ -173,31 +186,15 @@ function BibEditorPanel() {
     currentDraftRef.current = entry
   }, [])
 
-  // Initial entry for the edit form: use the pending edit draft if it matches
-  // the currently selected entry, otherwise fall back to the saved entry values.
+  // Initial entry for the edit form: use the selected entry's current values.
   const editFormEntry = useMemo(() => {
     if (!selectedEntry) return null
-    if (pendingEditDraft?.originalId === selectedEntry.id) {
-      return pendingEditDraft.entry
-    }
     return {
       type: selectedEntry.type,
       id: selectedEntry.id,
       fields: { ...selectedEntry.fields },
     }
-  }, [selectedEntry, pendingEditDraft])
-
-  // Once the edit form has rendered with the draft, clear it from context so
-  // the next time the user opens this entry they start from the saved state.
-  useEffect(() => {
-    if (
-      mode === 'edit' &&
-      selectedEntry &&
-      pendingEditDraft?.originalId === selectedEntry.id
-    ) {
-      setPendingEditDraft(null)
-    }
-  }, [mode, selectedEntry, pendingEditDraft, setPendingEditDraft])
+  }, [selectedEntry])
 
   return (
     <div className="bib-editor-panel">
@@ -252,7 +249,7 @@ function BibEditorPanel() {
           />
         ) : mode === 'add' ? (
           <BibEntryForm
-            entry={pendingAddDraft || { type: 'article', id: '', fields: {} }}
+            entry={{ type: 'article', id: '', fields: {} }}
             onSave={handleSaveNew}
             onCancel={handleCancel}
             isNew
@@ -275,17 +272,6 @@ function BibEditorPanel() {
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Leave-form confirmation (switching Visual → Code with unsaved changes) */}
-      <GenericConfirmModal
-        show={showLeaveConfirm}
-        onHide={() => setShowLeaveConfirm(false)}
-        title={t('Discard unsaved changes?')}
-        message={t(
-          'You have unsaved changes in the entry form. Switching to code mode will discard them.'
-        )}
-        confirmLabel={t('Switch to code')}
-        onConfirm={handleConfirmLeave}
-      />
     </div>
   )
 }

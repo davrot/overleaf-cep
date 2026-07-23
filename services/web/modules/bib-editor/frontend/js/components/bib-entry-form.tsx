@@ -22,6 +22,7 @@ import {
   ENTRY_TYPES,
   getEntryType,
   getFieldsForType,
+  getMissingRequiredFields,
 } from '../utils/bib-types'
 import type { BibEntry } from '../utils/bib-types'
 
@@ -183,9 +184,14 @@ export default function BibEntryForm({
       errs.id = t('Citation key contains invalid characters')
     }
 
-    for (const f of requiredFields) {
-      if (!fields[f]?.trim()) {
-        errs[f] = t(FIELD_LABELS[f] || f) + ' ' + t('is required')
+    for (const field of requiredFields) {
+      if (Array.isArray(field)) {
+        if (!field.some(f => fields[f]?.trim())) {
+          const label = field.map(f => FIELD_LABELS[f] || f).join(' or ')
+          errs[field.join('|')] = `${label} ${t('is required')}`
+        }
+      } else if (!fields[field]?.trim()) {
+        errs[field] = t(FIELD_LABELS[field] || field) + ' ' + t('is required')
       }
     }
 

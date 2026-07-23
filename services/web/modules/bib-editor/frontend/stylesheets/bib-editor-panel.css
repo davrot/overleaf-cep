@@ -105,9 +105,11 @@
   flex: 1 1 auto;
   max-width: 30rem;
   min-width: 0;
+
   .form-group {
     margin-bottom: 0;
   }
+
   .form-control {
     max-width: 100%;
     font-size: var(--font-size-02);
@@ -142,6 +144,11 @@
   padding: 0.5rem 0.7rem;
   cursor: pointer;
   transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.bib-entry-card-invalid {
+  border-color: var(--content-danger);
+  background-color: rgba(var(--content-danger-rgb), 0.08);
 }
 
 .bib-entry-card:hover {
@@ -226,6 +233,7 @@
   .dropdown {
     width: 18rem;
   }
+
   .dropdown-toggle {
     width: 100%;
     font-size: var(--font-size-02);
@@ -241,8 +249,10 @@
       margin-left: auto;
     }
   }
+
   .dropdown-menu {
     width: 100%;
+
     .dropdown-item {
       font-size: var(--font-size-02);
     }
@@ -264,12 +274,15 @@
     display: flex;
     gap: 0.6rem;
   }
+
   .bib-author-actions .btn {
     padding: 1px 4px;
+
     .icon-small {
       font-size: 18px;
     }
   }
+
   .bib-author-field {
     display: flex;
     flex-direction: column;
@@ -302,7 +315,7 @@
 .bib-form-textarea {
   font-size: var(--font-size-02);
   padding: 0.2rem 0.4rem;
-  border-color:  var(--border-primary) !important;
+  border-color: var(--border-primary) !important;
 }
 
 .bib-form-input-error {
@@ -323,9 +336,11 @@
   text-decoration: none;
   color: var(--btn-primary-background);
 }
+
 .btn-link.bib-form-toggle-opt-fields {
   color: var(--btn-primary-background);
 }
+
 .btn-link.bib-form-toggle-opt-fields:hover,
 .btn-link.bib-form-toggle-opt-fields:active {
   color: var(--btn-primary-hover-background);
@@ -343,4 +358,3 @@
   display: flex;
   gap: 0.5rem;
 }
-

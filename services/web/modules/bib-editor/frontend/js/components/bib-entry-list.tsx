@@ -7,7 +7,10 @@ import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import SearchForm from './search-form.tsx'
 import type { ParsedBibEntry } from '../utils/bib-parser'
-import { getEntryType } from '../utils/bib-types'
+import {
+  getEntryType,
+  getMissingRequiredFields,
+} from '../utils/bib-types'
 
 type Props = {
   entries: ParsedBibEntry[]
@@ -86,6 +89,10 @@ function BibEntryCard({
 }) {
   const { t } = useTranslation()
   const typeDef = getEntryType(entry.type)
+  const missingFields = typeDef
+    ? getMissingRequiredFields(typeDef.requiredFields, entry.fields)
+    : []
+  const invalid = missingFields.length > 0
   const title = entry.fields.title || t('Untitled')
   const author = entry.fields.author || ''
   const year = entry.fields.year || ''
@@ -101,7 +108,9 @@ function BibEntryCard({
 
   return (
     <div
-      className="bib-entry-card"
+      className={['bib-entry-card', invalid ? 'bib-entry-card-invalid' : '']
+        .filter(Boolean)
+        .join(' ')}
       role="button"
       tabIndex={0}
       onClick={() => onSelect(entry)}
