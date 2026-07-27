@@ -254,6 +254,7 @@ export const UserSchema = new Schema(
     llmApiKey: { type: String, default: '' },
     llmModelName: { type: String, default: '' },
     llmApiUrl: { type: String, default: '' },
+    llmCompletionModel: { type: String, default: '' },
   },
   { minimize: false }
 )

@@ -1,56 +1,38 @@
 // LLM Chat styling matching the regular chat theme
+// overleaf-lab: theme-aware LLM chat palette. The original code forced a dark
+// palette (var(--bg-dark-primary), var(--white), ...) even on the light theme,
+// so the chat looked dark on a light IDE. We now use the theme-adaptive tokens
+// (--content-primary, --border-primary) and a transparent background that simply
+// inherits the already-themed rail panel, plus translucent grey bubbles/code that
+// read well on both light and dark. Fallbacks keep it safe if a token is missing:
+// none of them forces a dark background.
 :root {
-    --llm-chat-bg: var(--neutral-80);
-    --llm-chat-color: var(--white);
-    --llm-chat-text-color: var(--neutral-90);
-    --llm-chat-instructions-color: var(--neutral-20);
-    --llm-chat-new-message-bg: var(--neutral-70);
-    --llm-chat-new-message-textarea-color: var(--neutral-90);
-    --llm-chat-new-message-textarea-bg: var(--neutral-20);
-    --llm-chat-new-message-textarea-border: var(--editor-border-color);
-    --llm-chat-new-message-border: var(--editor-border-color);
-    --llm-chat-message-user-bg: var(--green-70);
-    --llm-chat-message-user-text: var(--white);
-    --llm-chat-message-assistant-bg: var(--bg-light-secondary);
-    --llm-chat-message-assistant-text: var(--neutral-90);
-    --llm-chat-code-bg: rgba(0, 0, 0, 0.1);
-    --llm-chat-code-text: var(--neutral-90);
+    --llm-chat-bg: transparent;
+    --llm-chat-color: var(--content-primary-themed, inherit);
+    --llm-chat-text-color: var(--content-primary-themed, inherit);
+    --llm-chat-instructions-color: var(--content-secondary, #6c757d);
+    --llm-chat-new-message-bg: transparent;
+    --llm-chat-new-message-textarea-color: var(--content-primary-themed, inherit);
+    --llm-chat-new-message-textarea-bg: var(--bg-primary, transparent);
+    --llm-chat-new-message-textarea-border: var(--border-primary, rgba(125, 125, 125, 0.35));
+    --llm-chat-new-message-border: var(--border-primary, rgba(125, 125, 125, 0.2));
+    --llm-chat-message-user-bg: var(--green-70, #2b8a5f);
+    --llm-chat-message-user-text: var(--white, #fff);
+    --llm-chat-message-assistant-bg: rgba(125, 125, 125, 0.14);
+    --llm-chat-message-assistant-text: var(--content-primary-themed, inherit);
+    --llm-chat-code-bg: rgba(125, 125, 125, 0.18);
+    --llm-chat-code-text: var(--content-primary-themed, inherit);
 
     /* LLM-specific fallbacks for suggestion items and selector */
-    --llm-chat-suggestions-bg: var(--bg-light-secondary, #f3f4f6);
-    --llm-chat-suggestions-color: var(--content-primary, #111);
-    --llm-chat-suggestions-title-color: var(--content-primary, #111);
-    --llm-chat-suggestion-item-bg: var(--llm-chat-new-message-textarea-bg, #fff);
-    --llm-chat-suggestion-item-color: var(--content-primary, #111);
-    --llm-model-selector-label-color: var(--content-primary, #111);
-    --llm-model-selector-select-color: var(--content-primary, #111);
+    --llm-chat-suggestions-bg: rgba(125, 125, 125, 0.1);
+    --llm-chat-suggestions-color: var(--content-primary-themed, inherit);
+    --llm-chat-suggestions-title-color: var(--content-primary-themed, inherit);
+    --llm-chat-suggestion-item-bg: var(--bg-primary, transparent);
+    --llm-chat-suggestion-item-color: var(--content-primary-themed, inherit);
+    --llm-model-selector-label-color: var(--content-primary-themed, inherit);
+    --llm-model-selector-select-color: var(--content-primary-themed, inherit);
     /* Max width used by suggestions and model selector */
     --llm-suggestions-max-width: 350px;
-}
-
-.ide-redesign-main {
-    --llm-chat-bg: var(--bg-dark-primary);
-    --llm-chat-color: var(--content-primary);
-    --llm-chat-text-color: var(--content-primary);
-    --llm-chat-instructions-color: var(--content-primary-dark);
-    --llm-chat-new-message-bg: var(--bg-dark-primary);
-    --llm-chat-new-message-textarea-color: var(--content-primary-dark);
-    --llm-chat-new-message-textarea-bg: var(--bg-dark-primary);
-    --llm-chat-message-user-bg: var(--green-70);
-    --llm-chat-message-user-text: var(--white);
-    --llm-chat-message-assistant-bg: var(--bg-light-secondary);
-    --llm-chat-message-assistant-text: var(--content-primary);
-    --llm-chat-code-bg: rgba(0, 0, 0, 0.2);
-    --llm-chat-code-text: var(--content-primary);
-
-    /* Dark-theme LLM overrides */
-    --llm-chat-suggestions-bg: var(--bg-dark-secondary, #111827);
-    --llm-chat-suggestions-color: var(--content-primary, #e6eef7);
-    --llm-chat-suggestions-title-color: var(--content-primary, #e6eef7);
-    --llm-chat-suggestion-item-bg: var(--llm-chat-new-message-textarea-bg, #111827);
-    --llm-chat-suggestion-item-color: var(--content-primary, #e6eef7);
-    --llm-model-selector-label-color: var(--content-primary, #e6eef7);
-    --llm-model-selector-select-color: var(--content-primary, #e6eef7);
 }
 
 .llm-rail-panel {
@@ -97,7 +79,10 @@
         box-sizing: border-box;
     }
 
-    align-items: center;
+    /* overleaf-lab: stretch children to the full panel width so the input box and
+       messages grow as the panel widens (was center, which pinned them to their
+       content width and left the input small). */
+    align-items: stretch;
     padding: var(--spacing-03) var(--spacing-04) var(--spacing-03) var(--spacing-02);
     background-color: var(--llm-chat-new-message-bg);
     border-bottom: 1px solid var(--llm-chat-new-message-border);
@@ -138,7 +123,10 @@
         border: 1px solid var(--llm-chat-new-message-textarea-border);
         border-radius: var(--border-radius-base);
         background-color: var(--llm-chat-new-message-textarea-bg, #fff);
-        /* ensure the option text is readable in all themes */
+        /* overleaf-lab: use the ADAPTIVE themed token so the CLOSED select (the
+           selected model name) is legible on light AND dark. Plain --content-primary
+           did not flip on dark; --content-primary-themed does (the "Model" label
+           already uses it). The option popup is themed separately below. */
         color: var(--content-primary-themed);
         font-size: var(--font-size-02);
         outline: none;
@@ -153,6 +141,15 @@
         background-position: calc(100% - 12px) calc(1em + 2px), calc(100% - 7px) calc(1em + 2px);
         background-size: 6px 6px, 6px 6px;
         background-repeat: no-repeat;
+
+        /* overleaf-lab: theme the native dropdown popup. Field/FieldText are a
+           matched CSS system-color pair, so the option list stays readable in both
+           light and dark, independent of how the app signals its theme (this fixes
+           the white-background / light-grey-text popup on the dark theme). */
+        option {
+            background-color: Field;
+            color: FieldText;
+        }
 
         &:focus {
             border-color: var(--border-primary);

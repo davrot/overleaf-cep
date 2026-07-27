@@ -13,6 +13,9 @@ import React, {
 import { EditorView } from '@codemirror/view'
 import { marked } from 'marked'
 import getMeta from '@/utils/meta'
+import { readSelectedModel } from '../utils/llm-selected-model'
+import { useLLMFeatures } from '../hooks/use-llm-features'
+import { useLLMPrompts } from '../hooks/use-llm-prompts'
 
 export type LLMToolbarHandle = {
     show: (view: EditorView) => void
@@ -86,6 +89,15 @@ const Spinner = () => (
 )
 
 const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
+    // overleaf-lab: the floating "Ask AI" selection toolbar is part of the chat
+    // feature, so it obeys the super-admin chat flag. Called unconditionally to
+    // respect the rules of hooks; the returned JSX is gated further down.
+    const features = useLLMFeatures()
+    // overleaf-lab: admin-editable prompts. Called unconditionally at the top so
+    // the rules of hooks hold. `prompts` is read directly inside postToAPI (a
+    // closure recreated each render), falling back to the hardcoded strings when
+    // a field is missing or the fetch has not resolved.
+    const { prompts } = useLLMPrompts()
     const [anchorShown, setAnchorShown] = useState(false)
     const [panelRect, setPanelRect] = useState({ top: 0, left: 0, width: 520 })
     const [anchorPos, setAnchorPos] = useState({ top: 0, left: 0 })
@@ -119,29 +131,84 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
         // Build a prompt based on the mode
         const modePrompts: Record<number, string> = {
             0: ask, // free-form chat
-            1: `Paraphrase the following LaTeX text, keeping all LaTeX commands intact:\n\n${selectionText}`,
-            2: `Rewrite the following LaTeX text in a scientific academic style:\n\n${selectionText}`,
-            3: `Rewrite the following LaTeX text more concisely:\n\n${selectionText}`,
-            4: `Rewrite the following LaTeX text in a punchy style:\n\n${selectionText}`,
-            5: `Split the following LaTeX paragraph into multiple shorter paragraphs:\n\n${selectionText}`,
-            6: `Join the following LaTeX paragraphs into a single cohesive paragraph:\n\n${selectionText}`,
-            7: `Summarize the following LaTeX text:\n\n${selectionText}`,
-            8: `Explain the following LaTeX text:\n\n${selectionText}`,
-            9: `Generate an academic title based on this LaTeX content:\n\n${selectionText}`,
-            10: `Generate an academic abstract based on this LaTeX content:\n\n${selectionText}`,
+            1: `Paraphrase the following LaTeX text. Keep every LaTeX command, math, and citation key intact. Output only the paraphrased text, with no preamble, no explanation, and no code fences.\n\n${selectionText}`,
+            2: `Rewrite the following LaTeX text in fluent, formal academic English. Preserve every LaTeX command, math, and citation key. Output only the rewritten text, with no preamble and no code fences.\n\n${selectionText}`,
+            3: `Rewrite the following LaTeX text more concisely, preserving its meaning and every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${selectionText}`,
+            4: `Rewrite the following LaTeX text in a punchier, more engaging style while keeping it accurate. Preserve every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${selectionText}`,
+            5: `Split the following LaTeX paragraph into several shorter, well-structured paragraphs. Keep the wording and all LaTeX; only add paragraph breaks. Output only the resulting LaTeX, nothing else.\n\n${selectionText}`,
+            6: `Join the following LaTeX paragraphs into a single cohesive paragraph, preserving every LaTeX command, math, and citation. Output only the resulting paragraph, nothing else.\n\n${selectionText}`,
+            7: `Summarize the following LaTeX text concisely. Output only the summary as plain LaTeX, with no preamble and no code fences.\n\n${selectionText}`,
+            8: `Explain the following LaTeX text clearly and concisely for the author:\n\n${selectionText}`,
+            9: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n${selectionText}`,
+            10: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n${selectionText}`,
+        }
+
+        // overleaf-lab: numeric transform modes map to admin action keys. Mode 0
+        // is free-form chat and has no template.
+        const modeActionKey: Record<number, string> = {
+            1: 'paraphrase',
+            2: 'academic',
+            3: 'concise',
+            4: 'punchy',
+            5: 'split',
+            6: 'join',
+            7: 'summarize',
+            8: 'explain',
+            9: 'title',
+            10: 'abstract',
+        }
+
+        // overleaf-lab: hardcoded system prompt kept verbatim as the fallback
+        // used whenever the admin prompt is absent or the fetch has not resolved.
+        const fallbackSystemPrompt =
+            'You are a LaTeX writing assistant embedded in an editor. Preserve existing LaTeX commands, math, and citation keys exactly, and reply in the same language as the input. When asked to rewrite or transform text, return only the resulting text, with no preamble and no Markdown code fences.'
+
+        // overleaf-lab: prefer the admin system prompt when it is a non-empty
+        // string, otherwise keep the hardcoded one.
+        const systemContent =
+            typeof prompts?.askAiSystemPrompt === 'string' &&
+                prompts.askAiSystemPrompt.trim() !== ''
+                ? prompts.askAiSystemPrompt
+                : fallbackSystemPrompt
+
+        // overleaf-lab: build the user content. Mode 0 stays free-form chat
+        // (uses the user's `ask`). Transform modes prefer the admin template,
+        // substituting the literal {{selection}} with the selected text (or
+        // appending it when the template omits the placeholder), and fall back
+        // to the hardcoded modePrompts entry when no admin template exists.
+        let userContent: string
+        if (mode >= 1) {
+            const actionKey = modeActionKey[mode]
+            const template = actionKey
+                ? prompts?.askAiActionPrompts?.[actionKey]
+                : undefined
+            if (typeof template === 'string' && template.trim() !== '') {
+                userContent = template.includes('{{selection}}')
+                    ? template.split('{{selection}}').join(selectionText)
+                    : `${template}\n\n${selectionText}`
+            } else {
+                userContent = modePrompts[mode] || ask
+            }
+        } else {
+            userContent = modePrompts[mode] || ask
         }
 
         const messages = [
             {
                 role: 'system',
-                content:
-                    'You are a helpful LaTeX writing assistant. Respond with clean LaTeX code when appropriate.',
+                content: systemContent,
             },
             {
                 role: 'user',
-                content: modePrompts[mode] || ask,
+                content: userContent,
             },
         ]
+
+        // overleaf-lab: reuse the model currently selected in the chat panel so
+        // "Ask AI" follows the same model. When nothing is stored (chat never
+        // opened / storage disabled) we omit `model`, keeping the previous
+        // behavior: the backend uses the user's personal model or the shared one.
+        const selectedModelId = readSelectedModel()
 
         try {
             const resp = await fetch(`/project/${projectId}/llm/chat`, {
@@ -151,7 +218,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                     'X-CSRF-Token': csrfToken,
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({ messages }),
+                body: JSON.stringify(
+                    selectedModelId ? { messages, model: selectedModelId } : { messages }
+                ),
             })
 
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -423,6 +492,23 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
         Math.round(window.innerHeight * 0.5)
     )
 
+    // overleaf-lab: once the flags load, if chat is disabled for this project the
+    // toolbar must never surface its anchor/menu/panels. Render the same inert
+    // fixed container it shows when there is no selection, so nothing appears.
+    if (features.loaded && features.chatEnabled === false) {
+        return (
+            <div
+                ref={wrapRef}
+                style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    zIndex: 9999,
+                }}
+            />
+        )
+    }
+
     return (
         <div
             ref={wrapRef}
@@ -439,8 +525,10 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
         .llm-input-card{width:100%;background:linear-gradient(180deg,#071021,#071827);border-radius:14px;padding:12px 12px 12px 56px;position:relative;box-shadow:0 14px 40px rgba(3,8,22,0.55);border:1px solid rgba(255,255,255,0.04)}
         .llm-badge{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;color:#e6eef8}
         .llm-input{width:100%;min-height:40px;max-height:160px;padding:8px 84px 8px 10px;border-radius:10px;background:transparent;color:#e6eef8;border:1px solid rgba(255,255,255,0.06);outline:none;resize:none;line-height:20px;font-size:14px;box-sizing:border-box}
-        .llm-send{position:absolute;right:44px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.02);display:flex;align-items:center;justify-content:center;cursor:pointer}
-        .llm-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.02);display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-send{position:absolute;right:44px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.4);color:#eafff5;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-send:hover{background:rgba(16,185,129,0.3)}
+        .llm-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:#e6eef8;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-close:hover{background:rgba(255,255,255,0.16)}
         .llm-menu{margin-top:0;background:linear-gradient(180deg,#071021,#071827);border-radius:12px;padding:10px 8px;color:#dfe7ee;border:1px solid rgba(255,255,255,0.04);box-shadow:0 14px 40px rgba(3,8,22,0.55)}
         .llm-item{height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:10px;cursor:pointer}
         .llm-item:hover{background:rgba(255,255,255,0.04)}

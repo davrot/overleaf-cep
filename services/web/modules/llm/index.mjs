@@ -27,9 +27,10 @@ if (llmEnabled) {
     // Configure LLM settings from environment
     Settings.llm = Settings.llm || {}
     Settings.llm.enabled = true
-    Settings.llm.allowUserSettings =
-        process.env.LLM_ALLOW_USER_SETTINGS === 'true' ||
-        (Settings.llm.allowUserSettings ?? true)
+    // overleaf-lab: make LLM_ALLOW_USER_SETTINGS authoritative. Upstream's `?? true`
+    // fallback meant LLM_ALLOW_USER_SETTINGS=false never actually disabled per-user
+    // settings; now only an explicit 'true' enables bring-your-own keys (OpenAI, etc.).
+    Settings.llm.allowUserSettings = process.env.LLM_ALLOW_USER_SETTINGS === 'true'
 
     logger.info(
         {

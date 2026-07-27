@@ -150,6 +150,8 @@ const ReviewTooltipMenuContent = memo<{ onAddComment: () => void; onHide: () => 
     const [visible, setVisible] = useState(false)
 
     const llmEnabled = !!(getMeta('ol-ExposedSettings') as any)?.llmEnabled
+    // hide Ask AI when the admin disabled the chat feature at runtime
+    const llmChatEnabled = (window as any).__llmChatEnabled !== false
 
     const handleAddCommentClick = useCallback(() => {
       sendMB('add-comment', {
@@ -274,7 +276,7 @@ const ReviewTooltipMenuContent = memo<{ onAddComment: () => void; onHide: () => 
           <MaterialIcon type="chat" />
           {t('add_comment')}
         </button>
-        {llmEnabled && (
+        {llmEnabled && llmChatEnabled && (
           <>
             <div className="review-tooltip-menu-divider" />
             <button
