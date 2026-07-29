@@ -2,12 +2,14 @@ import logger from '@overleaf/logger'
 import fetch from 'node-fetch'
 import { AbortController } from 'abort-controller'
 import { expressify } from '@overleaf/promise-utils'
+import OError from '@overleaf/o-error'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import { User } from '../../../../app/src/models/User.mjs'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs' // overleaf-lab: read project docs for error source context
 import Settings from '@overleaf/settings'
 import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
 import { decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: decrypt user API keys stored at rest
+import { createLLMProvider } from './LLMProviderFactory.mjs'
 
 // Helper function to remove <think> tags (for DeepSeek, Qwen and similar models)
 // Handles both closed <think>...</think> and unclosed <think>... at end of string
@@ -229,23 +231,19 @@ async function chat(req, res) {
         })
     }
 
+    // if model is not configured, the model hardcoded in the provider code will be used
     const modelNameForApi = personalModelName
         ? personalModelName
-        : model || ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || 'default').split(',')[0].trim()) // overleaf-lab: env-configurable fallback instead of hardcoded 'qwen3-32b'
+        : model || ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || '').split(',')[0].trim())
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => {
-        controller.abort()
-    }, 300000) // 5 minutes
+    const provider = createLLMProvider({ llmApiUrl, llmApiKey })
 
     try {
-        const llmApiFullUrl = `${llmApiUrl}/chat/completions`
-
         // Prepend the admin-configured system prompt (if any) plus an always-on
         // instruction to reply in the user's language, then merge any client
         // system message. This keeps replies in the input language regardless of
         // whether an admin prompt is set.
-        const languageInstruction = `Reply in the same language as the user's latest message (for example, answer in Italian if the user writes in Italian).`
+        const languageInstruction = "Reply in the same language as the user's latest message (for example, answer in Italian if the user writes in Italian)."
         const adminSystemPrompt = await getSystemPrompt()
         const systemPreamble = adminSystemPrompt
             ? `${adminSystemPrompt}\n\n${languageInstruction}`
@@ -271,99 +269,37 @@ async function chat(req, res) {
             {
                 projectId,
                 model: modelNameForApi,
-                url: llmApiFullUrl,
+                url: llmApiUrl,
                 isPersonalModel,
                 maxTokens: 8192,
             },
             '[LLM] chat: sending request to LLM API'
         )
 
-        // overleaf-lab: send Authorization only when a non-empty key exists, so a
-        // keyless local server is not sent a malformed empty Bearer header.
-        const chatHeaders = { 'Content-Type': 'application/json' }
-        if (typeof llmApiKey === 'string' && llmApiKey.length > 0) {
-            chatHeaders.Authorization = `Bearer ${llmApiKey}`
-        }
 
-        const response = await fetch(llmApiFullUrl, {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-        })
-
-        clearTimeout(timeout)
         const duration = Date.now() - startTime
 
-        logger.info(
-            { projectId, status: response.status, duration: `${duration}ms` },
-            '[LLM] chat: LLM API responded'
-        )
-
-        if (!response.ok) {
-            const errorText = await response.text()
-            logger.error(
-                {
-                    projectId,
-                    userId,
-                    status: response.status,
-                    error: errorText,
-                    duration: `${duration}ms`,
-                },
-                '[LLM] API error response'
-            )
-            return res.status(response.status).json({
-                error: 'LLM API error',
-                details: errorText,
-                status: response.status,
-            })
-        }
-
-        const data = await response.json()
-
-        // Strip <think> tags from the response content
-        if (
-            data.choices &&
-            data.choices[0] &&
-            data.choices[0].message &&
-            data.choices[0].message.content
-        ) {
-            const originalLength = data.choices[0].message.content.length
-            data.choices[0].message.content = stripThinkTags(
-                data.choices[0].message.content
-            )
-            const strippedLength = data.choices[0].message.content.length
-            if (originalLength !== strippedLength) {
-                logger.debug(
-                    { originalLength, strippedLength },
-                    '[LLM] chat: stripped <think> tags'
-                )
-            }
-        }
+        const data = await provider.chat({
+          model: modelNameForApi,
+          messages: finalMessages,
+          max_tokens: 8192,
+//          temperature: 0.7,
+        }) 
 
         logger.info(
             { projectId, duration: `${Date.now() - startTime}ms`, model: modelNameForApi },
             '[LLM] chat: response sent successfully'
         )
         res.json(data)
-    } catch (error) {
-        clearTimeout(timeout)
 
-        if (error.name === 'AbortError') {
-            return res.status(504).json({
-                error: 'LLM service timeout',
-                details: 'The LLM API did not respond within 5 minutes',
-            })
-        }
-
-        logger.error(
-            { projectId, userId, err: error },
-            '[LLM] Error communicating with LLM service'
-        )
-
-        res.status(500).json({
-            error: 'Failed to communicate with LLM service',
-            details: error.message,
+    } catch (err) {
+        const info = OError.getFullInfo(err)
+        const errStatus  = info?.status || 500
+        logger.error({ projectId, userId, err }, '[LLM] Error communicating with LLM service')
+        return res.status(errStatus).json({
+          error: err.message,
+          details: info?.error?.message || error.cause?.message,
+          status: errStatus,
         })
     }
 }
@@ -485,71 +421,31 @@ async function completion(req, res) {
         return res.status(503).json({ success: false, error: 'LLM service is not configured' })
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => {
-        controller.abort()
-    }, 30000) // 30 seconds for completions
-
+    const provider = createLLMProvider({ llmApiUrl, llmApiKey })
     try {
         const systemPrompt = `/no_think\nYou are a text completion engine. Output ONLY the missing text, in the same language as the surrounding text. No thinking, no explanation, no markdown, no code fences, no tags. Just the raw continuation characters.`
+        const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:\n\n${leftContext}[CURSOR]${rightContext}`
 
-        const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:
+console.log("userPrompt = ", userPrompt)
 
-${leftContext}[CURSOR]${rightContext}`
-
-        // overleaf-lab: send Authorization only when a non-empty key exists.
-        const completionHeaders = { 'Content-Type': 'application/json' }
-        if (typeof llmApiKey === 'string' && llmApiKey.length > 0) {
-            completionHeaders.Authorization = `Bearer ${llmApiKey}`
-        }
-
-        const response = await fetch(`${llmApiUrl}/chat/completions`, {
-            method: 'POST',
-            headers: completionHeaders,
-            body: JSON.stringify({
-                model: completionModel,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt },
-                ],
-                max_tokens: maxLength || 60,
-                temperature: 0.1,
-            }),
-            signal: controller.signal,
+        const data = await provider.completion({
+            model: completionModel,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+            max_tokens: maxLength || 60,
         })
 
-        clearTimeout(timeout)
-
-        if (!response.ok) {
-            return res
-                .status(response.status)
-                .json({ success: false, error: 'Completion request failed' })
-        }
-
-        const data = await response.json()
-        const completionText =
-            data.choices?.[0]?.message?.content?.trim() || ''
-
-        // Strip any think tags and clean up
-        const cleaned = stripThinkTags(completionText)
-
-        res.json({ success: true, data: cleaned })
-    } catch (error) {
-        clearTimeout(timeout)
-
-        if (error.name === 'AbortError') {
-            return res
-                .status(504)
-                .json({ success: false, error: 'Completion timeout' })
-        }
-
-        logger.error(
-            { projectId, userId, err: error },
-            '[LLM] Completion error'
-        )
-        res
-            .status(500)
-            .json({ success: false, error: 'Completion failed' })
+        res.json({ success: true, data })
+    } catch (err) {
+        const info = OError.getFullInfo(err)
+        const errStatus  = info?.status || 500
+        logger.error({ projectId, userId, err }, '[LLM] Completion error')
+        return res.status(errStatus).json({
+            success: false,
+            error: 'Completion failed',
+        })
     }
 }
 
