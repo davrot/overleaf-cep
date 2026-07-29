@@ -605,6 +605,7 @@ function extractJson(text) {
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
         .replace(/```\s*$/i, '')
+// Fricking vim makes the rest of the file red without this `
     const first = cleaned.indexOf('{')
     const last = cleaned.lastIndexOf('}')
     if (first === -1 || last === -1 || last < first) {
