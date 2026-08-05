@@ -1098,6 +1098,10 @@ module.exports = {
         __dirname,
         '../modules/github-sync/frontend/js/components/github-sync-widget.tsx'
       ),
+      Path.resolve(
+        __dirname,
+        '../modules/webdav/frontend/js/components/webdav-widget.tsx'
+      ),
     ],
     referenceLinkingWidgets: [
       Path.resolve(
@@ -1220,6 +1224,7 @@ module.exports = {
     'template-gallery',
     'git-bridge',
     'github-sync',
+    'webdav',
     'zotero',
   ],
   viewIncludes: {},

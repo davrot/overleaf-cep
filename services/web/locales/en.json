@@ -1758,6 +1758,7 @@
   "notification_personal_subscription_not_required_due_to_affiliation": " Good news! Your affiliated organization __institutionName__ has an Overleaf subscription, and you now have access to Overleaf premium features through your affiliation. You can cancel your individual subscription without losing access to any features.",
   "notification_project_invite_accepted_message": "You’ve joined <b>__projectName__</b>",
   "notification_project_invite_message": "<b>__userName__</b> would like you to join <b>__projectName__</b>",
+  "notification_webdav_sync": "WebDAV synchronization update",
   "notify_users_about_account_deletion": "Notify users about account deletion",
   "november": "November",
   "number_collab": "Number of collaborators",
