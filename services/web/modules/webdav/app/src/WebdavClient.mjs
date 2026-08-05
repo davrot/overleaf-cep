@@ -97,6 +97,7 @@ export default class WebdavClient {
 
   async request(method, resourcePath, options = {}) {
     const retryCount = Settings.webdav?.retryCount ?? 2
+    const lockRetryCount = Settings.webdav?.lockRetryCount ?? 5
     const retryDelayMs = Settings.webdav?.retryDelayMs ?? 250
     for (let attempt = 0; ; attempt++) {
       const startedAt = Date.now()
@@ -136,7 +137,8 @@ export default class WebdavClient {
           )
           return response
         }
-        const retryable = [408, 429, 500, 502, 503, 504].includes(response.status)
+        const retryable = [408, 423, 429, 500, 502, 503, 504].includes(response.status)
+        const maxRetries = response.status === 423 ? lockRetryCount : retryCount
         if (!retryable) {
           const error = new Error(
             `WebDAV request failed with status ${response.status}`
@@ -145,7 +147,7 @@ export default class WebdavClient {
           error.resourcePath = resourcePath
           throw error
         }
-        if (attempt >= retryCount) {
+        if (attempt >= maxRetries) {
           const error = new Error(
             `WebDAV request failed with status ${response.status}`
           )

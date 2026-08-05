@@ -1077,7 +1077,12 @@ module.exports = {
     ],
     sourceEditorToolbarStartButtons: [],
     sourceEditorToolbarButtonGroups: [],
-    sourceEditorToolbarComponents: [],
+    sourceEditorToolbarComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/webdav/frontend/js/components/webdav-project-conflict-notification.tsx'
+      ),
+    ],
     sourceEditorToolbarEndButtons: [],
     rootContextProviders: [],
     mainEditorLayoutModals: [

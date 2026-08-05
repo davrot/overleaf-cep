@@ -87,6 +87,24 @@ describe('WebdavClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('retries locked WebDAV responses before succeeding', async () => {
+    const client = new WebdavClient({
+      baseUrl: 'https://cloud.example/remote.php/dav/files/alice',
+      username: 'alice',
+      password: 'secret',
+      rootPath: '/Overleaf',
+    })
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 423 }))
+      .mockResolvedValueOnce(new Response(null, { status: 423 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+
+    const body = await client.get('/Overleaf/demo/main.tex')
+    expect(body.byteLength).to.equal(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
   it('uses If-Match when replacing a known remote file', async () => {
     const client = new WebdavClient({
       baseUrl: 'https://cloud.example/remote.php/dav/files/alice',

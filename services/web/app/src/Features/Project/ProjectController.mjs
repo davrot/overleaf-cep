@@ -327,9 +327,9 @@ const _ProjectController = {
 
     const project = await (template === 'example'
       ? ProjectCreationHandler.promises.createExampleProject(
-          userId,
-          projectName
-        )
+        userId,
+        projectName
+      )
       : ProjectCreationHandler.promises.createBasicProject(userId, projectName))
 
     ProjectAuditLogHandler.addEntryIfManagedInBackground(
@@ -569,11 +569,11 @@ const _ProjectController = {
         }),
         userIsMemberOfGroupSubscription: sessionUser
           ? (async () =>
-              (
-                await LimitationsManager.promises.userIsMemberOfGroupSubscription(
-                  sessionUser
-                )
-              ).isMember)()
+            (
+              await LimitationsManager.promises.userIsMemberOfGroupSubscription(
+                sessionUser
+              )
+            ).isMember)()
           : false,
         activeProfessionalGroupSubscriptions:
           SubscriptionLocator.promises.getUserActiveProfessionalGroupSubscriptions(
@@ -592,6 +592,14 @@ const _ProjectController = {
         userIsMemberOfGroupSubscription,
         activeProfessionalGroupSubscriptions,
       } = responses
+
+      if (userId) {
+        void Modules.promises.hooks
+          .fire('projectOpened', { userId, projectId })
+          .catch(error => {
+            logger.warn({ err: error, userId, projectId }, 'project-open hook failed')
+          })
+      }
 
       await Promise.all([
         InactiveProjectManager.promises.reactivateProjectIfRequired(project),
@@ -644,8 +652,8 @@ const _ProjectController = {
 
       const brandVariation = project?.brandVariationId
         ? await BrandVariationsHandler.promises.getBrandVariationById(
-            project.brandVariationId
-          )
+          project.brandVariationId
+        )
         : undefined
 
       const anonRequestToken = TokenAccessHandler.getRequestToken(
@@ -708,7 +716,7 @@ const _ProjectController = {
         Settings.wsUrlV2 &&
         Settings.wsUrlV2Percentage > 0 &&
         (new ObjectId(projectId).getTimestamp() / 1000) % 100 <
-          Settings.wsUrlV2Percentage
+        Settings.wsUrlV2Percentage
       ) {
         wsUrl = Settings.wsUrlV2
         metricName += '-v2'
@@ -926,7 +934,7 @@ const _ProjectController = {
 
       const shouldLoadHotjar =
         splitTestAssignments['compile-timeout-target-plans']?.variant ===
-          'enabled' &&
+        'enabled' &&
         !userHasPremiumSub &&
         !userInNonIndividualSub
 

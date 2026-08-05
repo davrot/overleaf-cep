@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLNotification from '@/shared/components/ol/ol-notification'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
+import getMeta from '@/utils/meta'
 
 type DropboxStatus = {
     linked?: boolean
@@ -16,6 +17,8 @@ type DropboxStatus = {
 }
 
 export default function DropboxWidget() {
+    const dropboxEnabled = getMeta('ol-ExposedSettings').dropboxEnabled
+
     const [status, setStatus] = useState<DropboxStatus>()
     const [loading, setLoading] = useState(true)
     const [working, setWorking] = useState(false)
@@ -33,8 +36,11 @@ export default function DropboxWidget() {
     }
 
     useEffect(() => {
+        if (!dropboxEnabled) return
         refresh()
-    }, [])
+    }, [dropboxEnabled])
+
+    if (!dropboxEnabled) return null
 
     const poll = async () => {
         setWorking(true)

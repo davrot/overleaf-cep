@@ -2,14 +2,16 @@ import DropboxSync from './app/src/DropboxSync.mjs'
 import DropboxCredentials from './app/src/DropboxCredentials.mjs'
 import DropboxRouter from './app/src/DropboxRouter.mjs'
 import Modules from '../../app/src/infrastructure/Modules.mjs'
+import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
 import {
     addOptionalCleanupHandlerBeforeStoppingTraffic,
 } from '../../app/src/infrastructure/GracefulShutdown.mjs'
 
-const enabled = process.env.DROPBOX_ENABLED?.toLowerCase() !== 'false'
+const enabled = process.env.DROPBOX_ENABLED?.toLowerCase() === 'true'
 
 if (enabled) {
+    Settings.dropbox = { enabled: true }
     Modules.hooks.attach('expireDeletedUser', userId => DropboxSync.unlink(userId))
     Modules.hooks.attach('removeDropbox', userId => DropboxSync.unlink(userId))
     Modules.hooks.attach('projectFlushed', projectId =>

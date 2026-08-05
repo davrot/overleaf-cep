@@ -37,7 +37,7 @@ async function status(req, res) {
       rootPath: credentials.rootPath,
       lastSyncAt: credentials.lastSyncAt || null,
       lastSyncError: credentials.lastSyncError || null,
-        lastConflict: credentials.lastConflict || null,
+      lastConflict: credentials.lastConflict || null,
     })
   } catch {
     return res.json({ connected: false, error: true })

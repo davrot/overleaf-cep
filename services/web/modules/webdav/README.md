@@ -8,6 +8,7 @@ Enable it with:
 WEBDAV_ENABLED=true
 WEBDAV_ROOT_PATH=/Overleaf
 WEBDAV_POLL_INTERVAL_MS=300000
+WEBDAV_LOCK_RETRY_COUNT=5
 ```
 
 `WEBDAV_ROOT_PATH` is relative to the configured WebDAV endpoint. For Nextcloud, `baseUrl` is typically a user endpoint such as:
@@ -15,6 +16,10 @@ WEBDAV_POLL_INTERVAL_MS=300000
 ```text
 https://cloud.example/remote.php/dav/files/alice
 ```
+
+Replace `alice` with the actual Nextcloud username. When a user opens an
+Overleaf project, WebDAV starts a background check and project sync in addition
+to the regular polling interval.
 
 The account credentials are encrypted before being stored in the module-owned `webdavUserCredentials` collection. Set `WEBDAV_TOKEN_CIPHER_PASSWORD` explicitly in production, or provide a persistent `WEBDAV_TOKEN_CIPHER_FILE`.
 
@@ -32,7 +37,8 @@ When connected, the status response also includes `lastSyncAt` and
 
 Transient WebDAV failures are retried with exponential backoff. The retry
 count and initial delay can be configured with `WEBDAV_RETRY_COUNT` and
-`WEBDAV_RETRY_DELAY_MS`.
+`WEBDAV_RETRY_DELAY_MS`; `423 Locked` responses use
+`WEBDAV_LOCK_RETRY_COUNT`.
 
 Outbound updates include `If-Match` for files with a known remote ETag, so a
 concurrent remote edit fails instead of being silently overwritten. Renaming
@@ -48,3 +54,7 @@ contains supported files. Conflicts are reported in the status widget and can
 be retried after resolving the remote change.
 
 Inbound polling creates and updates projects through the existing TPDS update handler. If a file is missing remotely, polling keeps the local entity and performs a forced outbound sync so the local project can restore the file on the WebDAV server. Polling stores WebDAV ETag metadata, falling back to modification time and size, so unchanged files are not downloaded again. Connecting performs an initial poll, and project modifications and full project flushes trigger automatic outbound synchronization for linked users with write access. Project renames move the corresponding WebDAV folder. Recently imported remote changes are temporarily suppressed per user and project from outbound re-sync to avoid poll/push loops. The module tracks successfully synchronized project names so deleted remote project folders can be reflected as externally deleted Overleaf projects without affecting unrelated local projects. The project sync route remains available for manual retries.
+
+If a server reports a changed ETag but the file bytes are identical, no external
+update is created. A temporarily locked file is deferred to a later poll instead
+of aborting the complete synchronization.

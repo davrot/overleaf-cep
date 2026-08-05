@@ -358,6 +358,14 @@ async function syncProjectForLinkedUsers(projectId) {
   }
 }
 
+async function syncProjectOnOpen(userId, projectId) {
+  if (!userId || !projectId) return
+  const credentials = await WebdavCredentials.get(userId)
+  if (!credentials) return
+  await pollUser(userId)
+  await syncProject(userId, projectId)
+}
+
 async function syncAllProjectsForUser(userId, { force = false } = {}) {
   const projects = await ProjectGetter.promises.findAllUsersProjects(
     userId,
@@ -540,6 +548,19 @@ async function pollUser(userId) {
       userId,
       projectName
     )
+    const localProject = projects.length === 1
+      ? await ProjectGetter.promises.getProject(projects[0]._id, {
+        overleaf: 1,
+      })
+      : null
+    const localEntities = localProject
+      ? await Promise.all([
+        ProjectEntityHandler.promises.getAllDocs(localProject._id),
+        ProjectEntityHandler.promises.getAllFiles(localProject._id),
+      ])
+      : [null, null]
+    const localDocs = localEntities[0]
+    const localFiles = localEntities[1]
     if (projects.length === 1) markInboundProject(userId, projects[0]._id)
     const remotePaths = new Set()
     const previousState = credentials.remoteState?.[projectName] || {}
@@ -565,10 +586,33 @@ async function pollUser(userId) {
         previousState[relativePath]?.modifiedAt === state.modifiedAt &&
         previousState[relativePath]?.size === state.size
       ) {
+        nextState[relativePath] = state
         return
       }
       changedFileCount++
-      const body = await client.get(entry.path)
+      let body
+      try {
+        body = await client.get(entry.path)
+      } catch (error) {
+        if (error.status === 423) {
+          logger.info(
+            { userId, projectName, path: relativePath },
+            'WebDAV file is locked; deferring remote update'
+          )
+          return
+        }
+        throw error
+      }
+      const localBody = localDocs?.[relativePath]
+        ? Buffer.from(localDocs[relativePath].lines.join('\n'))
+        : localFiles?.[relativePath] && localProject
+          ? Buffer.from(await getFileBody(localProject, localFiles[relativePath]))
+          : null
+      if (localBody && localBody.equals(Buffer.from(body))) {
+        nextState[relativePath] = state
+        return
+      }
+      nextState[relativePath] = state
       await TpdsUpdateHandler.promises.newUpdate(
         userId,
         null,
@@ -657,5 +701,6 @@ export default {
   syncProjectForLinkedUsers,
   moveEntityForLinkedUsers,
   deleteProjectForUsers,
+  syncProjectOnOpen,
   pollUser,
 }

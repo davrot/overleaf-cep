@@ -16,6 +16,7 @@ if (enabled) {
     rootPath: process.env.WEBDAV_ROOT_PATH || '/Overleaf',
     requestTimeoutMs: Number(process.env.WEBDAV_REQUEST_TIMEOUT_MS) || 10_000,
     retryCount: Number(process.env.WEBDAV_RETRY_COUNT) || 2,
+    lockRetryCount: Number(process.env.WEBDAV_LOCK_RETRY_COUNT) || 5,
     retryDelayMs: Number(process.env.WEBDAV_RETRY_DELAY_MS) || 250,
   }
 
@@ -29,6 +30,10 @@ if (enabled) {
 
   Modules.hooks.attach('projectFlushed', projectId =>
     WebdavSync.syncProjectForLinkedUsers(projectId)
+  )
+
+  Modules.hooks.attach('projectOpened', ({ userId, projectId }) =>
+    WebdavSync.syncProjectOnOpen(userId, projectId)
   )
 
   Modules.hooks.attach('projectCreated', projectId =>

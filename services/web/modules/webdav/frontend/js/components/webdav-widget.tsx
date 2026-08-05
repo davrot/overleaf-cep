@@ -226,10 +226,13 @@ export default function WebdavWidget() {
               className="form-control mb-2"
               value={form.baseUrl}
               onChange={event => updateField('baseUrl', event.target.value)}
-              placeholder="https://cloud.example/remote.php/dav/files/user"
+              placeholder="https://cloud.example/remote.php/dav/files/{username}"
               type="url"
               required
             />
+            <p className="small text-muted">
+              For Nextcloud, replace <code>{'{username}'}</code> with your actual Nextcloud username.
+            </p>
             <label className="form-label" htmlFor="webdav-username">Username</label>
             <input
               id="webdav-username"

@@ -55,5 +55,6 @@ export type ExposedSettings = {
   githubSyncEnabled: boolean
   zoteroEnabled: boolean
   webdavEnabled: boolean
+  dropboxEnabled: boolean
   enablePandocConversions: boolean
 }
