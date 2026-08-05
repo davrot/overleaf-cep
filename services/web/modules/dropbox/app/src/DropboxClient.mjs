@@ -2,7 +2,9 @@ import Settings from '@overleaf/settings'
 
 const API_URL = 'https://api.dropboxapi.com/2'
 const CONTENT_URL = 'https://content.dropboxapi.com/2'
-const OAUTH_URL = 'https://api.dropbox.com/oauth2'
+const AUTHORIZE_URL = 'https://www.dropbox.com/oauth2/authorize'
+const TOKEN_URL = 'https://api.dropbox.com/oauth2/token'
+const tokenRefreshes = new Map()
 
 function clientCredentials() {
     const clientId = Settings.dropbox?.appKey || process.env.DROPBOX_APP_KEY
@@ -33,7 +35,7 @@ async function responseBody(response) {
 
 async function exchangeCode(code, redirectUri) {
     const { clientId, clientSecret } = clientCredentials()
-    const response = await fetch(`${OAUTH_URL}/token`, {
+    const response = await fetch(TOKEN_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -49,8 +51,30 @@ async function exchangeCode(code, redirectUri) {
 }
 
 async function refreshAccessToken(credentials) {
+    const key = credentials.refreshToken
+    const pendingRefresh = tokenRefreshes.get(key)
+    if (pendingRefresh) {
+        const token = await pendingRefresh
+        credentials.accessToken = token.accessToken
+        credentials.expiresAt = token.expiresAt
+        return
+    }
+    const refresh = refreshAccessTokenUnlocked(credentials)
+    tokenRefreshes.set(key, refresh)
+    try {
+        const token = await refresh
+        credentials.accessToken = token.accessToken
+        credentials.expiresAt = token.expiresAt
+    } finally {
+        if (tokenRefreshes.get(key) === refresh) {
+            tokenRefreshes.delete(key)
+        }
+    }
+}
+
+async function refreshAccessTokenUnlocked(credentials) {
     const { clientId, clientSecret } = clientCredentials()
-    const response = await fetch(`${OAUTH_URL}/token`, {
+    const response = await fetch(TOKEN_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -62,10 +86,12 @@ async function refreshAccessToken(credentials) {
         signal: AbortSignal.timeout(10_000),
     })
     const token = await responseBody(response)
-    credentials.accessToken = token.access_token
-    credentials.expiresAt = token.expires_in
-        ? Date.now() + token.expires_in * 1000
-        : null
+    return {
+        accessToken: token.access_token,
+        expiresAt: token.expires_in
+            ? Date.now() + token.expires_in * 1000
+            : null,
+    }
 }
 
 async function request(credentials, url, options = {}, retry = true) {
@@ -121,7 +147,7 @@ async function rpc(credentials, path, body = {}) {
 
 async function getAuthorizeUrl(redirectUri, state) {
     const { clientId } = clientCredentials()
-    const url = new URL(`${OAUTH_URL}/authorize`)
+    const url = new URL(AUTHORIZE_URL)
     url.searchParams.set('client_id', clientId)
     url.searchParams.set('response_type', 'code')
     url.searchParams.set('token_access_type', 'offline')
@@ -180,6 +206,10 @@ async function download(credentials, path) {
     })
 }
 
+async function getMetadata(credentials, path) {
+    return rpc(credentials, '/files/get_metadata', { path })
+}
+
 async function createFolder(credentials, path) {
     return rpc(credentials, '/files/create_folder_v2', {
         path,
@@ -216,6 +246,7 @@ export default {
     getLatestCursor,
     upload,
     download,
+    getMetadata,
     createFolder,
     deletePath,
     movePath,

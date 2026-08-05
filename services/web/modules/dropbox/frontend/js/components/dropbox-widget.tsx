@@ -46,7 +46,7 @@ export default function DropboxWidget() {
         setWorking(true)
         setError(undefined)
         try {
-            await postJSON('/user/dropbox/poll')
+            await postJSON('/user/dropbox/sync')
             await refresh()
         } catch {
             setError('Dropbox synchronization failed.')
@@ -104,7 +104,7 @@ export default function DropboxWidget() {
                     <h4 id="dropbox">Dropbox</h4>
                 </div>
                 <p className="small">
-                    Synchronize project files with the Apps/Overleaf folder in Dropbox.
+                    Synchronize project files with the Dropbox app folder.
                 </p>
                 {error && <OLNotification type="error" content={error} />}
                 {status?.lastSyncError && (

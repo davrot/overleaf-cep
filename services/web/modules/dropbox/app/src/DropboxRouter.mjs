@@ -30,6 +30,11 @@ export default {
             AuthenticationController.requireLogin(),
             DropboxController.poll
         )
+        webRouter.post(
+            '/user/dropbox/sync',
+            AuthenticationController.requireLogin(),
+            DropboxController.sync
+        )
         webRouter.get(
             '/project/:project_id/dropbox/status',
             AuthenticationController.requireLogin(),

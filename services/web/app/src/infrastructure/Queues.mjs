@@ -71,6 +71,8 @@ const QUEUE_OPTIONS = {
   },
 }
 
+const SYNC_QUEUES = ['webdav-sync', 'dropbox-sync']
+
 const ANALYTICS_QUEUES = [
   'analytics-account-mapping',
   'analytics-email-change',
@@ -85,11 +87,11 @@ const ANALYTICS_QUEUES = [
 const queues = {}
 
 function getQueue(queueName) {
-  if (!Features.hasFeature('saas')) {
+  if (!Features.hasFeature('saas') && !SYNC_QUEUES.includes(queueName)) {
     // Disable bull queue handling for Server Pro/CE by providing a stub interface.
     return {
-      async add() {},
-      process() {},
+      async add() { },
+      process() { },
     }
   }
 

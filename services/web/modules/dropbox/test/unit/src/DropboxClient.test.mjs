@@ -22,7 +22,7 @@ describe('DropboxClient', () => {
         )
 
         const parsed = new URL(url)
-        expect(parsed.origin).to.equal('https://api.dropbox.com')
+        expect(parsed.origin).to.equal('https://www.dropbox.com')
         expect(parsed.pathname).to.equal('/oauth2/authorize')
         expect(parsed.searchParams.get('client_id')).to.equal('app-key')
         expect(parsed.searchParams.get('redirect_uri')).to.equal(
@@ -37,7 +37,7 @@ describe('DropboxClient', () => {
         )
         await DropboxClient.upload(
             { accessToken: 'token' },
-            '/Apps/Overleaf/project/main.tex',
+            '/project/main.tex',
             Buffer.from('content')
         )
         expect(fetch).toHaveBeenCalledWith(
@@ -50,7 +50,7 @@ describe('DropboxClient', () => {
         const headers = fetch.mock.calls[0][1].headers
         expect(headers.authorization).to.equal('Bearer token')
         expect(JSON.parse(headers['dropbox-api-arg']).path).to.equal(
-            '/Apps/Overleaf/project/main.tex'
+            '/project/main.tex'
         )
     })
 
@@ -76,7 +76,7 @@ describe('DropboxClient', () => {
             .mockResolvedValueOnce(new Response('{}', { status: 200 }))
         const content = await DropboxClient.download(
             { accessToken: 'token' },
-            '/Apps/Overleaf/project/main.tex'
+            '/project/main.tex'
         )
         await DropboxClient.revokeToken({ accessToken: 'token' })
         expect(Buffer.from(content).toString()).to.equal('file')

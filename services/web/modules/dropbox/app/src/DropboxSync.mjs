@@ -8,12 +8,112 @@ import Settings from '@overleaf/settings'
 import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
 import DropboxClient from './DropboxClient.mjs'
 import DropboxCredentials from './DropboxCredentials.mjs'
+import crypto from 'node:crypto'
+import SyncQueue from '../../../../app/src/infrastructure/SyncQueue.mjs'
 
-const ROOT = '/Apps/Overleaf'
-const syncingProjects = new Set()
+const ROOT = ''
+const projectSyncQueues = new Map()
 const pollingUsers = new Set()
 const recentlyInboundProjects = new Map()
 const recentlyInboundProjectNames = new Map()
+const LOCK_DIRECTORY = '/.sync-locks'
+const LEASE_MS = 60_000
+
+function lockPath(projectKey) {
+    return `${LOCK_DIRECTORY}/${encodeURIComponent(String(projectKey))}.json`
+}
+
+async function acquireLease(credentials, projectKey) {
+    await DropboxClient.createFolder(credentials, LOCK_DIRECTORY)
+        .catch(error => { if (error.status !== 409) throw error })
+    const path = lockPath(projectKey)
+    const token = crypto.randomUUID()
+    const lease = {
+        projectKey: String(projectKey),
+        token,
+        expiresAt: Date.now() + LEASE_MS,
+    }
+    try {
+        await DropboxClient.upload(credentials, path, JSON.stringify(lease), { '.tag': 'add' })
+    } catch (error) {
+        if (error.status !== 409) throw error
+        let current
+        try {
+            current = JSON.parse(Buffer.from(await DropboxClient.download(credentials, path)).toString())
+        } catch {
+            return null
+        }
+        if (current?.expiresAt > Date.now()) return null
+        const metadata = await DropboxClient.getMetadata(credentials, path).catch(() => null)
+        if (!metadata?.rev) return null
+        try {
+            await DropboxClient.upload(
+                credentials,
+                path,
+                JSON.stringify(lease),
+                { '.tag': 'update', update: metadata.rev }
+            )
+        } catch (takeoverError) {
+            if (takeoverError.status === 409) return null
+            throw takeoverError
+        }
+    }
+    const refresh = async () => {
+        const current = JSON.parse(Buffer.from(await DropboxClient.download(credentials, path)).toString())
+        if (current.token !== token) return
+        const metadata = await DropboxClient.getMetadata(credentials, path)
+        await DropboxClient.upload(
+            credentials,
+            path,
+            JSON.stringify({ ...current, expiresAt: Date.now() + LEASE_MS }),
+            { '.tag': 'update', update: metadata.rev }
+        )
+    }
+    const refreshTimer = setInterval(() => {
+        refresh().catch(() => { })
+    }, LEASE_MS / 3)
+    return async () => {
+        clearInterval(refreshTimer)
+        try {
+            const current = JSON.parse(Buffer.from(await DropboxClient.download(credentials, path)).toString())
+            if (current.token !== token) return
+            const metadata = await DropboxClient.getMetadata(credentials, path)
+            await DropboxClient.upload(
+                credentials,
+                path,
+                JSON.stringify({ ...current, expiresAt: 0 }),
+                { '.tag': 'update', update: metadata.rev }
+            )
+        } catch { }
+    }
+}
+
+async function withLease(credentials, projectKey, operation) {
+    let releaseLease
+    for (let attempt = 0; attempt < 12 && !releaseLease; attempt++) {
+        releaseLease = await acquireLease(credentials, projectKey)
+        if (!releaseLease) await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    if (!releaseLease) return false
+    try {
+        await operation()
+        return true
+    } finally {
+        await releaseLease()
+    }
+}
+
+function syncProjectQueued(userId, projectId) {
+    const key = userId.toString()
+    const previous = projectSyncQueues.get(key) || Promise.resolve()
+    const next = previous
+        .catch(() => { })
+        .then(() => flushProject(userId, projectId))
+    projectSyncQueues.set(key, next)
+    return next.finally(() => {
+        if (projectSyncQueues.get(key) === next) projectSyncQueues.delete(key)
+    })
+}
 
 function inboundProjectKey(userId, projectId) {
     return `${userId.toString()}:${projectId.toString()}`
@@ -117,80 +217,99 @@ async function uploadProjectFile(credentials, project, userId, filePath, body, r
 }
 
 async function syncProjectWithCredentials(credentials, project, userId, force = false) {
-    const { docs, files, entities } = await projectFiles(project)
-    const previousState = credentials.remoteState?.[project.name] || {}
-    await DropboxClient.createFolder(credentials, ROOT)
-        .catch(error => { if (error.status !== 409) throw error })
-    await DropboxClient.createFolder(credentials, remotePath(project.name))
-        .catch(error => { if (error.status !== 409) throw error })
-    for (const folder of entities.folders
-        .filter(folder => folder.path !== '/')
-        .sort((left, right) => left.path.length - right.path.length)) {
-        await DropboxClient.createFolder(
-            credentials,
-            remotePath(project.name, folder.path)
-        ).catch(error => { if (error.status !== 409) throw error })
+    let releaseLease
+    for (let attempt = 0; attempt < 12 && !releaseLease; attempt++) {
+        releaseLease = await acquireLease(credentials, project._id)
+        if (!releaseLease) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+        }
     }
-    const localPaths = new Set([...Object.keys(docs), ...Object.keys(files)])
-    const listing = await listAllEntries(credentials, remotePath(project.name))
-    for (const entry of listing) {
-        if (entry['.tag'] !== 'file') continue
-        const filePath = entry.path_display.slice(remotePath(project.name).length) || '/'
-        if (!localPaths.has(filePath) && previousState[filePath]?.rev) {
-            if (entry.rev === previousState[filePath].rev) {
-                await DropboxClient.deletePath(credentials, entry.path_display)
-            } else {
-                await DropboxCredentials.update(userId, {
-                    conflicts: {
-                        ...(credentials.conflicts || {}),
-                        [`${project.name}:${filePath}`]: {
-                            projectId: project._id.toString(),
-                            projectName: project.name,
-                            filePath,
-                            detectedAt: new Date().toISOString(),
-                            reason: 'remote-file-changed-before-local-delete',
+    if (!releaseLease) {
+        const error = new Error('Dropbox project lease is busy')
+        error.code = 'DROPBOX_LEASE_BUSY'
+        throw error
+    }
+    try {
+        const { docs, files, entities } = await projectFiles(project)
+        const previousState = credentials.remoteState?.[project.name] || {}
+        if (ROOT) {
+            await DropboxClient.createFolder(credentials, ROOT)
+                .catch(error => { if (error.status !== 409) throw error })
+        }
+        await DropboxClient.createFolder(credentials, remotePath(project.name))
+            .catch(error => { if (error.status !== 409) throw error })
+        for (const folder of entities.folders
+            .filter(folder => folder.path !== '/')
+            .sort((left, right) => left.path.length - right.path.length)) {
+            await DropboxClient.createFolder(
+                credentials,
+                remotePath(project.name, folder.path)
+            ).catch(error => { if (error.status !== 409) throw error })
+        }
+        const localPaths = new Set([...Object.keys(docs), ...Object.keys(files)])
+        const listing = await listAllEntries(credentials, remotePath(project.name))
+        for (const entry of listing) {
+            if (entry['.tag'] !== 'file') continue
+            const filePath = entry.path_display.slice(remotePath(project.name).length) || '/'
+            if (!localPaths.has(filePath) && previousState[filePath]?.rev) {
+                if (entry.rev === previousState[filePath].rev) {
+                    await DropboxClient.deletePath(credentials, entry.path_display)
+                } else {
+                    await DropboxCredentials.update(userId, {
+                        conflicts: {
+                            ...(credentials.conflicts || {}),
+                            [`${project.name}:${filePath}`]: {
+                                projectId: project._id.toString(),
+                                projectName: project.name,
+                                filePath,
+                                detectedAt: new Date().toISOString(),
+                                reason: 'remote-file-changed-before-local-delete',
+                            },
                         },
-                    },
-                })
+                    })
+                }
             }
         }
-    }
-    for (const [filePath, doc] of Object.entries(docs)) {
-        await uploadProjectFile(
-            credentials, project, userId, filePath,
-            Buffer.from(doc.lines.join('\n')),
-            previousState[filePath]?.rev,
-            force
+        for (const [filePath, doc] of Object.entries(docs)) {
+            await uploadProjectFile(
+                credentials, project, userId, filePath,
+                Buffer.from(doc.lines.join('\n')),
+                previousState[filePath]?.rev,
+                force
+            )
+        }
+        for (const [filePath, file] of Object.entries(files)) {
+            await uploadProjectFile(
+                credentials, project, userId, filePath,
+                await getHistoryFile(project, file),
+                previousState[filePath]?.rev,
+                force
+            )
+        }
+        const syncedListing = await listAllEntries(
+            credentials,
+            remotePath(project.name)
         )
-    }
-    for (const [filePath, file] of Object.entries(files)) {
-        await uploadProjectFile(
-            credentials, project, userId, filePath,
-            await getHistoryFile(project, file),
-            previousState[filePath]?.rev,
-            force
-        )
-    }
-    const syncedListing = await listAllEntries(
-        credentials,
-        remotePath(project.name)
-    )
-    const remoteState = {}
-    for (const entry of syncedListing) {
-        if (entry['.tag'] === 'file') {
-            remoteState[entry.path_display.slice(remotePath(project.name).length) || '/'] = {
-                rev: entry.rev,
+        const remoteState = {}
+        for (const entry of syncedListing) {
+            if (entry['.tag'] === 'file') {
+                remoteState[entry.path_display.slice(remotePath(project.name).length) || '/'] = {
+                    rev: entry.rev,
+                }
             }
         }
+        await DropboxCredentials.update(userId, {
+            remoteState: {
+                ...(credentials.remoteState || {}),
+                [project.name]: remoteState,
+            },
+            accessToken: credentials.accessToken,
+            expiresAt: credentials.expiresAt,
+        })
+        return true
+    } finally {
+        await releaseLease()
     }
-    await DropboxCredentials.update(userId, {
-        remoteState: {
-            ...(credentials.remoteState || {}),
-            [project.name]: remoteState,
-        },
-        accessToken: credentials.accessToken,
-        expiresAt: credentials.expiresAt,
-    })
 }
 
 async function syncProjectWithStatus(credentials, project, userId, force = false) {
@@ -215,47 +334,44 @@ async function syncProjectWithStatus(credentials, project, userId, force = false
 }
 
 async function flushProjects(userId) {
-    const credentials = await DropboxCredentials.get(userId)
-    if (!credentials) throw new Error('Dropbox is not connected')
     const projects = await ProjectGetter.promises.findAllUsersProjects(
         userId,
-        '_id archived trashed'
+        '_id name overleaf archived trashed'
     )
     const writableProjects = [
         ...projects.owned,
         ...projects.readAndWrite,
     ].filter(project => !project.archived && !project.trashed)
-    await Promise.all(
-        writableProjects.map(project =>
-            syncProjectWithStatus(credentials, project, userId)
-        )
-    )
+    for (const project of writableProjects) {
+        const credentials = await DropboxCredentials.get(userId)
+        if (!credentials) throw new Error('Dropbox is not connected')
+        await syncProjectWithStatus(credentials, project, userId)
+    }
+}
+
+async function syncUser(userId) {
+    await flushProjects(userId)
+    await pollUser(userId)
 }
 
 async function syncProjectForLinkedUsers(projectId) {
     const projectKey = projectId.toString()
-    if (syncingProjects.has(projectKey)) return
-    syncingProjects.add(projectKey)
-    try {
-        const users = await DropboxCredentials.getLinkedUserIds()
-        await Promise.allSettled(users.map(async userId => {
-            if (isRecentlyInbound(userId, projectId)) return
-            const projects = await ProjectGetter.promises.findAllUsersProjects(
-                userId,
-                '_id archived trashed'
-            )
-            const writableProjects = [...projects.owned, ...projects.readAndWrite]
-                .filter(project => !ProjectHelper.isArchivedOrTrashed(project, userId))
-            const project = writableProjects.find(
-                project => project._id.toString() === projectKey
-            )
-            if (project && !isRecentlyInboundName(userId, project.name)) {
-                await flushProject(userId, projectId)
-            }
-        }))
-    } finally {
-        syncingProjects.delete(projectKey)
-    }
+    const users = await DropboxCredentials.getLinkedUserIds()
+    await Promise.all(users.map(async userId => {
+        if (isRecentlyInbound(userId, projectId)) return
+        const projects = await ProjectGetter.promises.findAllUsersProjects(
+            userId,
+            '_id archived trashed'
+        )
+        const writableProjects = [...projects.owned, ...projects.readAndWrite]
+            .filter(project => !ProjectHelper.isArchivedOrTrashed(project, userId))
+        const project = writableProjects.find(
+            project => project._id.toString() === projectKey
+        )
+        if (project && !isRecentlyInboundName(userId, project.name)) {
+            await SyncQueue.enqueue('dropbox', userId, projectId)
+        }
+    }))
 }
 
 async function flushProject(userId, projectId) {
@@ -300,7 +416,7 @@ async function moveEntityForLinkedUsers(params) {
                 expiresAt: credentials.expiresAt,
             })
         }
-        await flushProject(userId, params.projectId)
+        await syncProjectQueued(userId, params.projectId)
     }))
 }
 
@@ -340,6 +456,7 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
             userId, project._id, project.name, filePath,
             Readable.from([Buffer.from(body)]), 'dropbox'
         )
+        await DocumentUpdaterHandler.promises.flushProjectToMongo(projectId)
         const remoteEntry = (await listAllEntries(
             credentials,
             remotePath(project.name)
@@ -360,7 +477,11 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
     }
     const conflicts = { ...(credentials.conflicts || {}) }
     delete conflicts[`${project.name}:${filePath}`]
-    await DropboxCredentials.update(userId, { conflicts })
+    await DropboxCredentials.update(userId, {
+        conflicts,
+        lastSyncError: null,
+        lastSyncAt: new Date().toISOString(),
+    })
 }
 
 async function connect(callbackUrl, state) {
@@ -375,17 +496,19 @@ async function completeRegistration(userId, code, callbackUrl) {
         expiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : null,
     }
     const account = await DropboxClient.getCurrentAccount(temporaryCredentials)
+    const cursor = await DropboxClient.getLatestCursor(temporaryCredentials, ROOT)
     await DropboxCredentials.save(userId, {
         ...temporaryCredentials,
         uid: account.account_id,
         displayName: account.name?.display_name,
-        cursor: null,
+        cursor: cursor.cursor,
     })
-    await DropboxClient.createFolder(temporaryCredentials, ROOT)
-        .catch(error => { if (error.status !== 409) throw error })
+    if (ROOT) {
+        await DropboxClient.createFolder(temporaryCredentials, ROOT)
+            .catch(error => { if (error.status !== 409) throw error })
+    }
     await flushProjects(userId)
-    const cursor = await DropboxClient.getLatestCursor(temporaryCredentials, ROOT)
-    await DropboxCredentials.update(userId, { cursor: cursor.cursor })
+    await pollUser(userId)
     return account
 }
 
@@ -410,92 +533,98 @@ async function pollUser(userId) {
         await DropboxCredentials.update(userId, { cursor: null, remoteState: {} })
         result = await DropboxClient.listFolder(credentials, ROOT)
     }
-    await DropboxCredentials.update(userId, {
-        cursor: result.cursor,
-        accessToken: credentials.accessToken,
-        expiresAt: credentials.expiresAt,
-    })
     const remoteState = { ...(credentials.remoteState || {}) }
     while (true) {
+        let leaseBusy = false
         for (const entry of result.entries || []) {
-            const match = entry.path_display.match(/^\/Apps\/Overleaf\/([^/]+)(?:\/(.*))?$/)
+            const match = entry.path_display.match(/^\/([^/]+)(?:\/(.*))?$/)
             if (!match) continue
             const projectName = match[1]
+            if (projectName === LOCK_DIRECTORY.slice(1)) continue
             const projectPath = match[2] ? `/${match[2]}` : '/'
-            if (entry.deleted) {
-                if (remoteState[projectName]) {
-                    if (projectPath === '/') delete remoteState[projectName]
-                    else delete remoteState[projectName][projectPath]
-                }
-                markInboundProjectName(userId, projectName)
-                const projects = await ProjectGetter.promises.findUsersProjectsByName(userId, projectName)
-                for (const project of projects) {
-                    if (projectPath === '/') {
-                        const [docs, files] = await Promise.all([
-                            ProjectEntityHandler.promises.getAllDocs(project._id),
-                            ProjectEntityHandler.promises.getAllFiles(project._id),
-                        ])
-                        for (const path of [...Object.keys(docs), ...Object.keys(files)]) {
+            const processed = await withLease(credentials, projectName, async () => {
+                if (entry.deleted) {
+                    if (remoteState[projectName]) {
+                        if (projectPath === '/') delete remoteState[projectName]
+                        else delete remoteState[projectName][projectPath]
+                    }
+                    markInboundProjectName(userId, projectName)
+                    const projects = await ProjectGetter.promises.findUsersProjectsByName(userId, projectName)
+                    for (const project of projects) {
+                        if (projectPath === '/') {
                             await TpdsUpdateHandler.promises.deleteUpdate(
-                                userId, project._id, project.name, path, 'dropbox'
+                                userId, project._id, project.name, '/', 'dropbox'
+                            )
+                        } else {
+                            await TpdsUpdateHandler.promises.deleteUpdate(
+                                userId, project._id, project.name, projectPath, 'dropbox'
                             )
                         }
-                    } else {
-                        await TpdsUpdateHandler.promises.deleteUpdate(
-                            userId, project._id, project.name, projectPath, 'dropbox'
+                    }
+                    return
+                }
+                if (entry['.tag'] === 'folder' && projectPath === '/') {
+                    const projects = await ProjectGetter.promises.findUsersProjectsByName(
+                        userId,
+                        projectName
+                    )
+                    if (projects.length === 0) {
+                        markInboundProjectName(userId, projectName)
+                        await ProjectCreationHandler.promises.createBlankProject(
+                            userId,
+                            projectName
                         )
                     }
+                    return
                 }
-                continue
-            }
-            if (entry['.tag'] === 'folder' && projectPath === '/') {
+                if (entry['.tag'] !== 'file') return
+                const body = await DropboxClient.download(credentials, entry.path_lower)
+                markInboundProjectName(userId, projectName)
                 const projects = await ProjectGetter.promises.findUsersProjectsByName(
                     userId,
                     projectName
                 )
-                if (projects.length === 0) {
-                    markInboundProjectName(userId, projectName)
-                    await ProjectCreationHandler.promises.createBlankProject(
+                const existingProject = projects.length === 1 ? projects[0] : null
+                if (existingProject) markInboundProject(userId, existingProject._id)
+                await TpdsUpdateHandler.promises.newUpdate(
+                    userId, null, projectName, projectPath,
+                    Readable.from([Buffer.from(body)]), 'dropbox'
+                )
+                if (!existingProject) {
+                    const createdProjects = await ProjectGetter.promises.findUsersProjectsByName(
                         userId,
                         projectName
                     )
+                    if (createdProjects.length === 1) {
+                        markInboundProject(userId, createdProjects[0]._id)
+                    }
                 }
-                continue
-            }
-            if (entry['.tag'] !== 'file') continue
-            const body = await DropboxClient.download(credentials, entry.path_lower)
-            markInboundProjectName(userId, projectName)
-            const projects = await ProjectGetter.promises.findUsersProjectsByName(
-                userId,
-                projectName
-            )
-            const existingProject = projects.length === 1 ? projects[0] : null
-            if (existingProject) markInboundProject(userId, existingProject._id)
-            await TpdsUpdateHandler.promises.newUpdate(
-                userId, null, projectName, projectPath,
-                Readable.from([Buffer.from(body)]), 'dropbox'
-            )
-            if (!existingProject) {
-                const createdProjects = await ProjectGetter.promises.findUsersProjectsByName(
-                    userId,
-                    projectName
-                )
-                if (createdProjects.length === 1) {
-                    markInboundProject(userId, createdProjects[0]._id)
+                remoteState[projectName] = {
+                    ...(remoteState[projectName] || {}),
+                    [projectPath]: { rev: entry.rev },
                 }
-            }
-            remoteState[projectName] = {
-                ...(remoteState[projectName] || {}),
-                [projectPath]: { rev: entry.rev },
+            })
+            if (!processed) {
+                leaseBusy = true
+                break
             }
         }
-        if (!result.has_more) break
-        result = await DropboxClient.listFolderContinue(credentials, result.cursor)
+        if (leaseBusy) {
+            await DropboxCredentials.update(userId, {
+                remoteState,
+                accessToken: credentials.accessToken,
+                expiresAt: credentials.expiresAt,
+            })
+            return result
+        }
         await DropboxCredentials.update(userId, {
             cursor: result.cursor,
+            remoteState,
             accessToken: credentials.accessToken,
             expiresAt: credentials.expiresAt,
         })
+        if (!result.has_more) break
+        result = await DropboxClient.listFolderContinue(credentials, result.cursor)
     }
     await DropboxCredentials.update(userId, {
         remoteState,
@@ -524,6 +653,7 @@ export default {
     unlink,
     poll,
     flushProjects,
+    syncUser,
     flushProject,
     syncProjectForLinkedUsers,
     moveEntityForLinkedUsers,

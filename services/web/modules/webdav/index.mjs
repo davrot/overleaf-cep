@@ -8,9 +8,23 @@ import WebdavRouter from './app/src/WebdavRouter.mjs'
 import WebdavCredentials from './app/src/WebdavCredentials.mjs'
 import WebdavSync from './app/src/WebdavSync.mjs'
 import NotificationsBuilder from '../../app/src/Features/Notifications/NotificationsBuilder.mjs'
+import SyncQueue from '../../app/src/infrastructure/SyncQueue.mjs'
 
 const enabled = process.env.WEBDAV_ENABLED?.toLowerCase() === 'true'
+const projectSyncTimers = new Map()
 
+function scheduleProjectSync(projectId) {
+  const key = projectId.toString()
+  const previousTimer = projectSyncTimers.get(key)
+  if (previousTimer) clearTimeout(previousTimer)
+  const timer = setTimeout(() => {
+    projectSyncTimers.delete(key)
+    WebdavSync.syncProjectForLinkedUsers(projectId).catch(error => {
+      logger.error({ err: error, projectId }, 'WebDAV modified project sync failed')
+    })
+  }, 1000)
+  projectSyncTimers.set(key, timer)
+}
 if (enabled) {
   Settings.webdav = {
     rootPath: process.env.WEBDAV_ROOT_PATH || '/Overleaf',
@@ -29,24 +43,30 @@ if (enabled) {
   )
 
   Modules.hooks.attach('projectFlushed', projectId =>
-    WebdavSync.syncProjectForLinkedUsers(projectId)
+    WebdavSync.syncProjectForLinkedUsers(projectId).catch(error => {
+      logger.error({ err: error, projectId }, 'WebDAV flushed project sync failed')
+    })
   )
 
   Modules.hooks.attach('projectOpened', ({ userId, projectId }) =>
     WebdavSync.syncProjectOnOpen(userId, projectId)
   )
 
-  Modules.hooks.attach('projectCreated', projectId =>
-    WebdavSync.syncProjectForLinkedUsers(projectId)
-  )
+  Modules.hooks.attach('projectCreated', projectId => {
+    setTimeout(() => {
+      WebdavSync.syncProjectForLinkedUsers(projectId).catch(error => {
+        logger.error({ err: error, projectId }, 'WebDAV project creation sync failed')
+      })
+    }, 1000)
+  })
 
   Modules.hooks.attach('projectDeleted', params =>
     WebdavSync.deleteProjectForUsers(params)
   )
 
-  Modules.hooks.attach('projectModified', ({ projectId }) =>
-    WebdavSync.syncProjectForLinkedUsers(projectId)
-  )
+  Modules.hooks.attach('projectModified', ({ projectId }) => {
+    scheduleProjectSync(projectId)
+  })
 
   Modules.hooks.attach('projectEntityMoved', params =>
     WebdavSync.moveEntityForLinkedUsers(params)
@@ -63,6 +83,9 @@ let pollTimer
 let pollInProgress = false
 
 async function start() {
+  SyncQueue.register('webdav', async ({ userId, projectId }) => {
+    await WebdavSync.syncProject(userId, projectId)
+  })
   const intervalMs = Number(process.env.WEBDAV_POLL_INTERVAL_MS) || 0
   if (!enabled || intervalMs <= 0) return
 

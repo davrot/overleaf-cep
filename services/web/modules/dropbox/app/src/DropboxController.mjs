@@ -54,6 +54,11 @@ async function poll(req, res) {
     res.sendStatus(204)
 }
 
+async function sync(req, res) {
+    await DropboxSync.syncUser(userId(req))
+    res.sendStatus(204)
+}
+
 async function projectStatus(req, res) {
     const credentials = await DropboxCredentials.get(userId(req))
     res.json({ linked: Boolean(credentials) })
@@ -80,6 +85,7 @@ export default {
     status: expressify(status),
     unlink: expressify(unlink),
     poll: expressify(poll),
+    sync: expressify(sync),
     projectStatus: expressify(projectStatus),
     syncProject: expressify(syncProject),
     resolveConflict: expressify(resolveConflict),

@@ -9,7 +9,7 @@ let encryptor
 function getEncryptor() {
     if (encryptor) return encryptor
     const file = process.env.DROPBOX_TOKEN_CIPHER_FILE || defaultFile
-    const label = process.env.DROPBOX_TOKEN_CIPHER_LABEL || 'OL_DROPBOX-v1'
+    const label = process.env.DROPBOX_TOKEN_CIPHER_LABEL || 'OL_DROPBOX-v3'
     const password = process.env.DROPBOX_TOKEN_CIPHER_PASSWORD
     let data
     if (password) {

@@ -38,7 +38,7 @@ export default function WebdavProjectConflictNotification() {
             await postJSON(`/project/${projectId}/webdav/conflict`, {
                 body: { path: conflict.path, resolution },
             })
-            await refresh()
+            setConflict(null)
         } finally {
             setWorking(false)
         }

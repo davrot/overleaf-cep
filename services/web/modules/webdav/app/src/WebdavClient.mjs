@@ -141,7 +141,7 @@ export default class WebdavClient {
         const maxRetries = response.status === 423 ? lockRetryCount : retryCount
         if (!retryable) {
           const error = new Error(
-            `WebDAV request failed with status ${response.status}`
+            `WebDAV request failed with status ${response.status} for ${resourcePath}`
           )
           error.status = response.status
           error.resourcePath = resourcePath
@@ -149,7 +149,7 @@ export default class WebdavClient {
         }
         if (attempt >= maxRetries) {
           const error = new Error(
-            `WebDAV request failed with status ${response.status}`
+            `WebDAV request failed with status ${response.status} for ${resourcePath}`
           )
           error.status = response.status
           error.resourcePath = resourcePath
@@ -230,11 +230,12 @@ export default class WebdavClient {
     }
   }
 
-  async put(resourcePath, body, { etag } = {}) {
+  async put(resourcePath, body, { etag, headers = {} } = {}) {
     const response = await this.request('PUT', resourcePath, {
       headers: {
         'content-type': 'application/octet-stream',
         ...(etag ? { 'if-match': etag } : {}),
+        ...headers,
       },
       body,
     })
@@ -246,9 +247,11 @@ export default class WebdavClient {
     return response.arrayBuffer()
   }
 
-  async remove(resourcePath) {
+  async remove(resourcePath, { etag } = {}) {
     try {
-      const response = await this.request('DELETE', resourcePath)
+      const response = await this.request('DELETE', resourcePath, {
+        headers: etag ? { 'if-match': etag } : {},
+      })
       return response.status
     } catch (error) {
       if (error.status === 404) return 404

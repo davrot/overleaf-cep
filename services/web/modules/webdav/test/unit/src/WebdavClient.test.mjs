@@ -33,6 +33,12 @@ describe('WebdavClient', () => {
     )
   })
 
+  it('does not duplicate the configured root in project paths', () => {
+    expect(remotePath('/Overleaf', 'Overleaf/Model-Notes', '/sample.bib')).to.equal(
+      '/Overleaf/Model-Notes/sample.bib'
+    )
+  })
+
   it('converts absolute WebDAV hrefs to endpoint-relative paths', () => {
     const xml = `<?xml version="1.0"?>
       <d:multistatus xmlns:d="DAV:">
