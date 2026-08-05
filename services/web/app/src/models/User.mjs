@@ -209,6 +209,12 @@ export const UserSchema = new Schema(
       zotero: Schema.Types.Mixed,
       papers: Schema.Types.Mixed,
     },
+    dropbox: {
+      access_token: {
+        uid: { type: String },
+        token: { type: String },
+      },
+    },
     writefull: {
       // whether we have attached an autocreated account or autoloading for the user
       initialized: { type: Boolean, default: false },

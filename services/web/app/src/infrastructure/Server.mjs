@@ -149,7 +149,12 @@ app.use(metrics.http.monitor(logger))
 
 await Modules.applyMiddleware(app, 'appMiddleware')
 app.use(bodyParser.urlencoded({ extended: true, limit: '2mb' }))
-app.use(bodyParser.json({ limit: Settings.max_json_request_size }))
+app.use(bodyParser.json({
+  limit: Settings.max_json_request_size,
+  verify: (req, _res, buffer) => {
+    req.rawBody = buffer
+  },
+}))
 // add explicit name for telemetry
 app.use(bearerTokenMiddleware())
 

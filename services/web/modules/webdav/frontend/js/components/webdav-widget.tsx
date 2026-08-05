@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLNotification from '@/shared/components/ol/ol-notification'
@@ -13,6 +13,7 @@ type WebdavStatus = {
   lastSyncError?: string | null
   lastConflict?: {
     projectId: string
+    projectName?: string
     path?: string | null
     detectedAt: string
   } | null
@@ -52,7 +53,7 @@ export default function WebdavWidget() {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string>()
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const nextStatus = await getJSON<WebdavStatus>('/user/webdav/status')
@@ -77,11 +78,11 @@ export default function WebdavWidget() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [t])
 
   useEffect(() => {
     refresh()
-  }, [])
+  }, [refresh])
 
   const updateField = (field: keyof WebdavForm, value: string) => {
     setForm(current => ({ ...current, [field]: value }))
@@ -174,6 +175,11 @@ export default function WebdavWidget() {
         )}
         {status?.lastConflict?.path && (
           <>
+            {status.lastConflict.projectName && (
+              <p className="small">
+                Project: <strong>{status.lastConflict.projectName}</strong>
+              </p>
+            )}
             <p className="small">
               Conflict path: <code>{status.lastConflict.path}</code>
             </p>

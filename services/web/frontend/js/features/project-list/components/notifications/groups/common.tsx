@@ -297,15 +297,83 @@ function CommonNotification({ notification }: CommonNotificationProps) {
         <Notification
           type={notification.messageOpts.event === 'recovered' ? 'info' : 'warning'}
           onDismiss={() => id && handleDismiss(id)}
-          title="WebDAV sync"
+          title={
+            notification.messageOpts.projectName
+              ? `WebDAV sync: ${notification.messageOpts.projectName}`
+              : 'WebDAV sync'
+          }
           content={
             notification.messageOpts.event === 'conflict'
-              ? `A conflict was detected${notification.messageOpts.path ? ` for ${notification.messageOpts.path}` : ''}. Choose which version to keep in WebDAV settings.`
+              ? `A conflict was detected${notification.messageOpts.path ? ` for ${notification.messageOpts.path}` : ''}. Choose which version to keep.`
               : notification.messageOpts.event === 'deleted'
                 ? 'A project or file was deleted remotely and removed from Overleaf.'
                 : notification.messageOpts.event === 'recovered'
                   ? 'WebDAV synchronization has recovered.'
                   : 'WebDAV synchronization is failing repeatedly.'
+          }
+          action={
+            notification.messageOpts.event === 'conflict' &&
+              notification.messageOpts.projectId &&
+              notification.messageOpts.path ? (
+              <>
+                <OLButton
+                  variant="secondary"
+                  isLoading={isLoading}
+                  disabled={isLoading}
+                  onClick={() =>
+                    runAsync(
+                      postJSON(
+                        `/project/${notification.messageOpts.projectId}/webdav/conflict`,
+                        {
+                          body: {
+                            path: notification.messageOpts.path,
+                            resolution: 'keep-remote',
+                          },
+                        }
+                      )
+                    )
+                      .then(() => id && handleDismiss(id))
+                      .catch(debugConsole.error)
+                  }
+                >
+                  Keep remote
+                </OLButton>
+                <OLButton
+                  variant="secondary"
+                  disabled={isLoading}
+                  onClick={() =>
+                    runAsync(
+                      postJSON(
+                        `/project/${notification.messageOpts.projectId}/webdav/conflict`,
+                        {
+                          body: {
+                            path: notification.messageOpts.path,
+                            resolution: 'keep-local',
+                          },
+                        }
+                      )
+                    )
+                      .then(() => id && handleDismiss(id))
+                      .catch(debugConsole.error)
+                  }
+                >
+                  Keep local
+                </OLButton>
+                <OLButton
+                  variant="secondary"
+                  href={`/project/${notification.messageOpts.projectId}`}
+                >
+                  Open project
+                </OLButton>
+              </>
+            ) : notification.messageOpts.projectId ? (
+              <OLButton
+                variant="secondary"
+                href={`/project/${notification.messageOpts.projectId}`}
+              >
+                Open project
+              </OLButton>
+            ) : undefined
           }
         />
       ) : (

@@ -42,6 +42,20 @@ function isRecentlyInbound(userId, projectId) {
 
 function putProjectFile(client, resourcePath, body, filePath, options) {
   return client.put(resourcePath, body, options).catch(error => {
+    if (error.status === 412) {
+      return client
+        .get(resourcePath)
+        .then(remoteBody => {
+          const localBody = Buffer.from(body)
+          if (Buffer.from(remoteBody).equals(localBody)) return 204
+          error.projectPath = filePath
+          throw error
+        })
+        .catch(() => {
+          error.projectPath = filePath
+          throw error
+        })
+    }
     error.projectPath = filePath
     throw error
   })
@@ -126,12 +140,23 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     client,
     projectRoot
   )
-  const existingRemoteByPath = new Map(
-    existingRemote.files.map(entry => [entry.path, entry])
+  const previousRemoteByPath = new Map(
+    Object.entries(credentials.remoteState?.[project.name] || {}).map(
+      ([filePath, state]) => [remotePath(rootPath, project.name, filePath), state]
+    )
   )
   for (const entry of existingRemote.files) {
     const relativePath = entry.path.slice(projectRoot.length) || '/'
     if (!localPaths.has(relativePath)) {
+      const previous = previousRemoteByPath.get(entry.path)
+      if (previous?.etag && entry.etag && previous.etag !== entry.etag) {
+        const error = new Error(
+          `remote WebDAV file changed before local deletion: ${relativePath}`
+        )
+        error.status = 412
+        error.projectPath = relativePath
+        throw error
+      }
       await client.remove(entry.path)
     }
   }
@@ -145,7 +170,7 @@ async function syncProject(userId, projectId, { force = false } = {}) {
   for (const [filePath, doc] of Object.entries(docs)) {
     const resourcePath = remotePath(rootPath, project.name, filePath)
     await putProjectFile(client, resourcePath, doc.lines.join('\n'), filePath, {
-      etag: force ? undefined : existingRemoteByPath.get(resourcePath)?.etag,
+      etag: force ? undefined : previousRemoteByPath.get(resourcePath)?.etag,
     })
   }
   for (const [filePath, file] of Object.entries(files)) {
@@ -155,9 +180,27 @@ async function syncProject(userId, projectId, { force = false } = {}) {
       resourcePath,
       await getFileBody(project, file),
       filePath,
-      { etag: force ? undefined : existingRemoteByPath.get(resourcePath)?.etag }
+      { etag: force ? undefined : previousRemoteByPath.get(resourcePath)?.etag }
     )
   }
+  const syncedRemote = await collectEntries(client, projectRoot)
+  await WebdavCredentials.updateRemoteState(
+    userId,
+    project.name,
+    Object.fromEntries(
+      syncedRemote.files.map(entry => [
+        entry.path.slice(projectRoot.length) || '/',
+        {
+          ...(credentials.remoteState?.[project.name]?.[
+            entry.path.slice(projectRoot.length) || '/'
+          ] || {}),
+          etag: entry.etag,
+          modifiedAt: entry.modifiedAt,
+          size: entry.size,
+        },
+      ])
+    )
+  )
   await WebdavCredentials.updateSyncStatus(userId, {
     lastSyncAt: new Date().toISOString(),
     lastSyncError: null,
@@ -227,6 +270,30 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
       throw new Error(`local WebDAV conflict path not found: ${localFilePath}`)
     }
   }
+  if (resolution === 'keep-local') {
+    await syncProject(userId, projectId, { force: true })
+    return
+  }
+  const remoteEntries = await collectEntries(client, projectRoot)
+  const remoteEntry = remoteEntries.files.find(
+    entry => entry.path === resourcePath
+  )
+  if (remoteEntry) {
+    const remoteState = { ...(credentials.remoteState || {}) }
+    remoteState[project.name] = {
+      ...(remoteState[project.name] || {}),
+      [localFilePath]: {
+        etag: remoteEntry.etag,
+        modifiedAt: remoteEntry.modifiedAt,
+        size: remoteEntry.size,
+      },
+    }
+    await WebdavCredentials.updateRemoteState(
+      userId,
+      project.name,
+      remoteState[project.name]
+    )
+  }
   await WebdavCredentials.updateSyncStatus(userId, {
     lastSyncAt: new Date().toISOString(),
     lastSyncError: null,
@@ -240,13 +307,16 @@ async function syncProjectForLinkedUsers(projectId) {
   syncingProjects.add(projectKey)
 
   try {
+    const project = await ProjectGetter.promises.getProject(projectId, {
+      name: 1,
+    })
     const users = await WebdavCredentials.getLinkedUserIds()
     const results = await Promise.allSettled(
       users.map(async userId => {
         if (isRecentlyInbound(userId, projectId)) return
         const projects = await ProjectGetter.promises.findAllUsersProjects(
           userId,
-          '_id archived trashed'
+          '_id name archived trashed'
         )
         const writableProjects = [
           ...projects.owned,
@@ -265,6 +335,7 @@ async function syncProjectForLinkedUsers(projectId) {
         const conflict = result.reason?.status === 412
           ? {
             projectId: projectId.toString(),
+            projectName: project.name,
             path: result.reason.projectPath || null,
             detectedAt: new Date().toISOString(),
           }
@@ -278,7 +349,7 @@ async function syncProjectForLinkedUsers(projectId) {
         await notifyWebdav(
           users[index],
           conflict ? 'conflict' : 'failure',
-          { projectId, path: conflict?.path }
+          { projectId, projectName: project.name, path: conflict?.path }
         )
       }
     }
@@ -312,10 +383,16 @@ async function syncAllProjectsForUser(userId, { force = false } = {}) {
         lastConflict: conflict
           ? {
             projectId: project._id.toString(),
+            projectName: project.name,
             path: result.reason.projectPath || null,
             detectedAt: new Date().toISOString(),
           }
           : null,
+      })
+      await notifyWebdav(userId, conflict ? 'conflict' : 'failure', {
+        projectId: project._id,
+        projectName: project.name,
+        path: conflict ? result.reason.projectPath : undefined,
       })
       logger.error(
         {
@@ -467,6 +544,7 @@ async function pollUser(userId) {
     const remotePaths = new Set()
     const previousState = credentials.remoteState?.[projectName] || {}
     const nextState = {}
+    let deletedProjectFileCount = 0
     await walk(client, projectRoot, async entry => {
       const relativePath = entry.path.slice(projectRoot.length) || '/'
       remotePaths.add(relativePath)
@@ -524,23 +602,15 @@ async function pollUser(userId) {
       for (const entity of [...entities.docs, ...entities.files]) {
         if (hasPreviousRemoteState && !remotePaths.has(entity.path)) {
           deletedFileCount++
-          await TpdsUpdateHandler.promises.deleteUpdate(
-            userId,
-            null,
-            projectName,
-            entity.path,
-            'webdav'
-          )
-          await notifyWebdav(userId, 'deleted', {
-            projectName,
-            projectId: projects[0]._id.toString(),
-            path: entity.path,
-          })
+          deletedProjectFileCount++
         }
       }
     }
     await WebdavCredentials.updateRemoteState(userId, projectName, nextState)
     await WebdavCredentials.markProjectSynced(userId, projectName)
+    if (projects.length === 1 && deletedProjectFileCount > 0) {
+      await syncProject(userId, projects[0]._id, { force: true })
+    }
   }
 
   for (const projectName of credentials.syncedProjects || []) {

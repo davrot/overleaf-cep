@@ -219,18 +219,16 @@ module.exports = {
   // options incase you want to run some services on remote hosts.
   apis: {
     web: {
-      url: `http://${
-        process.env.WEB_API_HOST || process.env.WEB_HOST || '127.0.0.1'
-      }:${process.env.WEB_API_PORT || process.env.WEB_PORT || 3000}`,
+      url: `http://${process.env.WEB_API_HOST || process.env.WEB_HOST || '127.0.0.1'
+        }:${process.env.WEB_API_PORT || process.env.WEB_PORT || 3000}`,
       user: httpAuthUser,
       pass: httpAuthPass,
     },
     documentupdater: {
-      url: `http://${
-        process.env.DOCUPDATER_HOST ||
+      url: `http://${process.env.DOCUPDATER_HOST ||
         process.env.DOCUMENT_UPDATER_HOST ||
         '127.0.0.1'
-      }:3003`,
+        }:3003`,
     },
     geoIpLookup: {
       cacheSize: intFromEnv('GEO_IP_LOOKUP_CACHE_SIZE', 10_000),
@@ -298,8 +296,7 @@ module.exports = {
     v1_history: {
       url:
         process.env.V1_HISTORY_URL ||
-        `http://${process.env.V1_HISTORY_HOST || '127.0.0.1'}:${
-          process.env.V1_HISTORY_PORT || '3100'
+        `http://${process.env.V1_HISTORY_HOST || '127.0.0.1'}:${process.env.V1_HISTORY_PORT || '3100'
         }/api`,
       urlForGitBridge: process.env.V1_HISTORY_URL_FOR_GIT_BRIDGE,
       user: process.env.V1_HISTORY_USER || 'staging',
@@ -859,7 +856,7 @@ module.exports = {
       .filter(x => x !== ''),
     trustedUsersRegex: process.env.CAPTCHA_TRUSTED_USERS_REGEX
       ? // Enforce matching of the entire input.
-        new RegExp(`^${process.env.CAPTCHA_TRUSTED_USERS_REGEX}$`)
+      new RegExp(`^${process.env.CAPTCHA_TRUSTED_USERS_REGEX}$`)
       : null,
     disabled: {
       invite: true,
@@ -1102,6 +1099,10 @@ module.exports = {
         __dirname,
         '../modules/webdav/frontend/js/components/webdav-widget.tsx'
       ),
+      Path.resolve(
+        __dirname,
+        '../modules/dropbox/frontend/js/components/dropbox-widget.tsx'
+      ),
     ],
     referenceLinkingWidgets: [
       Path.resolve(
@@ -1225,6 +1226,7 @@ module.exports = {
     'git-bridge',
     'github-sync',
     'webdav',
+    'dropbox',
     'zotero',
   ],
   viewIncludes: {},

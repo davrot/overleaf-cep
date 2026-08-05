@@ -14,13 +14,6 @@ function encodePath(value) {
     .join('/')
 }
 
-function child(element, localName) {
-  if (!element) return null
-  return Array.from(element.childNodes || []).find(
-    node => node.nodeType === 1 && (node.localName || node.nodeName).endsWith(localName)
-  )
-}
-
 function descendant(element, localName) {
   if (!element) return null
   return Array.from(
