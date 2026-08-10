@@ -3,7 +3,8 @@ import OError from '@overleaf/o-error'
 import logger from '@overleaf/logger'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 
-import WebdavHandler, { createWebdavClient } from './WebdavHandler.mjs'
+import WebdavHandler from './WebdavHandler.mjs'
+import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
 import ConflictResolver from './ConflictResolver.mjs'
 
@@ -117,11 +118,15 @@ async function listFiles(req, res) {
       return res.status(404).json({ message: 'Project not linked to WebDAV' })
     }
 
-    // Build remote path and list files using handler's createWebdavClient
+    // Build remote path and list files using WebDAVServiceClient
     const projectName = await getProjectName(projectId)
     const remoteRoot = WebdavPaths.remotePath(state.rootPath, projectName)
 
-    const client = createWebdavClient(state.baseUrl, state.username, '')
+    const client = new WebDAVServiceClient({
+      baseUrl: state.baseUrl,
+      username: state.username || '',
+      password: ''
+    })
     const files = (await client.list(remoteRoot) || []).filter(f => !f.isDirectory)
 
     return res.json({
@@ -266,7 +271,7 @@ async function resolveProjectConflict(req, res) {
 
 /**
  * Unlink a project from WebDAV (Express-wrapped)
- * Removes theassociation between an Overleaf project and its WebDAV folder.
+ * Removes the association between an Overleaf project and its WebDAV folder.
  * Does NOT delete the remote files - only clears local sync configuration.
  * 
  * @param {Object} req - Express request object, expects `project_id` in params
