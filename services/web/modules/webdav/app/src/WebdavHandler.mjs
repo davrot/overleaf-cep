@@ -27,8 +27,8 @@ async function getProjectState(projectId, { verifyConnection = true } = {}) {
   // Verify the connection is still valid (unless disabled)
   if (verifyConnection) {
     try {
-      const credentials = await WebdavTokenManager.getUserCredentials(state.userId || '') || state
-      const client = new WebDAVServiceClient(credentials)
+      // Use credentials from state directly ( baseUrl, username, password )
+      const client = new WebDAVServiceClient(state)
       await client.check()
       state.connected = true
     } catch (err) {
