@@ -1,50 +1,141 @@
-# WebDAV integration
+# WebDAV Integration
 
-This module provides an opt-in WebDAV integration for Nextcloud and other WebDAV servers.
+This module provides an opt-in WebDAV integration for Nextcloud, ownCloud, and other WebDAV-compliant servers.
 
-Enable it with:
+## Configuration
 
-```text
+### Required Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WEBDAV_ENABLED` | Enable/disable the WebDAV module | `true` or `false` (default: `false`) |
+| `WEBDAV_ROOT_PATH` | Base path within user's WebDAV home directory | `/Overleaf`, `/Nextcloud/Projects` |
+
+### Optional Environment Variables
+
+| Variable | Description | Example | Default |
+|----------|-------------|---------|--------|
+| `WEBDAV_TOKEN_CIPHER_PASSWORD` | Secret key for encrypting user credentials (REQUIRED in production) | `my-super-secret-key-123` | Generated on startup |
+| `WEBDAV_TOKEN_CIPHER_FILE` | Persistent file path for encryption keys | `/var/lib/overleaf/data/.webdav-token-cipher.json` | Auto-created |
+| `WEBDAV_RETRY_COUNT` | Max retry attempts for transient failures | `3` | `2` |
+| `WEBDAV_RETRY_DELAY_MS` | Initial delay between retries (ms) | `1000` | `100` |
+
+## Setup
+
+### 1. Enable the Module
+
+Add to your `.env` file:
+```bash
 WEBDAV_ENABLED=true
-WEBDAV_ROOT_PATH=/Overleaf
-WEBDAV_POLL_INTERVAL_MS=300000
 ```
 
-`WEBDAV_ROOT_PATH` is relative to the configured WebDAV endpoint. For Nextcloud, `baseUrl` is typically a user endpoint such as:
+### 2. Configure Encryption
 
-```text
-https://cloud.example/remote.php/dav/files/alice
+**For Development/Testing:**
+The system will auto-generate an encryption key and store it in `/var/lib/overleaf/data/.webdav-token-cipher.json`.
+
+**For Production (REQUIRED):**
+Set a secure password (minimum 16 characters recommended):
+```bash
+WEBDAV_TOKEN_CIPHER_PASSWORD=your-secure-password-minimum-16-chars
 ```
 
-The account credentials are encrypted before being stored in the module-owned `webdavUserCredentials` collection. Set `WEBDAV_TOKEN_CIPHER_PASSWORD` explicitly in production, or provide a persistent `WEBDAV_TOKEN_CIPHER_FILE`.
+### 3. Set WebDAV Connection
 
-Routes:
+Users connect via the settings widget or API:
+- **Nextcloud**: `https://nextcloud.example.com/remote.php/dav/files/USERNAME`
+- **OwnCloud**: `https://owncloud.example.com/remote.php/webdav/`
+- **General**: Your WebDAV server URL pointing to user's files directory
 
-- `POST /user/webdav/connect` with `baseUrl`, `username`, `password`, and optional `rootPath`
-- `GET /user/webdav/status`
-- `POST /user/webdav/disconnect`
-- `POST /user/webdav/poll`
-- `POST /project/:project_id/webdav/sync`
+## API Endpoints
 
-When connected, the status response also includes `lastSyncAt` and
-`lastSyncError` for the most recent synchronization attempt, plus
-`lastConflict` when an ETag-protected update detects a concurrent remote edit.
+### User Connection Management
 
-Transient WebDAV failures are retried with exponential backoff. The retry
-count and initial delay can be configured with `WEBDAV_RETRY_COUNT` and
-`WEBDAV_RETRY_DELAY_MS`.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/user/webdav/connect` | Connect user to WebDAV server |
+| `GET` | `/user/webdav/status` | Get connection status for current user |
+| `POST` | `/user/webdav/disconnect` | Disconnect from WebDAV |
 
-Outbound updates include `If-Match` for files with a known remote ETag, so a
-concurrent remote edit fails instead of being silently overwritten. Renaming
-a project also moves its persisted WebDAV sync state to the new name.
+### Project Synchronization
 
-Remote file state records the last known ETag, modification metadata, relative
-path, and reconciled local entity ID/type where available. This provides a
-stable basis for future external rename and conflict-resolution workflows.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/project/:id/webdav/state` | Get sync state for a project |
+| `POST` | `/project/:id/webdav/pull` | Pull remote changes into Overleaf |
+| `POST` | `/project/:id/webdav/push` | Push local changes to WebDAV |
+| `GET` | `/project/:id/webdav/files` | List files in project's WebDAV folder |
+| `POST` | `/project/:id/webdav/conflict/resolve` | Resolve a sync conflict |
 
-The settings widget is available only when `WEBDAV_ENABLED=true`. Empty
-remote folders are ignored; a remote project is created or updated when it
-contains supported files. Conflicts are reported in the status widget and can
-be retried after resolving the remote change.
+**Request Body Example (conflict resolution):**
+```json
+{
+  "path": "/report.tex",
+  "choice": "local"
+}
+```
 
-Inbound polling creates and updates projects through the existing TPDS update handler and reconciles deleted remote files. Polling stores WebDAV ETag metadata, falling back to modification time and size, so unchanged files are not downloaded again. Connecting performs an initial poll, and project modifications and full project flushes trigger automatic outbound synchronization for linked users with write access. Project renames move the corresponding WebDAV folder. Recently imported remote changes are temporarily suppressed per user and project from outbound re-sync to avoid poll/push loops. The module tracks successfully synchronized project names so deleted remote project folders can be reflected as externally deleted Overleaf projects without affecting unrelated local projects. The project sync route remains available for manual retries.
+## Sync Behavior
+
+### Manual Sync Operations
+
+- Click "Pull" to check for and download changes from WebDAV
+- Click "Push" to upload local Overleaf changes to WebDAV
+- Click "Sync" in the settings widget to trigger pull/push operations
+- Resolve conflicts via the conflict resolution dialog (keep local or remote)
+
+**Note**: The module uses manual triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
+
+## File Sync Strategy
+
+1. **Hash-based comparison** using SHA256 of file content
+2. **ETag handling**: Uses WebDAV ETag when available, falls back to hash comparison
+3. **Change detection**: Compares current project version with last synced version
+4. **De-duplication**: Files unchanged since last sync are not重新 downloaded
+
+## Conflict Resolution
+
+When a file is modified on both Overleaf and WebDAV:
+
+1. Detection occurs when you click Pull (ETag/hash comparison)
+2. Conflicts stored in project's `lastConflict` state
+3. User resolves by choosing to keep:
+   - **local**: Overleaf's current version
+   - **remote**: WebDAV's version
+
+## Encryption
+
+Credentials are encrypted using the [access-token-encryptor](https://github.com/overleaf/overleaf/tree/main/libraries/access-token-encryptor) library. Keys stored in:
+- Environment variable: `WEBDAV_TOKEN_CIPHER_PASSWORD` (environment)
+- File: `WEBDAV_TOKEN_CIPHER_FILE` or default `/var/lib/overleaf/data/.webdav-token-cipher.json`
+
+**Important**: If using file storage, ensure the path is persistent across container restarts!
+
+## Usage Example
+
+### Connect a User to WebDAV
+
+```javascript
+// Using curl
+curl -X POST http://localhost:3000/user/webdav/connect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseUrl": "https://nextcloud.example.com/remote.php/dav/files/alice",
+    "username": "alice",
+    "password": "app-password-or-password"
+  }'
+```
+
+### Pull Remote Changes
+
+```javascript
+// Using curl (must be authenticated)
+curl -X POST http://localhost:3000/project/12345/webdav/pull \
+  -H "Cookie: overleaf_session_id=..."
+```
+
+### Check Connection Status
+
+```javascript
+curl http://localhost:3000/user/webdav/status
+// Response: {"connected": true, "baseUrl": "...", "lastSyncAt": "..."}

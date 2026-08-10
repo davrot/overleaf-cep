@@ -1,10 +1,18 @@
 import Mongo from '../../../../app/src/Features/Helpers/Mongo.mjs'
-import WebdavUserCredentials from './models/webdavUserCredentials.mjs'
+import { WebdavUserCredentials } from '../models/webdavUserCredentials.mjs'
 import { decrypt, encrypt } from './WebdavTokenEncryption.mjs'
 
 const { normalizeQuery } = Mongo
 const credentialLocks = new Map()
 
+/**
+ * Executes an operation with a per-user lock to prevent race conditions.
+ * Used when updating user credentials to avoid concurrent modification issues.
+ * 
+ * @param {string} userId - The user ID to lock on
+ * @param {function} operation - Async function to execute while holding the lock
+ * @returns {Promise<any>} Result of the operation
+ */
 async function withUserLock(userId, operation) {
   const key = userId.toString()
   const previous = credentialLocks.get(key) || Promise.resolve()
@@ -22,6 +30,13 @@ async function withUserLock(userId, operation) {
   }
 }
 
+/**
+ * Get user's WebDAV credentials from the database.
+ * Returns null if no credentials exist for the user.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @returns {Promise<Object|null>} Decrypted credentials object or null
+ */
 async function get(userId) {
   const record = await WebdavUserCredentials.findOne(
     normalizeQuery({ userId })
@@ -30,6 +45,13 @@ async function get(userId) {
   return decrypt(record.credentials)
 }
 
+/**
+ * Encrypts and saves user's WebDAV credentials without acquiring a lock.
+ * Should be called within an existing withUserLock context.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {Object} credentials - Credentials to encrypt (baseUrl, username, password/token)
+ */
 async function saveUnlocked(userId, credentials) {
   const encrypted = await encrypt(credentials)
   await WebdavUserCredentials.findOneAndUpdate(
@@ -39,21 +61,44 @@ async function saveUnlocked(userId, credentials) {
   )
 }
 
+/**
+ * Encrypts and saves user's WebDAV credentials with proper locking.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {Object} credentials - Credentials to encrypt (baseUrl, username, password-token)
+ */
 async function save(userId, credentials) {
   return withUserLock(userId, () => saveUnlocked(userId, credentials))
 }
 
+/**
+ * Remove user's WebDAV credentials from the database.
+ *
+ * @param {string} userId - The Overleaf user ID
+ */
 async function remove(userId) {
   await withUserLock(userId, () =>
     WebdavUserCredentials.deleteOne(normalizeQuery({ userId }))
   )
 }
 
+/**
+ * Get all users with linked WebDAV accounts.
+ *
+ * @returns {Promise<Array<string>>} Array of user IDs as strings
+ */
 async function getLinkedUserIds() {
   const records = await WebdavUserCredentials.find({}, { userId: 1 }).lean()
   return records.map(record => record.userId.toString())
 }
 
+/**
+ * Marks a project as synced in the user's credentials.
+ * Adds the project name to the syncedProjects list to prevent re-syncing on poll.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {string} projectName - Name of the project that was synced
+ */
 async function markProjectSynced(userId, projectName) {
   await withUserLock(userId, async () => {
     const credentials = await get(userId)
@@ -67,6 +112,12 @@ async function markProjectSynced(userId, projectName) {
   })
 }
 
+/**
+ * Removes a project from the user's synced projects list.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {string} projectName - Name of the project to forget
+ */
 async function forgetProject(userId, projectName) {
   await withUserLock(userId, async () => {
     const credentials = await get(userId)
@@ -80,6 +131,14 @@ async function forgetProject(userId, projectName) {
   })
 }
 
+/**
+ * Updates the remote file state (ETags) for a project.
+ * Used to track which files were synchronized during sync operations.
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {string} projectName - Name of the project
+ * @param {Array} entries - Array of file entry objects with path and ETag info
+ */
 async function updateRemoteState(userId, projectName, entries) {
   await withUserLock(userId, async () => {
     const credentials = await get(userId)
@@ -94,26 +153,12 @@ async function updateRemoteState(userId, projectName, entries) {
   })
 }
 
-async function renameProject(userId, oldProjectName, newProjectName) {
-  await withUserLock(userId, async () => {
-    const credentials = await get(userId)
-    if (!credentials) return
-    const syncedProjects = new Set(credentials.syncedProjects || [])
-    syncedProjects.delete(oldProjectName)
-    syncedProjects.add(newProjectName)
-    const remoteState = { ...(credentials.remoteState || {}) }
-    if (remoteState[oldProjectName] && !remoteState[newProjectName]) {
-      remoteState[newProjectName] = remoteState[oldProjectName]
-    }
-    delete remoteState[oldProjectName]
-    await saveUnlocked(userId, {
-      ...credentials,
-      syncedProjects: [...syncedProjects],
-      remoteState,
-    })
-  })
-}
-
+/**
+ * Updates credential sync status (not full state update).
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {Object} status - Status object to merge into credentials
+ */
 async function updateSyncStatus(userId, status) {
   await withUserLock(userId, async () => {
     const credentials = await get(userId)
@@ -123,13 +168,58 @@ async function updateSyncStatus(userId, status) {
 }
 
 export default {
+  /**
+   * Get user's WebDAV credentials from the database.
+   * @param {string} userId - The Overleaf user ID
+   * @returns {Promise<Object|null>} Decrypted credentials object or null
+   */
   get,
+  
+  /**
+   * Encrypts and saves user's WebDAV credentials with proper locking.
+   * @param {string} userId - The Overleaf user ID
+   * @param {Object} credentials - Credentials to encrypt (baseUrl, username, password/token)
+   */
   save,
+  
+  /**
+   * Remove user's WebDAV credentials from the database.
+   * @param {string} userId - The Overleaf user ID
+   */
   remove,
+  
+  /**
+   * Get all users with linked WebDAV accounts.
+   * @returns {Promise<Array<string>>} Array of user IDs as strings
+   */
   getLinkedUserIds,
+  
+  /**
+   * Marks a project as synced in the user's credentials.
+   * @param {string} userId - The Overleaf user ID
+   * @param {string} projectName - Name of the project that was synced
+   */
   markProjectSynced,
+  
+  /**
+   * Removes a project from the user's synced projects list.
+   * @param {string} userId - The Overleaf user ID
+   * @param {string} projectName - Name of the project to forget
+   */
   forgetProject,
+  
+  /**
+   * Updates the remote file state (ETags) for a project.
+   * @param {string} userId - The Overleaf user ID
+   * @param {string} projectName - Name of the project
+   * @param {Array} entries - Array of file entry objects with path and ETag info
+   */
   updateRemoteState,
-  renameProject,
+  
+  /**
+   * Updates credential sync status.
+   * @param {string} userId - The Overleaf user ID
+   * @param {Object} status - Status object to merge into credentials
+   */
   updateSyncStatus,
 }

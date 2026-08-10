@@ -3,9 +3,21 @@ import fs from 'node:fs'
 import path from 'node:path'
 import AccessTokenEncryptorClass from '@overleaf/access-token-encryptor'
 
+/**
+ * Default file path for storing encryption credentials.
+ * Used when WEBDAV_TOKEN_CIPHER_FILE is not set in environment.
+ */
 const defaultFile = '/var/lib/overleaf/data/.webdav-token-cipher.json'
+
 let encryptor
 
+/**
+ * Gets or creates the crypto encryptor instance for WebDAV tokens.
+ * Reads from WEBDAV_TOKEN_CIPHER_PASSWORD env var if available, otherwise
+ * loads from file (creating it if needed).
+ * 
+ * @returns {AccessTokenEncryptorClass} The initialized encryptor instance
+ */
 function getEncryptor() {
   if (encryptor) return encryptor
 
@@ -34,10 +46,35 @@ function getEncryptor() {
   return encryptor
 }
 
+/**
+ * Encrypts WebDAV user credentials using the configured encryption method.
+ * Stores encrypted data in the webdavUserCredentials collection.
+ *
+ * @param {Object} credentials - The credentials to encrypt (userId, baseUrl, username, password)
+ * @returns {Promise<string>} Base64-encoded encrypted string
+ * 
+ * @example
+ * const encrypted = await encrypt({
+ *   userId: 'user123',
+ *   baseUrl: 'https://nextcloud.example.com/remote.php/dav',
+ *   username: 'alice',
+ *   password: 'secret'
+ * })
+ */
 export async function encrypt(credentials) {
   return getEncryptor().promises.encryptJson(credentials)
 }
 
+/**
+ * Decrypts WebDAV user credentials that were previously encrypted.
+ * Used when retrieving stored credentials from the database.
+ *
+ * @param {string} encryptedData - Base64-encoded encrypted string
+ * @returns {Promise<Object>} Decrypted credentials object
+ * 
+ * @example
+ * const credentials = await decrypt('eyJhbGciOi...')
+ */
 export async function decrypt(credentials) {
   return getEncryptor().promises.decryptToJson(credentials)
 }

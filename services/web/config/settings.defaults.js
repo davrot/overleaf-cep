@@ -201,6 +201,16 @@ module.exports = {
     },
   },
 
+  // Services configuration (for microservices)
+  // -----------------
+
+  datamanipulator: {
+    api_url: process.env.DATAMANIPULATOR_API_URL || 'http://localhost:4001',
+  },
+  webdavinterface: {
+    api_url: process.env.WEBDAVINTERFACE_API_URL || 'http://localhost:4002',
+  },
+
   // Service locations
   // -----------------
 
@@ -219,18 +229,16 @@ module.exports = {
   // options incase you want to run some services on remote hosts.
   apis: {
     web: {
-      url: `http://${
-        process.env.WEB_API_HOST || process.env.WEB_HOST || '127.0.0.1'
-      }:${process.env.WEB_API_PORT || process.env.WEB_PORT || 3000}`,
+      url: `http://${process.env.WEB_API_HOST || process.env.WEB_HOST || '127.0.0.1'
+        }:${process.env.WEB_API_PORT || process.env.WEB_PORT || 3000}`,
       user: httpAuthUser,
       pass: httpAuthPass,
     },
     documentupdater: {
-      url: `http://${
-        process.env.DOCUPDATER_HOST ||
+      url: `http://${process.env.DOCUPDATER_HOST ||
         process.env.DOCUMENT_UPDATER_HOST ||
         '127.0.0.1'
-      }:3003`,
+        }:3003`,
     },
     geoIpLookup: {
       cacheSize: intFromEnv('GEO_IP_LOOKUP_CACHE_SIZE', 10_000),
@@ -284,6 +292,12 @@ module.exports = {
     webpack: {
       url: `http://${process.env.WEBPACK_HOST || '127.0.0.1'}:3808`,
     },
+    datamanipulator: {
+      api_url: process.env.DATAMANIPULATOR_API_URL || 'http://localhost:4001',
+    },
+    webdavinterface: {
+      api_url: process.env.WEBDAVINTERFACE_API_URL || 'http://localhost:4002',
+    },
     wiki: {
       url: process.env.WIKI_URL || 'https://learnwiki.overleaf.com',
       maxCacheAge: parseInt(process.env.WIKI_MAX_CACHE_AGE || 5 * minutes, 10),
@@ -298,8 +312,7 @@ module.exports = {
     v1_history: {
       url:
         process.env.V1_HISTORY_URL ||
-        `http://${process.env.V1_HISTORY_HOST || '127.0.0.1'}:${
-          process.env.V1_HISTORY_PORT || '3100'
+        `http://${process.env.V1_HISTORY_HOST || '127.0.0.1'}:${process.env.V1_HISTORY_PORT || '3100'
         }/api`,
       urlForGitBridge: process.env.V1_HISTORY_URL_FOR_GIT_BRIDGE,
       user: process.env.V1_HISTORY_USER || 'staging',
@@ -859,7 +872,7 @@ module.exports = {
       .filter(x => x !== ''),
     trustedUsersRegex: process.env.CAPTCHA_TRUSTED_USERS_REGEX
       ? // Enforce matching of the entire input.
-        new RegExp(`^${process.env.CAPTCHA_TRUSTED_USERS_REGEX}$`)
+      new RegExp(`^${process.env.CAPTCHA_TRUSTED_USERS_REGEX}$`)
       : null,
     disabled: {
       invite: true,
@@ -1121,6 +1134,18 @@ module.exports = {
         '../modules/github-sync/frontend/js/components/import-from-github-menu.tsx'
       ),
     ],
+    importProjectFromWebdavModalWrapper: [
+      Path.resolve(
+        __dirname,
+        '../modules/webdav/frontend/js/components/import-from-webdav-modal-wrapper.tsx'
+      ),
+    ],
+    importProjectFromWebdavMenu: [
+      Path.resolve(
+        __dirname,
+        '../modules/webdav/frontend/js/components/import-from-webdav-menu.tsx'
+      ),
+    ],
     editorLeftMenuSync: [],
     editorLeftMenuManageTemplate: [],
     menubarExtraComponents: [
@@ -1189,6 +1214,10 @@ module.exports = {
       Path.resolve(
         __dirname,
         '../modules/zotero/frontend/js/components/zotero-integration-card.tsx'
+      ),
+      Path.resolve(
+        __dirname,
+        '../modules/webdav/frontend/js/components/webdav-integration-card.tsx'
       ),
     ],
     referenceSearchSetting: [],

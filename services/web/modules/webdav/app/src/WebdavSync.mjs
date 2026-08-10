@@ -9,7 +9,7 @@ import ProjectHelper from '../../../../app/src/Features/Project/ProjectHelper.mj
 import NotificationsBuilder from '../../../../app/src/Features/Notifications/NotificationsBuilder.mjs'
 import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
 import WebdavCredentials from './WebdavCredentials.mjs'
-import WebdavClient from './WebdavClient.mjs'
+import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import { remotePath } from './WebdavPaths.mjs'
 
 const syncingProjects = new Set()
@@ -101,7 +101,7 @@ async function syncProject(userId, projectId, { force = false } = {}) {
   })
   if (!project) throw new Error('project not found')
 
-  const client = new WebdavClient(credentials)
+  const client = new WebDAVServiceClient(credentials)
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   logger.info(
     { userId, projectId, projectName: project.name, rootPath, force },
@@ -195,7 +195,7 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
   })
   if (!project) throw new Error('project not found')
 
-  const client = new WebdavClient(credentials)
+  const client = new WebDAVServiceClient(credentials)
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   const projectRoot = remotePath(rootPath, project.name)
   const localFilePath = filePath.startsWith(`${projectRoot}/`)
@@ -362,7 +362,7 @@ async function moveEntityForLinkedUsers(params) {
 
       const credentials = await WebdavCredentials.get(userId)
       if (!credentials) return
-      const client = new WebdavClient(credentials)
+      const client = new WebDAVServiceClient(credentials)
       const rootPath = credentials.rootPath || Settings.webdav.rootPath
       try {
         await client.move(
@@ -397,7 +397,7 @@ async function deleteProjectForUsers({ projectId, projectName, userIds }) {
       if (!credentials || !credentials.syncedProjects?.includes(projectName)) {
         return
       }
-      const client = new WebdavClient(credentials)
+      const client = new WebDAVServiceClient(credentials)
       const rootPath = credentials.rootPath || Settings.webdav.rootPath
       const resourcePath = remotePath(rootPath, projectName)
       try {
@@ -448,7 +448,7 @@ async function pollUser(userId) {
   const startedAt = Date.now()
   const credentials = await WebdavCredentials.get(userId)
   if (!credentials) return
-  const client = new WebdavClient(credentials)
+  const client = new WebDAVServiceClient(credentials)
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   let changedFileCount = 0
   let deletedFileCount = 0

@@ -87,6 +87,30 @@ export default function WebdavWidget() {
     setForm(current => ({ ...current, [field]: value }))
   }
 
+  // Poll is no longer available in user settings - sync via project pages
+  // Note: resolve conflict is handled directly from the webdav-sync-modal
+
+  const disconnect = async () => {
+    setWorking(true)
+    setError(undefined)
+    try {
+      await postJSON('/user/webdav/disconnect')
+      setStatus({ connected: false })
+      setForm(current => ({
+        ...current,
+        baseUrl: '',
+        username: '',
+        password: '',
+        rootPath: '/Overleaf',
+      }))
+    } catch (disconnectError: any) {
+      logWebdavError('disconnect', disconnectError)
+      setError(disconnectError?.data?.message || disconnectError?.message || t('generic_something_went_wrong'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
   const connect = async () => {
     setWorking(true)
     setError(undefined)
@@ -101,58 +125,13 @@ export default function WebdavWidget() {
     }
   }
 
-  const poll = async () => {
-    setWorking(true)
-    setError(undefined)
-    try {
-      await postJSON('/user/webdav/poll')
-      await refresh()
-    } catch (pollError: any) {
-      logWebdavError('poll', pollError)
-      setError(pollError?.data?.message || pollError?.message || t('generic_something_went_wrong'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const disconnect = async () => {
-    setWorking(true)
-    setError(undefined)
-    try {
-      await postJSON('/user/webdav/disconnect')
-      setStatus({ connected: false })
-    } catch (disconnectError: any) {
-      logWebdavError('disconnect', disconnectError)
-      setError(disconnectError?.data?.message || disconnectError?.message || t('generic_something_went_wrong'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const resolveConflict = async (resolution: 'keep-local' | 'keep-remote') => {
-    if (!status?.lastConflict?.path || !status.lastConflict.projectId) return
-    setWorking(true)
-    setError(undefined)
-    try {
-      await postJSON(`/project/${status.lastConflict.projectId}/webdav/conflict`, {
-        body: { path: status.lastConflict.path, resolution },
-      })
-      await refresh()
-    } catch (conflictError: any) {
-      logWebdavError(`resolve conflict (${resolution})`, conflictError)
-      setError(conflictError?.data?.message || conflictError?.message || t('generic_something_went_wrong'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="settings-widget-container">
         <div className="d-none d-md-block" aria-hidden="true" />
         <div className="description-container">
           <h4>WebDAV</h4>
-          <p className="small">{t('loading')}…</p>
+          <p className="small">{t('loading')}...</p>
         </div>
       </div>
     )
@@ -172,29 +151,6 @@ export default function WebdavWidget() {
         {status?.lastSyncError && (
           <OLNotification type="error" content={status.lastSyncError} />
         )}
-        {status?.lastConflict?.path && (
-          <>
-            <p className="small">
-              Conflict path: <code>{status.lastConflict.path}</code>
-            </p>
-            <div className="d-flex gap-2 mb-2">
-              <OLButton
-                variant="secondary"
-                onClick={() => resolveConflict('keep-remote')}
-                disabled={working}
-              >
-                Keep remote
-              </OLButton>
-              <OLButton
-                variant="secondary"
-                onClick={() => resolveConflict('keep-local')}
-                disabled={working}
-              >
-                Keep local
-              </OLButton>
-            </div>
-          </>
-        )}
         {status?.connected ? (
           <>
             <p className="small">
@@ -203,14 +159,17 @@ export default function WebdavWidget() {
                 <> Last synchronized {new Date(status.lastSyncAt).toLocaleString()}.</>
               )}
             </p>
-            <div className="d-flex gap-2">
-              <OLButton variant="secondary" onClick={poll} disabled={working}>
-                {working ? t('loading') : 'Sync now'}
-              </OLButton>
-              <OLButton variant="danger-ghost" onClick={disconnect} disabled={working}>
-                Disconnect
-              </OLButton>
-            </div>
+            {/* Sync buttons moved to project pages */}
+            <p className="small text-muted mb-2">
+              To sync files, open a project and click the WebDAV icon in the integrations panel.
+            </p>
+            <OLButton
+              variant="danger-ghost"
+              onClick={disconnect}
+              disabled={working}
+            >
+              Disconnect
+            </OLButton>
           </>
         ) : (
           <>
