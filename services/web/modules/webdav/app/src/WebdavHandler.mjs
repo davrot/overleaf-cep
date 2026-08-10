@@ -1,4 +1,4 @@
-import { createWebdavClient } from './WebdavClient.mjs'
+import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import SyncStateManager from './SyncStateManager.mjs'
 import WebdavTokenManager from './WebdavTokenManager.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
@@ -9,8 +9,7 @@ async function getConnectionState(userId) {
     const credentials = await WebdavTokenManager.getUserCredentials(userId)
     if (!credentials) return false
     
-    const { baseUrl, username, password } = credentials
-    const client = createWebdavClient(baseUrl, username, password || '')
+    const client = new WebDAVServiceClient(credentials)
     await client.check()
     return true
   } catch (err) {
@@ -19,20 +18,23 @@ async function getConnectionState(userId) {
   }
 }
 
-async function getProjectState(projectId) {
+async function getProjectState(projectId, { verifyConnection = true } = {}) {
   let state = await SyncStateManager.getProjectState(projectId)
   if (!state) {
     return { connected: false }
   }
   
-  // Verify the connection is still valid
-  try {
-    const client = createWebdavClient(state.baseUrl, state.username || '', state.password || '')
-    await client.check()
-    state.connected = true
-  } catch (err) {
-    logger.warn({ err, projectId }, 'Failed to verify WebDAV connection status')
-    state.connected = false
+  // Verify the connection is still valid (unless disabled)
+  if (verifyConnection) {
+    try {
+      const credentials = await WebdavTokenManager.getUserCredentials(state.userId || '') || state
+      const client = new WebDAVServiceClient(credentials)
+      await client.check()
+      state.connected = true
+    } catch (err) {
+      logger.warn({ err, projectId }, 'Failed to verify WebDAV connection status')
+      state.connected = false
+    }
   }
   
   return state
@@ -66,7 +68,11 @@ async function importRemoteProject(userId, projectId, projectName, rootPath) {
   }
   
   const remoteRoot = WebdavPaths.remotePath(rootPath || state.rootPath, projectName)
-  const client = createWebdavClient(state.baseUrl, username, password, rootPath)
+  const client = new WebDAVServiceClient({
+    baseUrl: state.baseUrl,
+    username: username,
+    password: password
+  })
   
   // List files in the remote project folder
   let files
@@ -103,7 +109,7 @@ async function pushLocalChanges(userId, projectId) {
 }
 
 // Debug stub for polling WebDAV for changes
-async function pollRemoteSync(projectId) {
+async function pollRemoteSync(projectId, { force = false } = {}) {
   const state = await SyncStateManager.getProjectState(projectId)
   if (!state || !state.connected) {
     throw new Error('Project is not linked to WebDAV')
@@ -123,4 +129,4 @@ export default {
   pollRemoteSync,
 }
 
-export { SyncStateManager, WebdavTokenManager, createWebdavClient }
+export { SyncStateManager, WebdavTokenManager }
