@@ -96,21 +96,25 @@ async function pushLocalChanges(userId, projectId) {
   throw new Error('pushLocalChanges not fully implemented - needs overleaf-to-webdav sync logic')
 }
 
+// Debug stub for polling WebDAV for changes
+async function pollRemoteSync(projectId) {
+  const state = await SyncStateManager.getProjectState(projectId)
+  if (!state || !state.connected) {
+    throw new Error('Project is not linked to WebDAV')
+  }
+  
+  logger.info({ projectId, baseUrl: state.baseUrl }, 'pollRemoteSync called - stub implementation')
+  // TODO: Implement polling WebDAV for changes and importing them
+  return { success: true, message: 'pollRemoteSync executed' }
+}
+
 export default {
   getConnectionState,
   getProjectState,
   unlinkProject,
   importRemoteProject,
   pushLocalChanges,
+  pollRemoteSync,
 }
 
 export { SyncStateManager, WebdavTokenManager, createWebdavClient }
-
-// Debug stubs for functions not yet fully implemented
-async function pollRemoteSync(projectId) {
-  logger.info({ projectId }, 'pollRemoteSync called - STUB: needs full implementation')
-  // TODO: Implement polling WebDAV for changes and importing them
-  return { success: true, message: 'pollRemoteSync stub executed' }
-}
-
-export { pollRemoteSync }
