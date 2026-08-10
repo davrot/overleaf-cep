@@ -166,19 +166,17 @@ async function getProjectName(req, res) {
 }
 
 /**
- * Resolve a conflict by keeping local or remote version (Express-wrapped)
- * Marks a conflict as resolved and updates the project's sync state.
+ * Link a project to WebDAV (Express-wrapped)
  * 
- * @param {Object} req - Express request object, expects `project_id` in params
+ * @param {Object} req - Express request object
  * @param {Object} res - Express response object
- * @returns {Promise<void>} Sends JSON response with resolution result
  */
 async function linkProject(req, res) {
   const { project_id: projectId } = req.params
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    const { baseUrl, rootPath, username } = req.body || {}
+    const { baseUrl, rootPath, username, password } = req.body || {}
 
     if (!baseUrl || !rootPath) {
       return res.status(400).json({
@@ -197,12 +195,13 @@ async function linkProject(req, res) {
       logger.warn({ message: err.message, userId }, 'Could not fetch user credentials, Using provided username')
     }
 
-    // Create project sync state
+    // Create project sync state with all credentials
     await SyncStateManager.createProjectState(projectId, {
       connected: true,
       baseUrl,
       rootPath,
       username: actualUsername,
+      password: password || '',
       lastSyncAt: null,
       mergeStatus: 'clean'
     })
