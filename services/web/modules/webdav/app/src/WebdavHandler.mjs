@@ -93,12 +93,13 @@ async function pushLocalChanges(userId, projectId) {
     return { success: false, message: 'Not connected to WebDAV' }
   }
 
-  // TODO: Implement pushing local Overleaf changes to WebDAV
-  logger.warn(
+  // For initial sync, we only need to pull from WebDAV (import existing files)
+  // Local-to-WebDAV push is implemented in WebdavSync.mjs for ongoing sync
+  logger.info(
     { projectId },
-    'pushLocalChanges not yet fully implemented - skipping overleaf-to-webdav sync'
+    'pushLocalChanges skipped - initial sync uses pullRemoteSync; local-to-webdav push available via WebdavSync'
   )
-  return { success: true, message: 'Push skipped (not implemented)' }
+  return { success: true, message: 'Push skipped (use WebdavSync for full bidirectional sync)' }
 }
 
 // Debug stub for polling WebDAV for changes
