@@ -2,10 +2,6 @@ import { createClient } from 'webdav'
 import { validateAuth } from './auth.mjs'
 import logger from '@overleaf/logger'
 
-/**
- * Normalizes a file path for WebDAV compatibility.
- */
-
 export class WebDAVClient {
   constructor({ baseUrl, username, password }) {
     if (!validateAuth({ username, password })) {
@@ -21,7 +17,12 @@ export class WebDAVClient {
       throw new Error('WebDAV URL must use HTTP or HTTPS')
     }
 
-    const urlStr = `${parsed.protocol}//${parsed.username ? `${parsed.username}:${parsed.password}@` : ''}${parsed.host}${parsed.pathname.replace(/\/$/, '')}`
+    let authPart = ''
+    if (parsed.username && parsed.password) {
+      authPart = `${parsed.username}:${parsed.password}@`
+    }
+    
+    const urlStr = `${parsed.protocol}//${authPart}${parsed.host}${parsed.pathname.replace(/\/$/, '')}`
     
     this.client = createClient(urlStr, { username, password })
   }
@@ -153,13 +154,11 @@ export class WebDAVClient {
 
   async check() {
     try {
-      const exists = await this.client.exists(this.baseUrl)
-      if (!exists) {
-        throw new Error('Root path does not exist')
-      }
-      logger.debug({ rootPath: this.baseUrl }, 'WebDAV check completed')
+      // Check if the base URL exists by listing it
+      const items = await this.client.getDirectoryContents('/')
+      logger.debug({ rootPath: '/', itemCount: items.length }, 'WebDAV check completed')
     } catch (error) {
-      logger.error({ err: error, rootPath: this.baseUrl }, 'WebDAV check failed')
+      logger.error({ err: error, rootPath: '/' }, 'WebDAV check failed')
       throw error
     }
   }
