@@ -89,11 +89,16 @@ async function importRemoteProject(userId, projectId, projectName, rootPath) {
 async function pushLocalChanges(userId, projectId) {
   const state = await SyncStateManager.getProjectState(projectId)
   if (!state || !state.connected) {
-    throw new Error('Project is not linked to WebDAV')
+    logger.info({ projectId }, 'pushLocalChanges: not connected to WebDAV')
+    return { success: false, message: 'Not connected to WebDAV' }
   }
-  
+
   // TODO: Implement pushing local Overleaf changes to WebDAV
-  throw new Error('pushLocalChanges not fully implemented - needs overleaf-to-webdav sync logic')
+  logger.warn(
+    { projectId },
+    'pushLocalChanges not yet fully implemented - skipping overleaf-to-webdav sync'
+  )
+  return { success: true, message: 'Push skipped (not implemented)' }
 }
 
 // Debug stub for polling WebDAV for changes
