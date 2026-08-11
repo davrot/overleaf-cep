@@ -184,12 +184,12 @@ export default {
 
     // Get project's Dropbox sync state
     webRouter.get(
-      '/project/:id/dropbox/state',
+      '/project/:project_id/dropbox/state',
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
 
         try {
           const state = await DropboxSyncProjectStates.findOne({ projectId })
@@ -206,12 +206,12 @@ export default {
 
     // Link project to Dropbox
     webRouter.post(
-      '/project/:id/dropbox/link',
+      '/project/:project_id/dropbox/link',
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
         const { path } = req.body
 
         try {
@@ -257,12 +257,12 @@ export default {
 
     // Unlink project from Dropbox
     webRouter.delete(
-      '/project/:id/dropbox/state',
+      '/project/:project_id/dropbox/state',
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
 
         try {
           await DropboxSyncProjectStates.deleteOne({ projectId })
@@ -279,13 +279,13 @@ export default {
 
     // Pull remote changes into Overleaf
     webRouter.post(
-      '/project/:id/dropbox/pull',
+      '/project/:project_id/dropbox/pull',
       ensureUserCanWriteProjectContent,
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
 
         try {
           // Get project state and user credentials
@@ -312,13 +312,13 @@ export default {
 
     // Push local changes to Dropbox
     webRouter.post(
-      '/project/:id/dropbox/push',
+      '/project/:project_id/dropbox/push',
       ensureUserCanWriteProjectContent,
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
 
         try {
           const state = await DropboxSyncProjectStates.findOne({
@@ -343,13 +343,13 @@ export default {
 
     // List files in project's Dropbox folder
     webRouter.get(
-      '/project/:id/dropbox/files',
+      '/project/:project_id/dropbox/files',
       ensureUserCanWriteProjectContent,
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
 
         try {
           const state = await DropboxSyncProjectStates.findOne({
@@ -389,13 +389,13 @@ export default {
 
     // Resolve a sync conflict
     webRouter.post(
-      '/project/:id/dropbox/conflict/resolve',
+      '/project/:project_id/dropbox/conflict/resolve',
       ensureUserCanWriteProjectContent,
       async (req, res) => {
         const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-        const projectId = req.params.id
+        const projectId = req.params.project_id
         const { path, choice } = req.body
 
         try {

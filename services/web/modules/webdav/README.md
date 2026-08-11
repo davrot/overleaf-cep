@@ -61,11 +61,11 @@ Users connect via the settings widget or API:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/project/:id/webdav/state` | Get sync state for a project |
-| `POST` | `/project/:id/webdav/pull` | Pull remote changes into Overleaf |
-| `POST` | `/project/:id/webdav/push` | Push local changes to WebDAV |
-| `GET` | `/project/:id/webdav/files` | List files in project's WebDAV folder |
-| `POST` | `/project/:id/webdav/conflict/resolve` | Resolve a sync conflict |
+| `GET` | `/project/:project_id/webdav/state` | Get sync state for a project |
+| `POST` | `/project/:project_id/webdav/pull` | Pull remote changes into Overleaf |
+| `POST` | `/project/:project_id/webdav/push` | Push local changes to WebDAV |
+| `GET` | `/project/:project_id/webdav/files` | List files in project's WebDAV folder |
+| `POST` | `/project/:project_id/webdav/conflict/resolve` | Resolve a sync conflict |
 
 **Request Body Example (conflict resolution):**
 ```json
@@ -81,17 +81,17 @@ Users connect via the settings widget or API:
 
 - Click "Pull" to check for and download changes from WebDAV
 - Click "Push" to upload local Overleaf changes to WebDAV
-- Click "Sync" in the settings widget to trigger pull/push operations
+- Open a project and use the WebDAV card in the Integrations panel to trigger pull/push operations
 - Resolve conflicts via the conflict resolution dialog (keep local or remote)
 
-**Note**: The module uses manual triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
+**Note**: The module uses manual project-page triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
 
 ## File Sync Strategy
 
 1. **Hash-based comparison** using SHA256 of file content
 2. **ETag handling**: Uses WebDAV ETag when available, falls back to hash comparison
 3. **Change detection**: Compares current project version with last synced version
-4. **De-duplication**: Files unchanged since last sync are not重新 downloaded
+4. **De-duplication**: Files unchanged since the last sync are not downloaded again
 
 ## Conflict Resolution
 

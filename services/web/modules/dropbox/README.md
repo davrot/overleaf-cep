@@ -10,6 +10,14 @@ This module provides an opt-in Dropbox integration for Overleaf Community Editio
 |----------|-------------|---------|
 | `DROPBOX_ENABLED` | Enable/disable the Dropbox module | `true` or `false` (default: `false`) |
 | `DROPBOXINTERFACE_API_URL` | URL of the dropboxinterface microservice | `http://localhost:4003` |
+| `DROPBOX_APP_KEY` | Dropbox OAuth app key | `your-app-key` |
+| `DROPBOX_APP_SECRET` | Dropbox OAuth app secret | `your-app-secret` |
+
+The OAuth redirect URI configured in the Dropbox app must be:
+
+```
+https://your-overleaf-host/user/dropbox/oauth/callback
+```
 
 ## Setup
 
@@ -36,9 +44,10 @@ Or use the autostart script:
 
 ### 3. Configure Dropbox OAuth
 
-1. Create a Dropbox app at [https://www.dropbox.com/developers/apps](https://www.dropbox.com/developers/apps)
-2. Get your OAuth 2.0 access token or set up the OAuth flow
-3. Users can connect their Dropbox accounts via the settings widget
+1. Create a Dropbox app at [https://www.dropbox.com/developers/apps](https://www.dropbox.com/developers/apps).
+2. Set `DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET` in the Overleaf environment.
+3. Add `https://your-overleaf-host/user/dropbox/oauth/callback` to the Dropbox app's redirect URIs.
+4. Users can connect their Dropbox accounts from the settings widget. The server performs the OAuth code exchange and stores the access token encrypted; users do not paste an access token.
 
 ## API Endpoints
 
@@ -46,21 +55,23 @@ Or use the autostart script:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/user/dropbox/oauth2` | Start the Dropbox OAuth flow |
+| `GET` | `/user/dropbox/oauth/callback` | Complete OAuth and store the encrypted token |
 | `GET` | `/user/dropbox/status` | Get connection status for current user |
-| `POST` | `/user/dropbox/connect` | Connect user to Dropbox (accepts access_token) |
+| `POST` | `/user/dropbox/connect` | Legacy direct-token connection endpoint |
 | `POST` | `/user/dropbox/disconnect` | Disconnect from Dropbox |
 
 ### Project Synchronization
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/project/:id/dropbox/state` | Get sync state for a project |
-| `POST` | `/project/:id/dropbox/link` | Link project to user's Dropbox |
-| `DELETE` | `/project/:id/dropbox/state` | Unlink project from Dropbox |
-| `POST` | `/project/:id/dropbox/pull` | Pull remote changes into Overleaf |
-| `POST` | `/project/:id/dropbox/push` | Push local changes to Dropbox |
-| `GET` | `/project/:id/dropbox/files` | List files in project's Dropbox folder |
-| `POST` | `/project/:id/dropbox/conflict/resolve` | Resolve a sync conflict |
+| `GET` | `/project/:project_id/dropbox/state` | Get sync state for a project |
+| `POST` | `/project/:project_id/dropbox/link` | Link project to user's Dropbox |
+| `DELETE` | `/project/:project_id/dropbox/state` | Unlink project from Dropbox |
+| `POST` | `/project/:project_id/dropbox/pull` | Pull remote changes into Overleaf |
+| `POST` | `/project/:project_id/dropbox/push` | Push local changes to Dropbox |
+| `GET` | `/project/:project_id/dropbox/files` | List files in project's Dropbox folder |
+| `POST` | `/project/:project_id/dropbox/conflict/resolve` | Resolve a sync conflict |
 
 ## Sync Behavior
 
@@ -86,7 +97,7 @@ Or use the autostart script:
 
 ## Encryption
 
-Access tokens are stored encrypted in the database using AES-256-GCM encryption.
+OAuth access tokens are stored encrypted in the database using AES-256-GCM encryption.
 
 **Important**: The module uses `DROPBOXINTERFACE_API_URL` environment variable to connect to the dropboxinterface microservice, not token encryption (that's handled by the microservice).
 
@@ -95,10 +106,8 @@ Access tokens are stored encrypted in the database using AES-256-GCM encryption.
 ### Connect a User to Dropbox
 
 ```javascript
-// Using curl
-curl -X POST http://localhost:3000/user/dropbox/connect \
-  -H "Content-Type: application/json" \
-  -d '{"access_token": "sl.abc123..."}'
+// Start OAuth in a browser while authenticated
+open https://your-overleaf-host/user/dropbox/oauth2
 ```
 
 ### Pull Remote Changes
