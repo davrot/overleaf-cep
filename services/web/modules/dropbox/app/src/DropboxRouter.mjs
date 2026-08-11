@@ -8,6 +8,11 @@ import logger from '@overleaf/logger'
 import { randomBytes } from 'node:crypto'
 
 const { ensureUserCanWriteProjectContent } = AuthorizationMiddleware
+const DEFAULT_DROPBOX_PATH = 'Overleaf%20Dev'
+
+function normalizeDropboxPath(path) {
+  return path === '/Overleaf/Dropbox' || !path ? DEFAULT_DROPBOX_PATH : path
+}
 
 /**
  * Express router for Dropbox-related API endpoints.
@@ -17,7 +22,7 @@ export default {
    * Registers Dropbox routes on the provided webRouter.
    */
   apply(webRouter) {
-    const { rootPath, DROPBOX_APP_KEY: appKey, DROPBOX_APP_SECRET: appSecret } = process.env
+    const { DROPBOX_APP_KEY: appKey, DROPBOX_APP_SECRET: appSecret } = process.env
     const oauthRedirectPath = '/user/dropbox/oauth/callback'
 
     webRouter.get(
@@ -77,7 +82,10 @@ export default {
           const tokenData = await tokenResponse.json()
           await DropboxUserCredentials.findOneAndUpdate(
             { userId: req.user._id },
-            { accessToken: encryptToken(tokenData.access_token) },
+            {
+              accessToken: encryptToken(tokenData.access_token),
+              path: DEFAULT_DROPBOX_PATH,
+            },
             { upsert: true, new: true }
           )
           res.redirect('/user/settings')
@@ -110,16 +118,22 @@ export default {
             return res.status(500).json({ error: 'Token decryption failed' })
           }
 
+          const path = normalizeDropboxPath(credentials.path)
+          if (credentials.path !== path) {
+            credentials.path = path
+            await credentials.save()
+          }
+
           // Get project sync state for last sync info
           const projects = await DropboxSyncProjectStates.find(
-            { path: rootPath || '/Overleaf/Dropbox' },
+            { path },
             { projectId: 1, lastSyncAt: 1, lastSyncError: 1 }
           ).lean()
 
           res.json({
             connected: true,
             accessToken: 'set', // Don't expose full token
-            path: rootPath || '/Overleaf/Dropbox',
+            path,
             lastSyncAt: projects[0]?.lastSyncAt || null,
             lastSyncError: projects[0]?.lastSyncError || null,
           })
@@ -153,7 +167,7 @@ export default {
           const encryptedToken = encryptToken(access_token)
           await DropboxUserCredentials.findOneAndUpdate(
             { userId },
-            { accessToken: encryptedToken },
+            { accessToken: encryptedToken, path: DEFAULT_DROPBOX_PATH },
             { upsert: true, new: true }
           )
 
@@ -193,6 +207,10 @@ export default {
 
         try {
           const state = await DropboxSyncProjectStates.findOne({ projectId })
+          if (state?.path === '/Overleaf/Dropbox') {
+            state.path = DEFAULT_DROPBOX_PATH
+            await state.save()
+          }
           res.json(state || { connected: false })
         } catch (err) {
           logger.error(
@@ -212,8 +230,6 @@ export default {
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
         const projectId = req.params.project_id
-        const { path } = req.body
-
         try {
           // Verify user is connected to Dropbox first
           const credentials = await DropboxUserCredentials.findOne({ userId })
@@ -236,11 +252,17 @@ export default {
           const client = new DropboxClient({ accessToken })
           await client.checkConnection()
 
+          const dropboxPath = normalizeDropboxPath(credentials.path)
+          if (credentials.path !== dropboxPath) {
+            credentials.path = dropboxPath
+            await credentials.save()
+          }
+
           // Save project state
           const state = new DropboxSyncProjectStates({
             projectId,
             connected: true,
-            path: path || '/Overleaf/Dropbox',
+            path: dropboxPath,
           })
           await state.save()
 

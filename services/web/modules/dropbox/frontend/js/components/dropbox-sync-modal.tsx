@@ -126,7 +126,7 @@ function DropboxSyncModal({
       // Create project sync state with user's Dropbox configuration
       await postJSON(`/project/${projectId}/dropbox/link`, {
         body: {
-          path: userData.path || '/Overleaf/Dropbox',
+          path: userData.path || 'Overleaf%20Dev',
         },
       })
 
