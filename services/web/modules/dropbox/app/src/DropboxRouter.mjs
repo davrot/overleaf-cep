@@ -110,6 +110,12 @@ function isDropboxNotFound(error) {
   return error?.message?.includes('Not found')
 }
 
+function toRemoteFilesMap(remoteFiles = {}) {
+  return remoteFiles instanceof Map
+    ? remoteFiles
+    : new Map(Object.entries(remoteFiles))
+}
+
 async function importProjectFromDropbox({
   client,
   projectId,
@@ -519,7 +525,7 @@ export default {
           const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           state.lastSyncAt = new Date()
           state.lastSyncError = undefined
-          state.remoteFiles = remoteFiles
+          state.remoteFiles = toRemoteFilesMap(remoteFiles)
           await state.save()
 
           res.json({ success: true, path: state.path, ...syncResult })
@@ -608,7 +614,7 @@ export default {
             if (!err.message?.includes('Not found')) throw err
             await ProjectDeleter.promises.markAsDeletedByExternalSource(projectId)
             await state.updateOne({
-              remoteFiles: {},
+              remoteFiles: new Map(),
               lastSyncAt: new Date(),
               lastSyncError: null,
             })
@@ -623,10 +629,10 @@ export default {
             userId,
             projectName: project.name,
             previousFiles: state.remoteFiles,
-            remoteFiles: importResult.remoteFiles,
+            remoteFiles: toRemoteFilesMap(importResult.remoteFiles),
           })
           await state.updateOne({
-            remoteFiles: importResult.remoteFiles,
+            remoteFiles: toRemoteFilesMap(importResult.remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
@@ -689,7 +695,7 @@ export default {
           })
           const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           await state.updateOne({
-            remoteFiles,
+            remoteFiles: toRemoteFilesMap(remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
