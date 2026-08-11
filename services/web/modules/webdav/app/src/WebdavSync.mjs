@@ -152,7 +152,7 @@ async function syncProject(userId, projectId, { force = false } = {}) {
   for (const entry of existingRemote.files) {
     const relativePath = entry.path.slice(projectRoot.length) || '/'
     if (!localPaths.has(relativePath)) {
-      await client.remove(entry.path)
+      await client.removeRetry(entry.path)
     }
   }
   for (const directory of existingRemote.directories.sort(
@@ -160,7 +160,7 @@ async function syncProject(userId, projectId, { force = false } = {}) {
   )) {
     const relativePath = directory.path.slice(projectRoot.length) || '/'
     const localDirectory = entities.folders.some(folder => folder.path === relativePath)
-    if (!localDirectory) await client.remove(directory.path)
+    if (!localDirectory) await client.removeRetry(directory.path)
   }
   for (const [filePath, doc] of Object.entries(docs)) {
     const resourcePath = remotePath(rootPath, project.name, filePath)
@@ -421,7 +421,7 @@ async function deleteProjectForUsers({ projectId, projectName, userIds }) {
       const rootPath = credentials.rootPath || Settings.webdav.rootPath
       const resourcePath = remotePath(rootPath, projectName)
       try {
-        await client.remove(resourcePath)
+        await client.removeRetry(resourcePath)
         logger.info(
           { userId, projectId, projectName, resourcePath },
           'WebDAV project folder deleted'

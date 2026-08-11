@@ -5,7 +5,7 @@
  * Adapted from WebdavTokenEncryption for use with OAuth 2.0 access tokens.
  */
 
-import { createCipheriv, createDecipheriv } from 'crypto'
+import { createCipheriv, createDecipheriv, randomFillSync } from 'node:crypto'
 import logger from '@overleaf/logger'
 
 const ALGORITHM = 'aes-256-gcm'
@@ -22,7 +22,9 @@ export function getEncryptionKey() {
     if (password.length < 16) {
       logger.warn('WEBDAV_TOKEN_CIPHER_PASSWORD should be at least 16 characters for security')
     }
-    return Buffer.from(password, 'utf8').slice(0, 32)
+    const key = Buffer.alloc(32, 'x')
+    Buffer.from(password, 'utf8').copy(key, 0, 0, 32)
+    return key
   }
 
   logger.warn(
@@ -30,7 +32,7 @@ export function getEncryptionKey() {
   )
   // Generate deterministic key based on environment
   const envString = process.env.NODE_ENV || 'development'
-  return Buffer.from(envString.padEnd(32, 'x'), 'utf8')
+  return Buffer.from(envString.padEnd(32, 'x').slice(0, 32), 'utf8')
 }
 
 /**
@@ -43,7 +45,7 @@ export function encryptToken(token) {
 
   const key = getEncryptionKey()
   const iv = Buffer.alloc(IV_LENGTH)
-  require('crypto').randomFillSync(iv)
+  randomFillSync(iv)
 
   const cipher = createCipheriv(ALGORITHM, key, iv)
   let encrypted = cipher.update(token, 'utf8', 'base64')

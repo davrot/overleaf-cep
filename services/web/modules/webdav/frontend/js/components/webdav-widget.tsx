@@ -39,6 +39,26 @@ function logWebdavError(operation: string, error: any) {
   })
 }
 
+function formatLastSync(lastSyncAt: string) {
+  const elapsedSeconds = Math.round(
+    (Date.now() - new Date(lastSyncAt).getTime()) / 1000
+  )
+  const units = [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['week', 604_800],
+    ['day', 86_400],
+    ['hour', 3_600],
+    ['minute', 60],
+    ['second', 1],
+  ] as const
+  const [unit, unitSeconds] = units.find(([, seconds]) => Math.abs(elapsedSeconds) >= seconds) || units.at(-1)
+  return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
+    -Math.round(elapsedSeconds / unitSeconds),
+    unit
+  )
+}
+
 export default function WebdavWidget() {
   const { t } = useTranslation()
   const [status, setStatus] = useState<WebdavStatus>()
@@ -156,7 +176,7 @@ export default function WebdavWidget() {
             <p className="small">
               Connected to <strong>{status.baseUrl}</strong>.
               {status.lastSyncAt && (
-                <> Last synchronized {new Date(status.lastSyncAt).toLocaleString()}.</>
+                <> Last synchronized {formatLastSync(status.lastSyncAt)} ({new Date(status.lastSyncAt).toLocaleString()}).</>
               )}
             </p>
             {/* Sync buttons moved to project pages */}

@@ -260,11 +260,14 @@ export class WebDAVServiceClient {
         lastError = error
         
         // Retry on transient errors
+        const isTransientNetworkError = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET']
+          .includes(error.code) || error.message?.toLowerCase().includes('socket hang up')
         if (
           error.status === 423 ||
           error.status === 502 ||
           error.status === 503 ||
-          error.status === 504
+          error.status === 504 ||
+          isTransientNetworkError
         ) {
           const delay = this._retryDelayMs * Math.pow(2, attempt)
           await new Promise(resolve => setTimeout(resolve, delay))

@@ -12,8 +12,8 @@ if (process.env.DROPBOX_ENABLED?.toLowerCase() === 'true') {
     { DropboxUserCredentials },
   ] = await Promise.all([
     import('./app/src/DropboxRouter.mjs'),
-    import('./models/dropboxSyncProjectStates.mjs'),
-    import('./models/dropboxUserCredentials.mjs'),
+    import('./app/models/dropboxSyncProjectStates.mjs'),
+    import('./app/models/dropboxUserCredentials.mjs'),
   ])
 
   // Set Settings.dropbox for frontend exposure

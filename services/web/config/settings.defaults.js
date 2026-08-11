@@ -1223,6 +1223,10 @@ module.exports = {
         __dirname,
         '../modules/webdav/frontend/js/components/webdav-integration-card.tsx'
       ),
+      Path.resolve(
+        __dirname,
+        '../modules/dropbox/frontend/js/components/dropbox-integration-card.tsx'
+      ),
     ],
     referenceSearchSetting: [],
     settingsModalEditorTabSections: [],
