@@ -72,6 +72,7 @@ Or use the autostart script:
 | `POST` | `/project/:project_id/dropbox/push` | Push local changes to Dropbox |
 | `GET` | `/project/:project_id/dropbox/files` | List files in project's Dropbox folder |
 | `POST` | `/project/:project_id/dropbox/conflict/resolve` | Resolve a sync conflict |
+| `POST` | `/project/new/dropbox` | Create an Overleaf project from a remote Dropbox folder |
 
 ## Sync Behavior
 
@@ -79,15 +80,18 @@ Or use the autostart script:
 
 - Click "Pull" to check for and download changes from Dropbox
 - Click "Push" to upload local Overleaf changes to Dropbox
-- Conflict detection using Dropbox's `rev` property
+- Remote file deletion detection based on the previous Dropbox snapshot
+- Missing remote project folders are marked as deleted by the external source
+- New-project import downloads the selected remote folder through the TPDS import pipeline
 
 **Note**: The module uses manual triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
 
 ## File Sync Strategy
 
-1. **Revision-based comparison** using Dropbox's `rev` property (like ETags for WebDAV)
-2. Change detection: Compares current project version with last synced version
-3. Conflict resolution: User chooses to keep local or remote version
+1. **Revision snapshots** store Dropbox's `rev` property for each remote file
+2. **Change detection** compares the current listing with the last successful pull
+3. **Deletion detection** removes previously synced Overleaf entities missing from Dropbox
+4. **Conflict metadata** retains revision information for future conflict resolution
 
 ## Frontend Components
 
@@ -99,7 +103,7 @@ Or use the autostart script:
 
 OAuth access tokens are stored encrypted in the database using AES-256-GCM encryption.
 
-**Important**: The module uses `DROPBOXINTERFACE_API_URL` environment variable to connect to the dropboxinterface microservice, not token encryption (that's handled by the microservice).
+**Important**: The module uses `DROPBOXINTERFACE_API_URL` to connect to the dropboxinterface microservice. Dropbox OAuth tokens are encrypted by the web module using the shared `WEBDAV_TOKEN_CIPHER_PASSWORD` key; the microservice receives the token only for API operations.
 
 ## Usage Example
 

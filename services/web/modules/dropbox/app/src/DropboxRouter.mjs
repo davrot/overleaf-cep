@@ -5,8 +5,10 @@ import DropboxClient from './DropboxClient.mjs'
 import AuthorizationMiddleware from '../../../../app/src/Features/Authorization/AuthorizationMiddleware.mjs'
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 import ProjectGetter from '../../../../app/src/Features/Project/ProjectGetter.mjs'
+import ProjectDeleter from '../../../../app/src/Features/Project/ProjectDeleter.mjs'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import EditorController from '../../../../app/src/Features/Editor/EditorController.mjs'
+import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
 import HistoryManager from '../../../../app/src/Features/History/HistoryManager.mjs'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
@@ -36,6 +38,15 @@ function joinDropboxPath(...parts) {
     .filter(Boolean)
     .join('/')
   return path ? `/${path}` : '/'
+}
+
+function relativeDropboxPath(projectPath, entry) {
+  const prefix = `${projectPath.replace(/^\//, '')}/`
+  const remotePath = entry.relative_path || entry.path_display || entry.name
+  const relativePath = remotePath.startsWith(prefix)
+    ? remotePath.slice(prefix.length)
+    : entry.name
+  return `/${relativePath.replace(/^\/+/, '')}`
 }
 
 async function streamToBuffer(stream) {
@@ -115,17 +126,23 @@ async function importProjectFromDropbox({
     listing = await client.list(projectPath, { recursive: true })
   }
   const entries = (listing.entries || []).filter(entry => entry.type === 'file')
+  const remoteFiles = Object.fromEntries(
+    entries.map(entry => [
+      relativeDropboxPath(projectPath, entry),
+      {
+        rev: entry.rev,
+        size: entry.size,
+        modifiedAt: entry.client_modified || entry.server_modified,
+      },
+    ])
+  )
   let importedFiles = 0
   const temporaryFiles = []
 
   try {
     for (const entry of entries) {
-      const remotePath = entry.relative_path
-      const prefix = `${projectPath.replace(/^\//, '')}/`
-      const relativePathWithoutRoot = remotePath.startsWith(prefix)
-        ? remotePath.slice(prefix.length)
-        : entry.name
-      const relativePath = `/${relativePathWithoutRoot.replace(/^\/+/, '')}`
+      const remotePath = entry.relative_path || entry.path_display
+      const relativePath = relativeDropboxPath(projectPath, entry)
       const result = await client.download(`/${remotePath}`)
       if (!result?.content_base64) {
         throw new Error(`Dropbox returned no content for ${remotePath}`)
@@ -162,7 +179,66 @@ async function importProjectFromDropbox({
     await Promise.all(temporaryFiles.map(file => fs.rm(file, { force: true })))
   }
 
-  return { projectPath, importedFiles }
+  return { projectPath, importedFiles, remoteFiles }
+}
+
+async function importNewProjectFromDropbox({ client, userId, projectName, rootPath }) {
+  const projectPath = joinDropboxPath(rootPath, projectName)
+  const listing = await client.list(projectPath, { recursive: true })
+  const entries = (listing.entries || []).filter(entry => entry.type === 'file')
+  let importedFiles = 0
+  for (const entry of entries) {
+    const relativePath = relativeDropboxPath(projectPath, entry)
+    const remotePath = entry.relative_path || entry.path_display
+    const result = await client.download(`/${remotePath}`)
+    if (!result?.content_base64) {
+      throw new Error(`Dropbox returned no content for ${remotePath}`)
+    }
+    await TpdsUpdateHandler.promises.newUpdate(
+      userId,
+      null,
+      projectName,
+      relativePath,
+      Readable.from([Buffer.from(result.content_base64, 'base64')]),
+      'dropbox'
+    )
+    importedFiles += 1
+  }
+  return { importedFiles }
+}
+
+async function getDropboxRemoteFiles(client, projectPath) {
+  const listing = await client.list(projectPath, { recursive: true })
+  return Object.fromEntries(
+    (listing.entries || [])
+      .filter(entry => entry.type === 'file')
+      .map(entry => [relativeDropboxPath(projectPath, entry), {
+        rev: entry.rev,
+        size: entry.size,
+        modifiedAt: entry.client_modified || entry.server_modified,
+      }])
+  )
+}
+
+async function reconcileDropboxDeletions({ userId, projectName, previousFiles, remoteFiles }) {
+  const previousEntries = previousFiles instanceof Map
+    ? Object.fromEntries(previousFiles.entries())
+    : previousFiles
+  if (!previousEntries || Object.keys(previousEntries).length === 0) return 0
+  const currentPaths = new Set(Object.keys(remoteFiles))
+  let deletedFiles = 0
+  for (const filePath of Object.keys(previousEntries)) {
+    if (currentPaths.has(filePath)) continue
+    await TpdsUpdateHandler.promises.deleteUpdate(
+      userId,
+      null,
+      projectName,
+      filePath,
+      'dropbox'
+    )
+    deletedFiles += 1
+  }
+  return deletedFiles
 }
 
 /**
@@ -432,8 +508,10 @@ export default {
             projectId,
             rootPath: dropboxPath,
           })
+          const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           state.lastSyncAt = new Date()
           state.lastSyncError = undefined
+          state.remoteFiles = remoteFiles
           await state.save()
 
           res.json({ success: true, path: state.path, ...importResult, ...syncResult })
@@ -483,7 +561,7 @@ export default {
           // Get project state and user credentials
           const state = await DropboxSyncProjectStates.findOne({
             projectId,
-          }).select('path connected')
+          }).select('path connected remoteFiles')
           if (!state || !state.connected) {
             return res.status(409).json({
               error: 'Project not linked to Dropbox',
@@ -509,19 +587,43 @@ export default {
             state.path = dropboxPath
             await state.save()
           }
-          const importResult = await importProjectFromDropbox({
-            client,
-            projectId,
+          let importResult
+          try {
+            importResult = await importProjectFromDropbox({
+              client,
+              projectId,
+              userId,
+              rootPath: dropboxPath,
+              legacyRootPath: LEGACY_DROPBOX_PATH,
+            })
+          } catch (err) {
+            if (!err.message?.includes('Not found')) throw err
+            await ProjectDeleter.promises.markAsDeletedByExternalSource(projectId)
+            await state.updateOne({
+              remoteFiles: {},
+              lastSyncAt: new Date(),
+              lastSyncError: null,
+            })
+            return res.json({
+              success: true,
+              message: 'Remote project deleted',
+              deletedProject: true,
+            })
+          }
+          const project = await ProjectGetter.promises.getProject(projectId, { name: true })
+          const deletedFiles = await reconcileDropboxDeletions({
             userId,
-            rootPath: dropboxPath,
-            legacyRootPath: LEGACY_DROPBOX_PATH,
+            projectName: project.name,
+            previousFiles: state.remoteFiles,
+            remoteFiles: importResult.remoteFiles,
           })
           await state.updateOne({
+            remoteFiles: importResult.remoteFiles,
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
 
-          res.json({ success: true, message: 'Pull completed', ...importResult })
+          res.json({ success: true, message: 'Pull completed', deletedFiles, ...importResult })
         } catch (err) {
           await DropboxSyncProjectStates.updateOne(
             { projectId },
@@ -577,7 +679,9 @@ export default {
             projectId,
             rootPath: dropboxPath,
           })
+          const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           await state.updateOne({
+            remoteFiles,
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
@@ -669,5 +773,33 @@ export default {
         }
       }
     )
+
+    webRouter.post('/project/new/dropbox', async (req, res) => {
+      const userId = req.user?._id || req.user?.id
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+      const { projectName, rootPath } = req.body
+      if (!projectName) {
+        return res.status(400).json({ error: 'projectName is required' })
+      }
+      try {
+        const credentials = await DropboxUserCredentials.findOne({ userId })
+        if (!credentials) {
+          return res.status(409).json({ error: 'Dropbox credentials not found' })
+        }
+        const client = new DropboxClient({
+          accessToken: decryptToken(credentials.accessToken),
+        })
+        const result = await importNewProjectFromDropbox({
+          client,
+          userId,
+          projectName,
+          rootPath: normalizeDropboxPath(rootPath ?? credentials.path),
+        })
+        res.json({ success: true, message: 'Import completed', ...result })
+      } catch (err) {
+        logger.error({ err, userId, projectName }, 'Dropbox new project import failed')
+        res.status(500).json({ error: err.message || 'Import failed' })
+      }
+    })
   },
 }

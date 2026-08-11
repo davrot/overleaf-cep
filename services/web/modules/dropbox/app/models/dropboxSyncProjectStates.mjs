@@ -8,6 +8,18 @@ const dropboxSyncSchema = new Schema(
     // Dropbox connection state
     connected: { type: Boolean, default: false },
     path: { type: String, required: true },
+    remoteFiles: {
+      type: Map,
+      of: new Schema(
+        {
+          rev: { type: String },
+          size: { type: Number },
+          modifiedAt: { type: Date },
+        },
+        { _id: false }
+      ),
+      default: {},
+    },
     // Revision tracking for conflict detection (Dropbox uses 'rev' property)
     lastSyncRev: { type: String }, // Last synced revision (from Dropbox's rev property)
     lastSyncVersion: { type: Number }, // Overleaf project version number

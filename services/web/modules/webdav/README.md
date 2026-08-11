@@ -9,7 +9,6 @@ This module provides an opt-in WebDAV integration for Nextcloud, ownCloud, and o
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `WEBDAV_ENABLED` | Enable/disable the WebDAV module | `true` or `false` (default: `false`) |
-| `WEBDAV_ROOT_PATH` | Base path within user's WebDAV home directory | `/Overleaf`, `/Nextcloud/Projects` |
 
 ### Optional Environment Variables
 
@@ -17,8 +16,7 @@ This module provides an opt-in WebDAV integration for Nextcloud, ownCloud, and o
 |----------|-------------|---------|--------|
 | `WEBDAV_TOKEN_CIPHER_PASSWORD` | Secret key for encrypting user credentials (REQUIRED in production) | `my-super-secret-key-123` | Generated on startup |
 | `WEBDAV_TOKEN_CIPHER_FILE` | Persistent file path for encryption keys | `/var/lib/overleaf/data/.webdav-token-cipher.json` | Auto-created |
-| `WEBDAV_RETRY_COUNT` | Max retry attempts for transient failures | `3` | `2` |
-| `WEBDAV_RETRY_DELAY_MS` | Initial delay between retries (ms) | `1000` | `100` |
+| `WEBDAV_TOKEN_CIPHER_LABEL` | Label for the credential-encryption key | `OL_WEBDAV-v3` | `OL_WEBDAV-v3` |
 
 ## Setup
 
@@ -42,7 +40,7 @@ WEBDAV_TOKEN_CIPHER_PASSWORD=your-secure-password-minimum-16-chars
 
 ### 3. Set WebDAV Connection
 
-Users connect via the settings widget or API:
+Users connect via the settings widget or API. The WebDAV root path is supplied with the user's connection details and is not configured by a `WEBDAV_ROOT_PATH` environment variable:
 - **Nextcloud**: `https://nextcloud.example.com/remote.php/dav/files/USERNAME`
 - **OwnCloud**: `https://owncloud.example.com/remote.php/webdav/`
 - **General**: Your WebDAV server URL pointing to user's files directory
@@ -66,6 +64,7 @@ Users connect via the settings widget or API:
 | `POST` | `/project/:project_id/webdav/push` | Push local changes to WebDAV |
 | `GET` | `/project/:project_id/webdav/files` | List files in project's WebDAV folder |
 | `POST` | `/project/:project_id/webdav/conflict/resolve` | Resolve a sync conflict |
+| `POST` | `/project/new/webdav` | Create an Overleaf project from a remote WebDAV folder |
 
 **Request Body Example (conflict resolution):**
 ```json
@@ -83,15 +82,18 @@ Users connect via the settings widget or API:
 - Click "Push" to upload local Overleaf changes to WebDAV
 - Open a project and use the WebDAV card in the Integrations panel to trigger pull/push operations
 - Resolve conflicts via the conflict resolution dialog (keep local or remote)
+- Linking a project only stores the connection; it does not start a background or initial sync
+- Pull detects remote file deletions and marks a remotely deleted project as deleted by the external source
+- New-project import downloads the selected remote folder through the TPDS import pipeline
 
 **Note**: The module uses manual project-page triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
 
 ## File Sync Strategy
 
-1. **Hash-based comparison** using SHA256 of file content
-2. **ETag handling**: Uses WebDAV ETag when available, falls back to hash comparison
-3. **Change detection**: Compares current project version with last synced version
-4. **De-duplication**: Files unchanged since the last sync are not downloaded again
+1. **ETag-based comparison** using WebDAV ETags when available
+2. **Metadata fallback**: Uses modification time and size when an ETag is unavailable
+3. **Remote snapshots**: Stores the last observed remote file state for deletion detection
+4. **De-duplication**: Files unchanged since the last pull are not downloaded again
 
 ## Conflict Resolution
 
@@ -109,7 +111,7 @@ Credentials are encrypted using the [access-token-encryptor](https://github.com/
 - Environment variable: `WEBDAV_TOKEN_CIPHER_PASSWORD` (environment)
 - File: `WEBDAV_TOKEN_CIPHER_FILE` or default `/var/lib/overleaf/data/.webdav-token-cipher.json`
 
-**Important**: If using file storage, ensure the path is persistent across container restarts!
+**Important**: If using file storage, ensure the path is persistent across container restarts. The retry count and retry delay are currently implementation defaults, not environment parameters.
 
 ## Usage Example
 

@@ -203,18 +203,6 @@ async function linkProject(req, res) {
       mergeStatus: 'clean'
     })
 
-    // Immediately trigger a pollRemoteSync to import any existing files from WebDAV
-    try {
-      logger.info({ projectId }, 'Triggering initial sync (import + export) after linking project to WebDAV')
-      // First pull from WebDAV to Overleaf
-      await WebdavHandler.pollRemoteSync(projectId, { userId })
-      // Then push from Overleaf to WebDAV
-      await WebdavHandler.pushLocalChanges(userId, projectId)
-    } catch (syncErr) {
-      // Don't fail the link if sync fails - just log it
-      logger.warn({ message: syncErr.message, projectId }, 'Initial WebDAV sync failed but project linking succeeded')
-    }
-
     return res.json({
       success: true,
       message: 'Project linked to WebDAV successfully',

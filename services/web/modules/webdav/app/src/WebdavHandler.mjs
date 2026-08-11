@@ -5,6 +5,8 @@ import WebdavCredentials from './WebdavCredentials.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
 import logger from '@overleaf/logger'
 import WebdavSync from './WebdavSync.mjs'
+import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
+import { Readable } from 'node:stream'
 
 async function getConnectionState(userId) {
   try {
@@ -52,46 +54,45 @@ async function unlinkProject(projectId) {
 }
 
 async function importRemoteProject(userId, projectId, projectName, rootPath) {
-  const state = await SyncStateManager.getProjectState(projectId)
-  if (!state || !state.connected) {
-    throw new Error('Project is not linked to WebDAV')
-  }
-  
-  // Get user credentials for the actual password
-  let username = state.username
-  let password = ''
-  try {
-    const credentials = await WebdavTokenManager.getUserCredentials(userId)
-    if (credentials) {
-      password = credentials.password || ''
+  const credentials = await WebdavCredentials.get(userId)
+  if (!credentials) throw new Error('WebDAV is not connected')
+
+  const remoteRoot = WebdavPaths.remotePath(
+    rootPath || credentials.rootPath,
+    projectName
+  )
+  const client = new WebDAVServiceClient(credentials)
+  const files = []
+
+  async function collectFiles(resourcePath) {
+    for (const entry of await client.list(resourcePath)) {
+      if (entry.path === resourcePath || entry.path.endsWith(`${resourcePath}/`)) continue
+      if (entry.isDirectory) await collectFiles(entry.path)
+      else files.push(entry)
     }
-  } catch (err) {
-    logger.warn({ message: err.message, userId }, 'Could not fetch user credentials')
   }
-  
-  const remoteRoot = WebdavPaths.remotePath(rootPath || state.rootPath, projectName)
-  const client = new WebDAVServiceClient({
-    baseUrl: state.baseUrl,
-    username: username,
-    password: password
-  })
-  
-  // List files in the remote project folder
-  let files
-  try {
-    files = await client.list(remoteRoot) || []
-  } catch (err) {
-    logger.warn({ err, remoteRoot }, 'Failed to list remote WebDAV directory')
-    files = []
-  }
-  
-  if (!files.length) {
+
+  await collectFiles(remoteRoot)
+  if (files.length === 0) {
     logger.info({ projectId, remoteRoot }, 'No files found in WebDAV project folder')
-    return null
+    return { importedFiles: 0 }
   }
-  
-  // TODO: Implement zip creation for import
-  throw new Error('importRemoteProject not fully implemented - needs zip creation logic')
+
+  let importedFiles = 0
+  for (const file of files) {
+    const relativePath = file.path.slice(remoteRoot.length) || '/'
+    const body = await client.get(file.path)
+    await TpdsUpdateHandler.promises.newUpdate(
+      userId,
+      null,
+      projectName,
+      relativePath,
+      Readable.from([Buffer.from(body)]),
+      'webdav'
+    )
+    importedFiles += 1
+  }
+  return { importedFiles }
 }
 
 async function pushLocalChanges(userId, projectId) {
