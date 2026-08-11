@@ -43,7 +43,7 @@ export class DropboxClient {
   /**
    * List directory contents with pagination support
    */
-  async list(path = '') {
+  async list(path = '', { recursive = false } = {}) {
     try {
       let cursor = null
       let allEntries = []
@@ -52,7 +52,7 @@ export class DropboxClient {
         const response = await this.dbx.filesListFolder({
           path,
           cursor,
-          recursive: false,
+          recursive,
           include_media_info: false,
           include_deleted: false
         })
@@ -95,33 +95,17 @@ export class DropboxClient {
     try {
       const response = await this.dbx.filesDownload({ path })
 
-      if (response.result.fileBlob) {
-        // Browser environment
-        const reader = response.result.fileBlob.stream().getReader()
-        let chunks = []
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          chunks.push(value)
-        }
-        const buffer = Buffer.concat(chunks)
-        return buffer.toString('base64')
-      } else if (response.result.content) {
-        // Node.js environment with content in result
-        return Buffer.from(response.result.content).toString('base64')
-      } else {
-        // Fallback: use stream
-        const stream = response.getStream()
-        let chunks = []
-        for await (const chunk of stream) {
-          if (Buffer.isBuffer(chunk)) {
-            chunks.push(chunk)
-          } else {
-            chunks.push(Buffer.from(chunk))
-          }
-        }
-        return Buffer.concat(chunks).toString('base64')
+      if (response.result.fileBinary !== undefined) {
+        return Buffer.from(response.result.fileBinary).toString('base64')
       }
+
+      if (response.result.fileBlob) {
+        return Buffer.from(await response.result.fileBlob.arrayBuffer()).toString(
+          'base64'
+        )
+      }
+
+      throw new Error('Dropbox download response did not contain file content')
     } catch (error) {
       logger.error({ err: error, path }, 'Dropbox download failed')
       const dropboxError = this._mapDropboxError(error)
@@ -275,16 +259,23 @@ export class DropboxClient {
   _mapDropboxError(error) {
     let statusCode = 500
     let message = error.message || 'Unknown Dropbox error'
+    const errorDetails = error.error?.error
+    const errorSummary =
+      typeof errorDetails?.summary === 'string' ? errorDetails.summary : ''
+    const errorPath =
+      typeof errorDetails?.path === 'string' ? errorDetails.path : ''
+    const pathNotFound = errorDetails?.path?.['.tag'] === 'not_found'
 
     if (
       error.status === 401 ||
-      error.error?.error?.access_token?.includes('invalid_access_token')
+      (typeof errorDetails?.access_token === 'string' &&
+        errorDetails.access_token.includes('invalid_access_token'))
     ) {
       statusCode = 401
       message = 'Invalid or expired access token'
     } else if (
       error.status === 429 ||
-      error.error?.error?.summary?.includes('rate_limit_exceeded')
+      errorSummary.includes('rate_limit_exceeded')
     ) {
       statusCode = 429
       message =
@@ -294,21 +285,24 @@ export class DropboxClient {
       message = 'Permission denied'
     } else if (
       error.status === 404 ||
-      error.error?.error?.path?.includes('not_found')
+      errorPath.includes('not_found') ||
+      pathNotFound
     ) {
       statusCode = 404
       message = 'File or folder not found'
     } else if (error.status === 409) {
       statusCode = 409
       const conflictType =
-        error.error?.error?.conflict?.summary || ''
+        typeof errorDetails?.conflict?.summary === 'string'
+          ? errorDetails.conflict.summary
+          : ''
       if (
         conflictType.includes('different_file') ||
         conflictType.includes('same_file')
       ) {
         message = 'File conflict detected'
       } else {
-        message = `Conflict: ${error.error?.summary || error.message}`
+        message = `Conflict: ${errorSummary || error.message}`
       }
     } else if (error.status >= 500) {
       statusCode = 503
@@ -318,7 +312,7 @@ export class DropboxClient {
     const customError = new Error(message)
     customError.statusCode = statusCode
     customError.dropboxErrorCode =
-      error.error?.error?.summary || null
+      errorSummary || null
 
     return customError
   }

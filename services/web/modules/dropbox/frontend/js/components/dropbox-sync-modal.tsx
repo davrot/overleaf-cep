@@ -20,6 +20,14 @@ type DropboxUserStatus = {
 // Optional status fields for projects
 type ProjectDropboxStatus = DropboxUserStatus & { lastSyncAt?: string | null; mergeStatus?: string }
 
+function formatDropboxPath(path: string) {
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return path
+  }
+}
+
 function DropboxSyncModal({
   show,
   handleHide,
@@ -126,7 +134,7 @@ function DropboxSyncModal({
       // Create project sync state with user's Dropbox configuration
       await postJSON(`/project/${projectId}/dropbox/link`, {
         body: {
-          path: userData.path || 'Overleaf%20Dev',
+          path: userData.path || '',
         },
       })
 
@@ -266,14 +274,15 @@ function DropboxSyncModal({
         </OLModalHeader>
 
         <OLModalBody>
-          {status?.path && status.connected && (
+          {status?.connected && (
             <>
               <p className="small">
                 <strong>{t('connected_to')}:</strong> Dropbox
               </p>
 
               <p className="small">
-                <strong>{t('dropbox_path_label')}:</strong> {status.path}
+                <strong>{t('dropbox_path_label')}:</strong>{' '}
+                {formatDropboxPath(status.path || 'Overleaf Dev')}
               </p>
 
               {connectedStatus.lastSyncAt && (

@@ -4,14 +4,165 @@ import { DropboxSyncProjectStates } from '../models/dropboxSyncProjectStates.mjs
 import DropboxClient from './DropboxClient.mjs'
 import AuthorizationMiddleware from '../../../../app/src/Features/Authorization/AuthorizationMiddleware.mjs'
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
+import ProjectGetter from '../../../../app/src/Features/Project/ProjectGetter.mjs'
+import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
+import EditorController from '../../../../app/src/Features/Editor/EditorController.mjs'
+import HistoryManager from '../../../../app/src/Features/History/HistoryManager.mjs'
+import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 const { ensureUserCanWriteProjectContent } = AuthorizationMiddleware
-const DEFAULT_DROPBOX_PATH = 'Overleaf%20Dev'
+const DEFAULT_DROPBOX_PATH = ''
+const LEGACY_DROPBOX_PATH = 'Overleaf Dev'
 
 function normalizeDropboxPath(path) {
-  return path === '/Overleaf/Dropbox' || !path ? DEFAULT_DROPBOX_PATH : path
+  if (path === '/Overleaf/Dropbox' || !path) return DEFAULT_DROPBOX_PATH
+  try {
+    path = decodeURIComponent(path)
+  } catch {
+    // Keep malformed custom paths unchanged.
+  }
+  return path === LEGACY_DROPBOX_PATH ? DEFAULT_DROPBOX_PATH : path
+}
+
+function joinDropboxPath(...parts) {
+  const path = parts
+    .filter(Boolean)
+    .map(part => String(part).replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean)
+    .join('/')
+  return path ? `/${path}` : '/'
+}
+
+async function streamToBuffer(stream) {
+  const chunks = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+async function ensureDropboxDirectory(client, directoryPath) {
+  const parts = directoryPath.split('/').filter(Boolean)
+  let currentPath = ''
+  for (const part of parts) {
+    currentPath = joinDropboxPath(currentPath, part)
+    await client.createDirectory(currentPath)
+  }
+}
+
+async function uploadProjectToDropbox({ client, projectId, rootPath }) {
+  const project = await ProjectGetter.promises.getProject(projectId, { name: true })
+  if (!project) throw new Error('Project not found')
+
+  const projectPath = joinDropboxPath(rootPath, project.name)
+  await ensureDropboxDirectory(client, projectPath)
+
+  const [docs, files] = await Promise.all([
+    ProjectEntityHandler.promises.getAllDocs(projectId),
+    ProjectEntityHandler.promises.getAllFiles(projectId),
+  ])
+
+  let uploadedFiles = 0
+  for (const [filePath, doc] of Object.entries(docs)) {
+    const remotePath = joinDropboxPath(projectPath, filePath)
+    await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
+    await client.upload(remotePath, Buffer.from(doc.lines.join('\n')).toString('base64'))
+    uploadedFiles += 1
+  }
+
+  for (const [filePath, file] of Object.entries(files)) {
+    const { stream } = await HistoryManager.promises.requestBlobWithProjectId(
+      projectId,
+      file.hash
+    )
+    const content = await streamToBuffer(stream)
+    const remotePath = joinDropboxPath(projectPath, filePath)
+    await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
+    await client.upload(remotePath, content.toString('base64'))
+    uploadedFiles += 1
+  }
+
+  return { projectPath, uploadedFiles }
+}
+
+function isTextFile(filePath) {
+  const extension = path.extname(filePath).slice(1).toLowerCase()
+  return (Settings.textExtensions || []).includes(extension)
+}
+
+async function importProjectFromDropbox({
+  client,
+  projectId,
+  userId,
+  rootPath,
+  legacyRootPath,
+}) {
+  const project = await ProjectGetter.promises.getProject(projectId, { name: true })
+  if (!project) throw new Error('Project not found')
+
+  let projectPath = joinDropboxPath(rootPath, project.name)
+  let listing
+  try {
+    listing = await client.list(projectPath, { recursive: true })
+  } catch (err) {
+    if (!legacyRootPath || !err.message?.includes('Not found')) throw err
+    projectPath = joinDropboxPath(legacyRootPath, project.name)
+    listing = await client.list(projectPath, { recursive: true })
+  }
+  const entries = (listing.entries || []).filter(entry => entry.type === 'file')
+  let importedFiles = 0
+  const temporaryFiles = []
+
+  try {
+    for (const entry of entries) {
+      const remotePath = entry.relative_path
+      const prefix = `${projectPath.replace(/^\//, '')}/`
+      const relativePathWithoutRoot = remotePath.startsWith(prefix)
+        ? remotePath.slice(prefix.length)
+        : entry.name
+      const relativePath = `/${relativePathWithoutRoot.replace(/^\/+/, '')}`
+      const result = await client.download(`/${remotePath}`)
+      if (!result?.content_base64) {
+        throw new Error(`Dropbox returned no content for ${remotePath}`)
+      }
+      const content = Buffer.from(result.content_base64, 'base64')
+
+      if (isTextFile(relativePath)) {
+        await EditorController.promises.upsertDocWithPath(
+          projectId,
+          relativePath,
+          content.toString('utf8').split('\n'),
+          'dropbox',
+          userId
+        )
+      } else {
+        const temporaryFile = path.join(
+          os.tmpdir(),
+          `overleaf-dropbox-${Date.now()}-${importedFiles}`
+        )
+        temporaryFiles.push(temporaryFile)
+        await fs.writeFile(temporaryFile, content)
+        await EditorController.promises.upsertFileWithPath(
+          projectId,
+          relativePath,
+          temporaryFile,
+          null,
+          'dropbox',
+          userId
+        )
+      }
+      importedFiles += 1
+    }
+  } finally {
+    await Promise.all(temporaryFiles.map(file => fs.rm(file, { force: true })))
+  }
+
+  return { projectPath, importedFiles }
 }
 
 /**
@@ -207,9 +358,12 @@ export default {
 
         try {
           const state = await DropboxSyncProjectStates.findOne({ projectId })
-          if (state?.path === '/Overleaf/Dropbox') {
-            state.path = DEFAULT_DROPBOX_PATH
-            await state.save()
+          if (state) {
+            const dropboxPath = normalizeDropboxPath(state.path)
+            if (state.path !== dropboxPath) {
+              state.path = dropboxPath
+              await state.save()
+            }
           }
           res.json(state || { connected: false })
         } catch (err) {
@@ -266,7 +420,23 @@ export default {
           })
           await state.save()
 
-          res.json({ success: true, path: state.path })
+          const importResult = await importProjectFromDropbox({
+            client,
+            projectId,
+            userId,
+            rootPath: dropboxPath,
+            legacyRootPath: LEGACY_DROPBOX_PATH,
+          })
+          const syncResult = await uploadProjectToDropbox({
+            client,
+            projectId,
+            rootPath: dropboxPath,
+          })
+          state.lastSyncAt = new Date()
+          state.lastSyncError = undefined
+          await state.save()
+
+          res.json({ success: true, path: state.path, ...importResult, ...syncResult })
         } catch (err) {
           logger.error(
             { err, projectId },
@@ -320,12 +490,43 @@ export default {
             })
           }
 
-          // TODO: Implement pull logic
-          // For now, just acknowledge the request
-          await state.updateOne({ lastSyncAt: new Date() })
+          const credentials = await DropboxUserCredentials.findOne({ userId })
+          if (!credentials) {
+            return res.status(409).json({ error: 'Dropbox credentials not found' })
+          }
 
-          res.json({ success: true, message: 'Pull initiated' })
+          let accessToken
+          try {
+            accessToken = decryptToken(credentials.accessToken)
+          } catch (err) {
+            logger.error({ err, userId }, 'Failed to decrypt Dropbox token')
+            return res.status(500).json({ error: 'Token decryption failed' })
+          }
+
+          const client = new DropboxClient({ accessToken })
+          const dropboxPath = normalizeDropboxPath(state.path)
+          if (state.path !== dropboxPath) {
+            state.path = dropboxPath
+            await state.save()
+          }
+          const importResult = await importProjectFromDropbox({
+            client,
+            projectId,
+            userId,
+            rootPath: dropboxPath,
+            legacyRootPath: LEGACY_DROPBOX_PATH,
+          })
+          await state.updateOne({
+            lastSyncAt: new Date(),
+            lastSyncError: null,
+          })
+
+          res.json({ success: true, message: 'Pull completed', ...importResult })
         } catch (err) {
+          await DropboxSyncProjectStates.updateOne(
+            { projectId },
+            { $set: { lastSyncError: err.message } }
+          )
           logger.error({ err, projectId }, 'Failed to pull from Dropbox')
           res.status(500).json({ error: err.message })
         }
@@ -352,11 +553,41 @@ export default {
             })
           }
 
-          // TODO: Implement push logic
-          await state.updateOne({ lastSyncAt: new Date() })
+          const credentials = await DropboxUserCredentials.findOne({ userId })
+          if (!credentials) {
+            return res.status(409).json({ error: 'Dropbox credentials not found' })
+          }
 
-          res.json({ success: true, message: 'Push initiated' })
+          let accessToken
+          try {
+            accessToken = decryptToken(credentials.accessToken)
+          } catch (err) {
+            logger.error({ err, userId }, 'Failed to decrypt Dropbox token')
+            return res.status(500).json({ error: 'Token decryption failed' })
+          }
+
+          const client = new DropboxClient({ accessToken })
+          const dropboxPath = normalizeDropboxPath(state.path)
+          if (state.path !== dropboxPath) {
+            state.path = dropboxPath
+            await state.save()
+          }
+          const syncResult = await uploadProjectToDropbox({
+            client,
+            projectId,
+            rootPath: dropboxPath,
+          })
+          await state.updateOne({
+            lastSyncAt: new Date(),
+            lastSyncError: null,
+          })
+
+          res.json({ success: true, message: 'Push completed', ...syncResult })
         } catch (err) {
+          await DropboxSyncProjectStates.updateOne(
+            { projectId },
+            { $set: { lastSyncError: err.message } }
+          )
           logger.error({ err, projectId }, 'Failed to push to Dropbox')
           res.status(500).json({ error: err.message })
         }
@@ -396,10 +627,15 @@ export default {
 
           // List files using Dropbox client
           const client = new DropboxClient({ accessToken })
-          const result = await client.list(state.path)
+          const dropboxPath = normalizeDropboxPath(state.path)
+          if (state.path !== dropboxPath) {
+            state.path = dropboxPath
+            await state.save()
+          }
+          const result = await client.list(dropboxPath)
 
           res.json({
-            path: state.path,
+            path: dropboxPath,
             entries: result.entries || [],
           })
         } catch (err) {

@@ -110,11 +110,11 @@ export class DropboxClient {
   /**
    * List directory contents in Dropbox
    */
-  async list(path = '') {
+  async list(path = '', { recursive = false } = {}) {
     try {
       const result = await this._request('/list', {
         method: 'POST',
-        body: { path, access_token: this.accessToken },
+        body: { path, recursive, access_token: this.accessToken },
       })
 
       logger.debug({ path, count: result.entries?.length }, 'Dropbox list completed')

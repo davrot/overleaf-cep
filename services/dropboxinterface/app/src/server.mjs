@@ -76,7 +76,7 @@ app.post('/check', async (req, res) => {
  */
 app.post('/list', async (req, res) => {
   try {
-    const { path = '' } = req.body
+    const { path = '', recursive = false } = req.body
     const accessToken = req.body?.access_token || req.dropboxToken
 
     if (!accessToken) {
@@ -90,7 +90,7 @@ app.post('/list', async (req, res) => {
     )
 
     const client = new DropboxClient({ accessToken })
-    const result = await client.list(path)
+    const result = await client.list(path, { recursive })
 
     res.json(result)
   } catch (err) {
