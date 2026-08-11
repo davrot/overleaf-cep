@@ -110,10 +110,13 @@ function isDropboxNotFound(error) {
   return error?.message?.includes('Not found')
 }
 
-function toRemoteFilesMap(remoteFiles = {}) {
-  return remoteFiles instanceof Map
-    ? remoteFiles
-    : new Map(Object.entries(remoteFiles))
+function toRemoteFilesArray(remoteFiles = {}) {
+  if (Array.isArray(remoteFiles)) return remoteFiles
+  if (remoteFiles instanceof Map) remoteFiles = Object.fromEntries(remoteFiles)
+  return Object.entries(remoteFiles).map(([path, metadata]) => ({
+    path,
+    ...metadata,
+  }))
 }
 
 async function importProjectFromDropbox({
@@ -242,9 +245,14 @@ async function getDropboxRemoteFiles(client, projectPath) {
 }
 
 async function reconcileDropboxDeletions({ userId, projectName, previousFiles, remoteFiles }) {
-  const previousEntries = previousFiles instanceof Map
-    ? Object.fromEntries(previousFiles.entries())
-    : previousFiles
+  let previousEntries = previousFiles
+  if (Array.isArray(previousFiles)) {
+    previousEntries = Object.fromEntries(
+      previousFiles.map(entry => [entry.path, entry])
+    )
+  } else if (previousFiles instanceof Map) {
+    previousEntries = Object.fromEntries(previousFiles.entries())
+  }
   if (!previousEntries || Object.keys(previousEntries).length === 0) return 0
   const currentPaths = new Set(Object.keys(remoteFiles))
   let deletedFiles = 0
@@ -525,7 +533,7 @@ export default {
           const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           state.lastSyncAt = new Date()
           state.lastSyncError = undefined
-          state.remoteFiles = toRemoteFilesMap(remoteFiles)
+          state.remoteFiles = toRemoteFilesArray(remoteFiles)
           await state.save()
 
           res.json({ success: true, path: state.path, ...syncResult })
@@ -614,7 +622,7 @@ export default {
             if (!err.message?.includes('Not found')) throw err
             await ProjectDeleter.promises.markAsDeletedByExternalSource(projectId)
             await state.updateOne({
-              remoteFiles: new Map(),
+              remoteFiles: [],
               lastSyncAt: new Date(),
               lastSyncError: null,
             })
@@ -629,10 +637,10 @@ export default {
             userId,
             projectName: project.name,
             previousFiles: state.remoteFiles,
-            remoteFiles: toRemoteFilesMap(importResult.remoteFiles),
+            remoteFiles: toRemoteFilesArray(importResult.remoteFiles),
           })
           await state.updateOne({
-            remoteFiles: toRemoteFilesMap(importResult.remoteFiles),
+            remoteFiles: toRemoteFilesArray(importResult.remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
@@ -695,7 +703,7 @@ export default {
           })
           const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
           await state.updateOne({
-            remoteFiles: toRemoteFilesMap(remoteFiles),
+            remoteFiles: toRemoteFilesArray(remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
