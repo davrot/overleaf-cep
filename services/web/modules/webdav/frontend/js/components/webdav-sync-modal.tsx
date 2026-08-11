@@ -141,7 +141,8 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                 body: {
                     baseUrl: userData.baseUrl || '',
                     rootPath: userData.rootPath || '',
-                    username: userData.username || ''
+                    username: userData.username || '',
+                    password: userData.password || ''
                 }
             })
 
