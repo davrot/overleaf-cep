@@ -887,7 +887,7 @@
   "export_project_to_github": "Export Project to GitHub",
   "failed": "Failed",
   "failed_to_consent_to_workbench_terms": "Failed to consent to workbench terms. Please try again later.",
-  "failed_to_link_dropbox": "Failed to link project to Dropbox: {{fallback}}",
+  "failed_to_link_dropbox": "Failed to link project to Dropbox: {{error}}",
   "failed_to_unlink_dropbox": "Failed to unlink project from Dropbox: {{fallback}}",
   "failed_to_publish_as_a_template": "Failed to publish as a template.",
   "failed_to_send_group_invite_to_email": "Failed to send group invite to <0>__email__</0>. Please try again later.",

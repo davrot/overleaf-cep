@@ -106,6 +106,10 @@ function isTextFile(filePath) {
   return (Settings.textExtensions || []).includes(extension)
 }
 
+function isDropboxNotFound(error) {
+  return error?.message?.includes('Not found')
+}
+
 async function importProjectFromDropbox({
   client,
   projectId,
@@ -121,9 +125,20 @@ async function importProjectFromDropbox({
   try {
     listing = await client.list(projectPath, { recursive: true })
   } catch (err) {
-    if (!legacyRootPath || !err.message?.includes('Not found')) throw err
-    projectPath = joinDropboxPath(legacyRootPath, project.name)
-    listing = await client.list(projectPath, { recursive: true })
+    if (!isDropboxNotFound(err)) throw err
+    if (legacyRootPath) {
+      const legacyProjectPath = joinDropboxPath(legacyRootPath, project.name)
+      try {
+        projectPath = legacyProjectPath
+        listing = await client.list(projectPath, { recursive: true })
+      } catch (legacyError) {
+        if (!isDropboxNotFound(legacyError)) throw legacyError
+        projectPath = joinDropboxPath(rootPath, project.name)
+        listing = { entries: [] }
+      }
+    } else {
+      listing = { entries: [] }
+    }
   }
   const entries = (listing.entries || []).filter(entry => entry.type === 'file')
   const remoteFiles = Object.fromEntries(

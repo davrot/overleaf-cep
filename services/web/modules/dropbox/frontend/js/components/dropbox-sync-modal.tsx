@@ -144,7 +144,14 @@ function DropboxSyncModal({
       setModalStatus('connected')
     } catch (err: any) {
       debugConsole.error(err?.message || err)
-      alert(t('failed_to_link_dropbox', { fallback: 'Failed to link project to Dropbox: Unknown error' }))
+      const errorMessage =
+        err?.data?.error || err?.data?.message || err?.message || 'Unknown error'
+      alert(
+        t('failed_to_link_dropbox', {
+          defaultValue: 'Failed to link project to Dropbox: {{error}}',
+          error: errorMessage,
+        })
+      )
     } finally {
       setWorking(false)
     }
