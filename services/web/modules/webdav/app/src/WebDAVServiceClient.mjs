@@ -26,6 +26,11 @@ export class WebDAVServiceClient {
    * Validate connection using webdavinterface
    */
   async check() {
+    // Validate that required credentials are present
+    if (!this.baseUrl || !this.username) {
+      throw new Error('WebDAV configuration missing required fields: server_url and username')
+    }
+
     try {
       const response = await fetch(`${this.webdavInterfaceUrl}/check`, {
         method: 'POST',
