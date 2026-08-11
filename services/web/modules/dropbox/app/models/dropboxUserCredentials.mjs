@@ -7,7 +7,7 @@ export const DropboxUserCredentialsSchema = new Schema(
     userId: { type: Schema.Types.Mixed, ref: 'User', required: true, unique: true },
     // Encrypted credentials - contains access_token
     accessToken: { type: String, required: true },
-    path: { type: String, default: '' },
+    path: { type: String, default: '/' },
   },
   { minimize: false }
 )

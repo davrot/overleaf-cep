@@ -18,7 +18,7 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 const { ensureUserCanWriteProjectContent } = AuthorizationMiddleware
-const DEFAULT_DROPBOX_PATH = ''
+const DEFAULT_DROPBOX_PATH = '/'
 const LEGACY_DROPBOX_PATH = 'Overleaf Dev'
 
 function normalizeDropboxPath(path) {
