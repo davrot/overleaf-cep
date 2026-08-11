@@ -511,13 +511,6 @@ export default {
           })
           await state.save()
 
-          const importResult = await importProjectFromDropbox({
-            client,
-            projectId,
-            userId,
-            rootPath: dropboxPath,
-            legacyRootPath: LEGACY_DROPBOX_PATH,
-          })
           const syncResult = await uploadProjectToDropbox({
             client,
             projectId,
@@ -529,7 +522,7 @@ export default {
           state.remoteFiles = remoteFiles
           await state.save()
 
-          res.json({ success: true, path: state.path, ...importResult, ...syncResult })
+          res.json({ success: true, path: state.path, ...syncResult })
         } catch (err) {
           logger.error(
             { err, projectId },

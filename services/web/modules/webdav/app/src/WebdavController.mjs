@@ -203,6 +203,8 @@ async function linkProject(req, res) {
       mergeStatus: 'clean'
     })
 
+    await WebdavHandler.pushLocalChanges(userId, projectId)
+
     return res.json({
       success: true,
       message: 'Project linked to WebDAV successfully',
