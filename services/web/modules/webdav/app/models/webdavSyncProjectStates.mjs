@@ -10,7 +10,9 @@ const webdavSyncSchema = new Schema(
     baseUrl: { type: String, required: true },
     rootPath: { type: String, required: true },
     username: { type: String, required: true },
-    password: { type: String, required: true },
+    // Password is optional for backward compatibility with existing projects
+    // Link endpoint requires it explicitly via validation
+    password: { type: String },
     // Last sync info (optional)
     lastSyncCommit: { type: String }, // Could use commit hash or version identifier
     lastSyncVersion: { type: Number }, // Overleaf project version number

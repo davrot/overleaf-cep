@@ -184,6 +184,12 @@ async function linkProject(req, res) {
       })
     }
 
+    if (!password) {
+      return res.status(400).json({
+        message: 'Password is required for WebDAV linking'
+      })
+    }
+
     // Get user credentials to get the actual username
     let actualUsername = username
     try {
