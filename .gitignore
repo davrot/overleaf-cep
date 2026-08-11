@@ -9,3 +9,7 @@ docker-compose.override.yml
 .yarn
 node_modules
 .pi-subagents
+AGENTS.md
+references
+.cache
+test-overleaf-login.js
