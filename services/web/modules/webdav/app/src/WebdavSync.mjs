@@ -54,6 +54,12 @@ async function ensureDirectories(
   folders,
   filePaths = []
 ) {
+  const rootParts = rootPath.split('/').filter(Boolean)
+  let currentRoot = ''
+  for (const rootPart of rootParts) {
+    currentRoot = remotePath(currentRoot, rootPart)
+    await client.createDirectory(currentRoot)
+  }
   await client.createDirectory(remotePath(rootPath, projectName))
   const folderPaths = new Set(
     folders
