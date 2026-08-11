@@ -1,0 +1,7 @@
+{
+  "name": "@overleaf/dropbox-module",
+  "version": "1.0.0",
+  "description": "Dropbox integration module for Overleaf Community Edition",
+  "main": "index.mjs",
+  "type": "module"
+}
