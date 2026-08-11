@@ -31,6 +31,9 @@ export class WebDAVServiceClient {
       throw new Error('WebDAV configuration missing required fields: server_url and username')
     }
 
+    // If password is empty, validation will fail in webdavinterface but we should still proceed
+    // This allows existing projects without passwords to be linked (password can be added later)
+
     try {
       const response = await fetch(`${this.webdavInterfaceUrl}/check`, {
         method: 'POST',
