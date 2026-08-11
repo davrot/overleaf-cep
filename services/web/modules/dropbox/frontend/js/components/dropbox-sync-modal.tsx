@@ -21,6 +21,7 @@ type DropboxUserStatus = {
 type ProjectDropboxStatus = DropboxUserStatus & { lastSyncAt?: string | null; mergeStatus?: string }
 
 function formatDropboxPath(path: string) {
+  if (!path || path === '/') return 'Apps/Overleaf Dev'
   try {
     return decodeURIComponent(path)
   } catch {
@@ -289,7 +290,7 @@ function DropboxSyncModal({
 
               <p className="small">
                 <strong>{t('dropbox_path_label')}:</strong>{' '}
-                {formatDropboxPath(status.path || 'Overleaf Dev')}
+                {formatDropboxPath(status.path || '/')}
               </p>
 
               {connectedStatus.lastSyncAt && (
