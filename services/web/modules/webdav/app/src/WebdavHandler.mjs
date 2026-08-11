@@ -1,8 +1,10 @@
 import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import SyncStateManager from './SyncStateManager.mjs'
 import WebdavTokenManager from './WebdavTokenManager.mjs'
+import WebdavCredentials from './WebdavCredentials.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
 import logger from '@overleaf/logger'
+import WebdavSync from './WebdavSync.mjs'
 
 async function getConnectionState(userId) {
   try {
@@ -18,7 +20,7 @@ async function getConnectionState(userId) {
   }
 }
 
-async function getProjectState(projectId, { verifyConnection = true } = {}) {
+async function getProjectState(projectId, { userId, verifyConnection = true } = {}) {
   let state = await SyncStateManager.getProjectState(projectId)
   if (!state) {
     return { connected: false }
@@ -27,8 +29,8 @@ async function getProjectState(projectId, { verifyConnection = true } = {}) {
   // Verify the connection is still valid (unless disabled)
   if (verifyConnection) {
     try {
-      // Use credentials from state directly ( baseUrl, username, password )
-      const client = new WebDAVServiceClient(state)
+      const credentials = userId ? await WebdavCredentials.get(userId) : null
+      const client = new WebDAVServiceClient(credentials || state)
       await client.check()
       state.connected = true
     } catch (err) {
@@ -93,31 +95,14 @@ async function importRemoteProject(userId, projectId, projectName, rootPath) {
 }
 
 async function pushLocalChanges(userId, projectId) {
-  const state = await SyncStateManager.getProjectState(projectId)
-  if (!state || !state.connected) {
-    logger.info({ projectId }, 'pushLocalChanges: not connected to WebDAV')
-    return { success: false, message: 'Not connected to WebDAV' }
-  }
-
-  // For initial sync, we only need to pull from WebDAV (import existing files)
-  // Local-to-WebDAV push is implemented in WebdavSync.mjs for ongoing sync
-  logger.info(
-    { projectId },
-    'pushLocalChanges skipped - initial sync uses pullRemoteSync; local-to-webdav push available via WebdavSync'
-  )
-  return { success: true, message: 'Push skipped (use WebdavSync for full bidirectional sync)' }
+  await WebdavSync.syncProject(userId, projectId)
+  return { success: true, message: 'Push completed' }
 }
 
-// Debug stub for polling WebDAV for changes
-async function pollRemoteSync(projectId, { force = false } = {}) {
-  const state = await SyncStateManager.getProjectState(projectId)
-  if (!state || !state.connected) {
-    throw new Error('Project is not linked to WebDAV')
-  }
-  
-  logger.info({ projectId, baseUrl: state.baseUrl }, 'pollRemoteSync called - stub implementation')
-  // TODO: Implement polling WebDAV for changes and importing them
-  return { success: true, message: 'pollRemoteSync executed' }
+async function pollRemoteSync(projectId, { userId } = {}) {
+  if (!userId) throw new Error('User is required for WebDAV pull')
+  await WebdavSync.pollUser(userId)
+  return { success: true, message: 'Pull completed' }
 }
 
 export default {

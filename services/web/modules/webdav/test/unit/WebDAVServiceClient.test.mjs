@@ -57,4 +57,27 @@ describe('WebDAVServiceClient', () => {
     expect(client.datamanipulatorUrl).toBe('http://dm.local:4001')
     expect(client.webdavInterfaceUrl).toBe('http://wdi.local:4002')
   })
+
+  it('uploads ArrayBuffer content without changing its bytes', async () => {
+    const path = new URL('../../app/src/WebDAVServiceClient.mjs', import.meta.url)
+    const { WebDAVServiceClient } = await import(path.pathname)
+    let requestBody
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body)
+      return { ok: true, status: 200, text: async () => '' }
+    }
+
+    try {
+      const client = new WebDAVServiceClient({
+        server_url: 'http://example.com',
+        username: 'testuser',
+        password: 'testpass'
+      })
+      await client.put('/image.jpg', new Uint8Array([0, 255, 1]).buffer)
+      expect(requestBody.content_base64).toBe('AP8B')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })

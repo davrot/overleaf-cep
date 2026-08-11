@@ -4,17 +4,17 @@ import mongodb from 'mongodb-legacy'
 const WebdavSyncProjectStates = vi.hoisted(() => {
   return {
     findOne: vi.fn(),
-    create: vi.fn(),
+    findOneAndUpdate: vi.fn(),
     updateOne: vi.fn(),
     deleteMany: vi.fn(),
   }
 })
 
-vi.mock('./../../app/models/webdavSyncProjectStates.mjs', () => ({
+vi.mock('./../../../app/models/webdavSyncProjectStates.mjs', () => ({
   WebdavSyncProjectStates,
 }))
 
-const SyncStateManager = await import('./../../../app/src/SyncStateManager.mjs')
+const { default: SyncStateManager } = await import('./../../../app/src/SyncStateManager.mjs')
 
 describe('SyncStateManager', function () {
   let projectId
@@ -31,7 +31,9 @@ describe('SyncStateManager', function () {
         projectId,
         lastSync: new Date(),
       }
-      WebdavSyncProjectStates.findOne.mockResolvedValue(mockState)
+      WebdavSyncProjectStates.findOne.mockReturnValue({
+        lean: vi.fn().mockResolvedValue(mockState),
+      })
 
       const result = await SyncStateManager.getProjectState(projectId)
 
@@ -43,7 +45,9 @@ describe('SyncStateManager', function () {
     })
 
     it('should return null for non-existent project', async function () {
-      WebdavSyncProjectStates.findOne.mockResolvedValue(null)
+      WebdavSyncProjectStates.findOne.mockReturnValue({
+        lean: vi.fn().mockResolvedValue(null),
+      })
 
       const result = await SyncStateManager.getProjectState(projectId)
 
@@ -56,7 +60,9 @@ describe('SyncStateManager', function () {
         projectId,
         lastSync: new Date(),
       }
-      WebdavSyncProjectStates.findOne.mockResolvedValue(mockState)
+      WebdavSyncProjectStates.findOne.mockReturnValue({
+        lean: vi.fn().mockResolvedValue(mockState),
+      })
 
       await SyncStateManager.getProjectState(projectId, { lastSync: 1 })
 
@@ -75,15 +81,18 @@ describe('SyncStateManager', function () {
         lastSync: null,
         folderId: null,
       }
-      WebdavSyncProjectStates.create.mockResolvedValue(mockState)
+      WebdavSyncProjectStates.findOneAndUpdate.mockReturnValue({
+        lean: vi.fn().mockResolvedValue(mockState),
+      })
 
       const data = { lastSync: null, folderId: null }
       const result = await SyncStateManager.createProjectState(projectId, data)
 
-      expect(WebdavSyncProjectStates.create).toHaveBeenCalledWith({
-        projectId,
-        ...data,
-      })
+      expect(WebdavSyncProjectStates.findOneAndUpdate).toHaveBeenCalledWith(
+        { projectId },
+        { $set: data, $setOnInsert: { projectId } },
+        { upsert: true, new: true }
+      )
       expect(result).to.deep.equal(mockState)
     })
 
@@ -92,7 +101,9 @@ describe('SyncStateManager', function () {
         _id: new mongodb.ObjectId(),
         projectId,
       }
-      WebdavSyncProjectStates.create.mockResolvedValue(mockState)
+      WebdavSyncProjectStates.findOneAndUpdate.mockReturnValue({
+        lean: vi.fn().mockResolvedValue(mockState),
+      })
 
       const result = await SyncStateManager.createProjectState(projectId, {})
 

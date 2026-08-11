@@ -7,10 +7,9 @@ import WebdavHandler from './WebdavHandler.mjs'
 import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
 import ConflictResolver from './ConflictResolver.mjs'
+import WebdavCredentials from './WebdavCredentials.mjs'
 
-// Import sub-modules for linkProject
 const SyncStateManager = WebdavHandler.SyncStateManager || (await import('./SyncStateManager.mjs')).default
-const WebdavTokenManager = WebdavHandler.WebdavTokenManager || (await import('./WebdavTokenManager.mjs')).default
 
 /**
  * Get user's WebDAV connection state (Express-wrapped)
@@ -43,9 +42,10 @@ async function getConnectionStatus(req, res) {
  */
 async function getProjectState(req, res) {
   const { project_id: projectId } = req.params
+  const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    const state = await WebdavHandler.getProjectState(projectId)
+    const state = await WebdavHandler.getProjectState(projectId, { userId })
     return res.json(state)
   } catch (err) {
     logger.error(OError.getFullStack(err))
@@ -66,9 +66,10 @@ async function getProjectState(req, res) {
  */
 async function pullRemoteChanges(req, res) {
   const { project_id: projectId } = req.params
+  const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    await WebdavHandler.pollRemoteSync(projectId)
+    await WebdavHandler.pollRemoteSync(projectId, { userId })
     return res.json({ success: true, message: 'Pull completed' })
   } catch (err) {
     logger.error(OError.getFullStack(err))
@@ -110,6 +111,7 @@ async function pushLocalChanges(req, res) {
  */
 async function listFiles(req, res) {
   const { project_id: projectId } = req.params
+  const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
     // Check if project is linked to WebDAV
@@ -122,11 +124,8 @@ async function listFiles(req, res) {
     const projectName = await getProjectName(projectId)
     const remoteRoot = WebdavPaths.remotePath(state.rootPath, projectName)
 
-    const client = new WebDAVServiceClient({
-      baseUrl: state.baseUrl,
-      username: state.username || '',
-      password: ''
-    })
+    const credentials = await WebdavCredentials.get(userId)
+    const client = new WebDAVServiceClient(credentials || state)
     const files = (await client.list(remoteRoot) || []).filter(f => !f.isDirectory)
 
     return res.json({
@@ -176,38 +175,30 @@ async function linkProject(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    const { baseUrl, rootPath, username, password } = req.body || {}
+    const credentials = await WebdavCredentials.get(userId)
+    const { baseUrl, rootPath, username, password } = credentials || {}
 
     if (!baseUrl || !rootPath) {
       return res.status(400).json({
-        message: 'Missing required parameters: baseUrl and rootPath are required'
+        message: 'WebDAV credentials are not configured'
       })
     }
 
-    if (!password) {
+    if (!username || !password) {
       return res.status(400).json({
-        message: 'Password is required for WebDAV linking'
+        message: 'WebDAV credentials are incomplete'
       })
     }
 
-    // Get user credentials to get the actual username
-    let actualUsername = username
-    try {
-      const credentials = await WebdavTokenManager.getUserCredentials(userId)
-      if (credentials) {
-        actualUsername = credentials.username
-      }
-    } catch (err) {
-      logger.warn({ message: err.message, userId }, 'Could not fetch user credentials, Using provided username')
-    }
+    const client = new WebDAVServiceClient(credentials)
+    await client.check()
 
     // Create project sync state with all credentials
     await SyncStateManager.createProjectState(projectId, {
       connected: true,
       baseUrl,
       rootPath,
-      username: actualUsername,
-      password: password || '',
+      username,
       lastSyncAt: null,
       mergeStatus: 'clean'
     })
@@ -216,7 +207,7 @@ async function linkProject(req, res) {
     try {
       logger.info({ projectId }, 'Triggering initial sync (import + export) after linking project to WebDAV')
       // First pull from WebDAV to Overleaf
-      await WebdavHandler.pollRemoteSync(projectId)
+      await WebdavHandler.pollRemoteSync(projectId, { userId })
       // Then push from Overleaf to WebDAV
       await WebdavHandler.pushLocalChanges(userId, projectId)
     } catch (syncErr) {

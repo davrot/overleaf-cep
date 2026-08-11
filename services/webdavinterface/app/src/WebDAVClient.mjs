@@ -54,10 +54,11 @@ export class WebDAVClient {
   async list(resourcePath) {
     try {
       const items = await this.client.getDirectoryContents(resourcePath)
+      const parentPath = resourcePath.replace(/\/$/, '') || '/'
       
       return items.map(item => ({
         href: item.basename,
-        path: item.basename,
+        path: item.filename || `${parentPath}/${item.basename}`.replace(/\/+/g, '/'),
         isDirectory: item.type === 'directory',
         etag: null,
         modifiedAt: item.lastmod ? new Date(item.lastmod).toISOString() : null,
@@ -85,13 +86,25 @@ export class WebDAVClient {
 
   async upload(resourcePath, contentBase64, { etag } = {}) {
     const contentBuffer = Buffer.from(contentBase64, 'base64')
-    
+
     try {
-      await this.client.putFileContents(resourcePath, contentBuffer, {
+      const parentPath = resourcePath.slice(0, resourcePath.lastIndexOf('/')) || '/'
+      await this.client.createDirectory(parentPath, { recursive: true })
+
+      const putOptions = {
         overwrite: true,
         contentType: 'application/octet-stream',
         headers: etag ? { 'If-Match': etag } : undefined
-      })
+      }
+
+      try {
+        await this.client.putFileContents(resourcePath, contentBuffer, putOptions)
+      } catch (error) {
+        if (error.status !== 404) throw error
+
+        await this.client.createDirectory(parentPath, { recursive: true })
+        await this.client.putFileContents(resourcePath, contentBuffer, putOptions)
+      }
       
       logger.debug({ resourcePath }, 'WebDAV upload completed')
       return { success: true }

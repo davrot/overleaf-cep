@@ -1,6 +1,16 @@
 import logger from '@overleaf/logger'
+import Path from 'node:path'
 import { FileNotFoundError, DirectoryNotFoundError } from './errors.mjs'
 import * as fileUtils from './fileUtils.mjs'
+
+function resolveProjectPath(projectDir, relativePath) {
+  const root = Path.resolve(projectDir)
+  const resolved = Path.resolve(root, relativePath || '')
+  if (resolved !== root && !resolved.startsWith(`${root}${Path.sep}`)) {
+    throw new Error('Path must stay within the project directory')
+  }
+  return resolved
+}
 
 /**
  * Walk directory tree and build file metadata
@@ -68,9 +78,8 @@ export async function walkTree(projectDir, basePath = '') {
  */
 export async function readFile(projectDir, relativePath) {
   const fs = await import('fs/promises')
-  const Path = await import('path')
 
-  const fullPath = Path.join(projectDir, relativePath)
+  const fullPath = resolveProjectPath(projectDir, relativePath)
 
   try {
     const buffer = await fs.readFile(fullPath)
@@ -97,10 +106,9 @@ export async function readFile(projectDir, relativePath) {
  */
 export async function writeFile(projectDir, relativePath, content) {
   const fs = await import('fs/promises')
-  const Path = await import('path')
 
   // Ensure parent directory exists
-  const fullPath = Path.join(projectDir, relativePath)
+  const fullPath = resolveProjectPath(projectDir, relativePath)
   const dirPath = Path.dirname(fullPath)
 
   try {
@@ -130,9 +138,8 @@ export async function writeFile(projectDir, relativePath, content) {
  */
 export async function deletePath(projectDir, relativePath) {
   const fs = await import('fs/promises')
-  const Path = await import('path')
 
-  const fullPath = Path.join(projectDir, relativePath)
+  const fullPath = resolveProjectPath(projectDir, relativePath)
 
   try {
     const stats = await fs.stat(fullPath)

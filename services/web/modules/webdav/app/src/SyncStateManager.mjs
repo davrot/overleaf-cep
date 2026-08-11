@@ -46,10 +46,11 @@ async function getProjectState(projectId, projection = {}) {
  * })
  */
 async function createProjectState(projectId, data) {
-  return await WebdavSyncProjectStates.create({
-    projectId,
-    ...data
-  })
+  return await WebdavSyncProjectStates.findOneAndUpdate(
+    { projectId },
+    { $set: data, $setOnInsert: { projectId } },
+    { upsert: true, new: true }
+  ).lean()
 }
 
 /**

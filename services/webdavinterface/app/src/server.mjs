@@ -121,10 +121,10 @@ app.get('/file', async (req, res) => {
       password
     })
 
-    const contentBuffer = await client.get(path)
+    const contentBase64 = await client.download(path)
     res.json({
       path,
-      content_base64: contentBuffer.toString('base64')
+      content_base64: contentBase64
     })
   } catch (err) {
     console.error('WebDAV get file failed:', err)

@@ -47,16 +47,33 @@ function putProjectFile(client, resourcePath, body, filePath, options) {
   })
 }
 
-async function ensureDirectories(client, rootPath, projectName, folders) {
+async function ensureDirectories(
+  client,
+  rootPath,
+  projectName,
+  folders,
+  filePaths = []
+) {
   await client.createDirectory(remotePath(rootPath, projectName))
-  const nestedFolders = folders
-    .filter(folder => folder.path !== '/')
+  const folderPaths = new Set(
+    folders
+      .map(folder => folder.path)
+      .filter(folderPath => folderPath !== '/')
+  )
+  for (const filePath of filePaths) {
+    const parts = filePath.split('/').filter(Boolean)
+    parts.pop()
+    for (let index = 1; index <= parts.length; index++) {
+      folderPaths.add(`/${parts.slice(0, index).join('/')}`)
+    }
+  }
+  const nestedFolders = [...folderPaths]
     .sort((left, right) => {
-      const lengthDifference = left.path.length - right.path.length
-      return lengthDifference || left.path.localeCompare(right.path)
+      const lengthDifference = left.length - right.length
+      return lengthDifference || left.localeCompare(right)
     })
-  for (const folder of nestedFolders) {
-    await client.createDirectory(remotePath(rootPath, projectName, folder.path))
+  for (const folderPath of nestedFolders) {
+    await client.createDirectory(remotePath(rootPath, projectName, folderPath))
   }
 }
 
@@ -117,7 +134,10 @@ async function syncProject(userId, projectId, { force = false } = {}) {
   ])
 
   const projectRoot = remotePath(rootPath, project.name)
-  await ensureDirectories(client, rootPath, project.name, entities.folders)
+  await ensureDirectories(client, rootPath, project.name, entities.folders, [
+    ...Object.keys(docs),
+    ...Object.keys(files),
+  ])
   const localPaths = new Set([
     ...Object.keys(docs),
     ...Object.keys(files),

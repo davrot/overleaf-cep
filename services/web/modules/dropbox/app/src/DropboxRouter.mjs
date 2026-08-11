@@ -3,7 +3,9 @@ import { DropboxUserCredentials } from '../models/dropboxUserCredentials.mjs'
 import { DropboxSyncProjectStates } from '../models/dropboxSyncProjectStates.mjs'
 import DropboxClient from './DropboxClient.mjs'
 import AuthorizationMiddleware from '../../../../app/src/Features/Authorization/AuthorizationMiddleware.mjs'
+import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 import logger from '@overleaf/logger'
+import { randomBytes } from 'node:crypto'
 
 const { ensureUserCanWriteProjectContent } = AuthorizationMiddleware
 
@@ -15,7 +17,76 @@ export default {
    * Registers Dropbox routes on the provided webRouter.
    */
   apply(webRouter) {
-    const { baseUrl, rootPath, username: _unusedUsername } = process.env
+    const { rootPath, DROPBOX_APP_KEY: appKey, DROPBOX_APP_SECRET: appSecret } = process.env
+    const oauthRedirectPath = '/user/dropbox/oauth/callback'
+
+    webRouter.get(
+      '/user/dropbox/oauth2',
+      AuthenticationController.requireLogin(),
+      (req, res) => {
+        if (!appKey || !appSecret) {
+          return res.status(503).send('Dropbox OAuth is not configured')
+        }
+        const state = randomBytes(24).toString('hex')
+        req.session.dropboxOAuthState = state
+        const siteUrl = process.env.LINKED_URL || process.env.SITE_URL || `${req.protocol}://${req.get('host')}`
+        const redirectUri = new URL(oauthRedirectPath, siteUrl).toString()
+        const authorizeUrl = new URL('https://www.dropbox.com/oauth2/authorize')
+        authorizeUrl.search = new URLSearchParams({
+          client_id: appKey,
+          response_type: 'code',
+          redirect_uri: redirectUri,
+          token_access_type: 'offline',
+          state,
+        }).toString()
+        res.redirect(authorizeUrl.toString())
+      }
+    )
+
+    webRouter.get(
+      oauthRedirectPath,
+      AuthenticationController.requireLogin(),
+      async (req, res) => {
+        const expectedState = req.session.dropboxOAuthState
+        delete req.session.dropboxOAuthState
+        if (!req.query.state || req.query.state !== expectedState) {
+          return res.status(400).send('Invalid Dropbox OAuth state')
+        }
+        if (req.query.error) return res.redirect('/user/settings')
+        if (!appKey || !appSecret || typeof req.query.code !== 'string') {
+          return res.status(400).send('Missing Dropbox OAuth configuration or code')
+        }
+        try {
+          const siteUrl = process.env.LINKED_URL || process.env.SITE_URL || `${req.protocol}://${req.get('host')}`
+          const redirectUri = new URL(oauthRedirectPath, siteUrl).toString()
+          const tokenResponse = await fetch('https://api.dropboxapi.com/oauth2/token', {
+            method: 'POST',
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${appKey}:${appSecret}`).toString('base64')}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              code: req.query.code,
+              grant_type: 'authorization_code',
+              redirect_uri: redirectUri,
+            }),
+          })
+          if (!tokenResponse.ok) {
+            throw new Error(`Dropbox token exchange failed: ${tokenResponse.status}`)
+          }
+          const tokenData = await tokenResponse.json()
+          await DropboxUserCredentials.findOneAndUpdate(
+            { userId: req.user._id },
+            { accessToken: encryptToken(tokenData.access_token) },
+            { upsert: true, new: true }
+          )
+          res.redirect('/user/settings')
+        } catch (err) {
+          logger.error({ err }, 'Dropbox OAuth callback failed')
+          res.status(502).send('Dropbox OAuth connection failed')
+        }
+      }
+    )
 
     // Get user's Dropbox connection status
     webRouter.get(
@@ -137,7 +208,7 @@ export default {
     webRouter.post(
       '/project/:id/dropbox/link',
       async (req, res) => {
-        const userId = req.user?/_id || req.user?.id
+        const userId = req.user?._id || req.user?.id
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
         const projectId = req.params.id

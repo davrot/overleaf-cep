@@ -1,5 +1,14 @@
 import logger from '@overleaf/logger'
 
+function toBuffer(body) {
+  if (Buffer.isBuffer(body)) return body
+  if (body instanceof ArrayBuffer) return Buffer.from(body)
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+  }
+  return Buffer.from(body, 'utf8')
+}
+
 /**
  * Client that orchestrates datamanipulator and webdavinterface microservices
  * This is a drop-in replacement for WebdavClient with the same interface
@@ -7,7 +16,8 @@ import logger from '@overleaf/logger'
 export class WebDAVServiceClient {
   constructor(credentials) {
     // Support both the old {baseUrl, username, password} format and new {server_url, username, password}
-    const serverUrl = credentials.server_url || credentials.baseUrl || credentials.url
+    const serverUrl = credentials?.server_url || credentials?.baseUrl || credentials?.url
+    if (!serverUrl) throw new Error('WebDAV configuration missing server_url')
     
     this.baseUrl = serverUrl.replace(/\/$/, '')
     this.username = credentials.username
@@ -78,7 +88,8 @@ export class WebDAVServiceClient {
         throw new Error(`Failed to list ${resourcePath}: ${errorText}`)
       }
 
-      return response.json().entries || []
+      const data = await response.json()
+      return data.entries || []
     } catch (err) {
       logger.error({ err, resourcePath }, 'WebDAV list failed')
       throw err
@@ -124,7 +135,8 @@ export class WebDAVServiceClient {
         method: 'GET',
         headers: {
           'X-Server-URL': this.baseUrl,
-          'X-Username': this.username
+          'X-Username': this.username,
+          Authorization: `Basic ${Buffer.from(`${this.username}:${this.password}`).toString('base64')}`
         }
       })
 
@@ -154,7 +166,7 @@ export class WebDAVServiceClient {
           username: this.username,
           password: this.password,
           path: resourcePath,
-          content_base64: typeof body === 'string' ? Buffer.from(body).toString('base64') : body.toString('base64'),
+          content_base64: toBuffer(body).toString('base64'),
           etag
         })
       })
@@ -188,7 +200,8 @@ export class WebDAVServiceClient {
         method: 'DELETE',
         headers: {
           'X-Server-URL': this.baseUrl,
-          'X-Username': this.username
+          'X-Username': this.username,
+          Authorization: `Basic ${Buffer.from(`${this.username}:${this.password}`).toString('base64')}`
         }
       })
 

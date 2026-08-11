@@ -78,9 +78,10 @@ export function createWebdavClient(baseUrl, username, password, rootPath = '/') 
      */
     async list(resourcePath) {
       const items = await clientInstance.getDirectoryContents(resourcePath)
+      const parentPath = resourcePath.replace(/\/$/, '') || '/'
       return items.map(item => ({
         href: item.basename,
-        path:item.basename,
+        path: item.filename || `${parentPath}/${item.basename}`.replace(/\/+/g, '/'),
         isDirectory: item.type === 'directory',
         etag: null,
         modifiedAt: item.lastmod ? new Date(item.lastmod).toISOString() : null,
@@ -111,11 +112,13 @@ export function createWebdavClient(baseUrl, username, password, rootPath = '/') 
      * @throws {ConflictError} When ETag mismatch indicates remote file was modified
      */
     async put(resourcePath, body, { etag } = {}) {
-      const content = 
-        typeof body === 'string' ? body :
-        body instanceof ArrayBuffer ? new TextDecoder().decode(body) :
-        Buffer.isBuffer(body) ? body :  // Keep binary buffers as-is!
-        body
+      const content = Buffer.isBuffer(body)
+        ? body
+        : body instanceof ArrayBuffer
+          ? Buffer.from(body)
+          : ArrayBuffer.isView(body)
+            ? Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+            : body
 
       await clientInstance.putFileContents(resourcePath, content, {
         overwrite: true,

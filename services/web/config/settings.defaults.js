@@ -1115,6 +1115,10 @@ module.exports = {
         __dirname,
         '../modules/webdav/frontend/js/components/webdav-widget.tsx'
       ),
+      Path.resolve(
+        __dirname,
+        '../modules/dropbox/frontend/js/components/dropbox-widget.tsx'
+      ),
     ],
     referenceLinkingWidgets: [
       Path.resolve(
@@ -1254,6 +1258,7 @@ module.exports = {
     'git-bridge',
     'github-sync',
     'webdav',
+    'dropbox',
     'zotero',
   ],
   viewIncludes: {},

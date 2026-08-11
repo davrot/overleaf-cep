@@ -8,6 +8,7 @@ import {
   OLModalHeader,
   OLModalTitle,
 } from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
 
@@ -18,10 +19,6 @@ type DropboxUserStatus = {
 
 // Optional status fields for projects
 type ProjectDropboxStatus = DropboxUserStatus & { lastSyncAt?: string | null; mergeStatus?: string }
-
-type ProjectInfo = {
-  projectName?: string
-}
 
 function DropboxSyncModal({
   show,
@@ -87,7 +84,7 @@ function DropboxSyncModal({
         setStatus({ connected: false } as DropboxUserStatus)
         setModalStatus('disconnected')
       })
-  }, [show])
+  }, [show, initialProjectName, projectId])
 
   // Unlink project from Dropbox
   const handleUnlinkProject = async () => {
@@ -197,7 +194,7 @@ function DropboxSyncModal({
     return (
       <OLModal show={show} onHide={handleClose}>
         <OLModalHeader>
-          <OL-modalTitle>{t('dropbox')}</OL-modalTitle>
+          <OLModalTitle>{t('dropbox')}</OLModalTitle>
         </OLModalHeader>
         <OLModalBody>
           <p>{t('loading')}...</p>
@@ -211,7 +208,7 @@ function DropboxSyncModal({
     return (
       <OLModal show={show} onHide={handleClose}>
         <OLModalHeader>
-          <OL-modalTitle>{t('dropbox')}</OL-modalTitle>
+          <OLModalTitle>{t('dropbox')}</OLModalTitle>
         </OLModalHeader>
         <OLModalBody>
           <p className="small">
@@ -230,7 +227,7 @@ function DropboxSyncModal({
     return (
       <OLModal show={show} onHide={handleClose}>
         <OLModalHeader>
-          <OL-modalTitle>{t('dropbox')}</OL-modalTitle>
+          <OLModalTitle>{t('dropbox')}</OLModalTitle>
         </OLModalHeader>
         <OLModalBody>
           {status?.path && (
@@ -265,7 +262,7 @@ function DropboxSyncModal({
     return (
       <OLModal show={show} onHide={handleClose}>
         <OLModalHeader>
-          <OL-modalTitle>{t('dropbox')}</OL-modalTitle>
+          <OLModalTitle>{t('dropbox')}</OLModalTitle>
         </OLModalHeader>
 
         <OLModalBody>

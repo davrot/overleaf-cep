@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DropboxLogo from './dropbox-logo.tsx'
 import IntegrationCard from '@/features/integrations-panel/integration-card'
+import { useProjectContext } from '@/shared/context/project-context'
 import DropboxSyncModal from './dropbox-sync-modal.tsx'
 
 const DropboxIntegrationCard = () => {
