@@ -30,12 +30,16 @@ async function getUserToken(userId) {
   return await decryptAccessToken(credentials.github)
 }
 
-async function saveUserToken(userId, accessToken) {
+async function saveUserToken(userId, accessToken, serverType = 'github') {
   const tokenEncrypted = await encryptAccessToken(accessToken)
   await GitHubSyncUserCredentials.findOneAndUpdate(
     normalizeQuery({ userId }),
-    { $set: { github: tokenEncrypted } },
-    { upsert: true }
+    { 
+      $set: { github: tokenEncrypted, serverType }, 
+      $setOnInsert: { createdAt: new Date() },
+      $currentDate: { lastUsedAt: true }
+    },
+    { upsert: true, new: true }
   )
 }
 

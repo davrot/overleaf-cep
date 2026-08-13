@@ -1,6 +1,7 @@
 import Mongo from '../../../../app/src/Features/Helpers/Mongo.mjs'
 import { WebdavUserCredentials } from '../models/webdavUserCredentials.mjs'
 import { decrypt, encrypt } from './WebdavTokenEncryption.mjs'
+import { WebdavSyncProjectStates } from '../models/webdavSyncProjectStates.mjs'
 
 const { normalizeQuery } = Mongo
 const credentialLocks = new Map()
@@ -77,6 +78,28 @@ async function save(userId, credentials) {
  * @param {string} userId - The Overleaf user ID
  */
 async function remove(userId) {
+  // First unlink all projects associated with this user's WebDAV accounts
+  const credentials = await get(userId)
+  if (credentials) {
+    // Extract usernames to find linked projects
+    const username = credentials.username
+    
+    // Unlink all projects that use this WebDAV username
+    const syncStates = await WebdavSyncProjectStates.find({
+      'connected': true,
+      path: { $regex: new RegExp(`^.*${username}.*$`, 'i') }
+    }).lean()
+    
+    for (const state of syncStates) {
+      await WebdavSyncProjectStates.deleteOne({ projectId: state.projectId })
+      logger.debug(
+        { userId, projectId: state.projectId },
+        'on disconnect: unlinked project due to credential removal'
+      )
+    }
+  }
+  
+  // Then delete credentials
   await withUserLock(userId, () =>
     WebdavUserCredentials.deleteOne(normalizeQuery({ userId }))
   )

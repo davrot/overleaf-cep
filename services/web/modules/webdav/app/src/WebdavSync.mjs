@@ -477,7 +477,6 @@ async function pollUser(userId) {
   const client = new WebDAVServiceClient(credentials)
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   let changedFileCount = 0
-  let deletedFileCount = 0
   logger.info({ userId, rootPath }, 'WebDAV poll started')
   const rootEntries = await client.list(rootPath)
   const remoteProjectNames = new Set()
@@ -535,35 +534,23 @@ async function pollUser(userId) {
         projects[0]._id
       )
       for (const entity of entities.docs) {
-        if (nextState[entity.path]) {
-          nextState[entity.path].entityId = entity.doc._id.toString()
-          nextState[entity.path].type = 'doc'
+        // Normalize path: nextState keys have leading slash, local paths don't
+        const normalizedEntityPath = entity.path.startsWith('/') ? entity.path : '/' + entity.path
+        if (nextState[normalizedEntityPath]) {
+          nextState[normalizedEntityPath].entityId = entity.doc._id.toString()
+          nextState[normalizedEntityPath].type = 'doc'
         }
       }
       for (const entity of entities.files) {
-        if (nextState[entity.path]) {
-          nextState[entity.path].entityId = entity.file._id.toString()
-          nextState[entity.path].type = 'file'
+        // Normalize path: nextState keys have leading slash, local paths don't
+        const normalizedEntityPath = entity.path.startsWith('/') ? entity.path : '/' + entity.path
+        if (nextState[normalizedEntityPath]) {
+          nextState[normalizedEntityPath].entityId = entity.file._id.toString()
+          nextState[normalizedEntityPath].type = 'file'
         }
       }
-      const hasPreviousRemoteState = Object.keys(previousState).length > 0
-      for (const entity of [...entities.docs, ...entities.files]) {
-        if (hasPreviousRemoteState && !remotePaths.has(entity.path)) {
-          deletedFileCount++
-          await TpdsUpdateHandler.promises.deleteUpdate(
-            userId,
-            null,
-            projectName,
-            entity.path,
-            'webdav'
-          )
-          await notifyWebdav(userId, 'deleted', {
-            projectName,
-            projectId: projects[0]._id.toString(),
-            path: entity.path,
-          })
-        }
-      }
+      // Note: Deletion reconciliation is intentionally skipped during pull operations.
+      // Pull should only ADD/UPDATE files from remote, not delete local files.
     }
     await WebdavCredentials.updateRemoteState(userId, projectName, nextState)
     await WebdavCredentials.markProjectSynced(userId, projectName)
@@ -599,7 +586,6 @@ async function pollUser(userId) {
       rootPath,
       remoteProjectCount: remoteProjectNames.size,
       changedFileCount,
-      deletedFileCount,
       durationMs: Date.now() - startedAt,
     },
     'WebDAV poll completed'

@@ -273,6 +273,7 @@ async function reconcileDropboxDeletions({ userId, projectName, previousFiles, r
 /**
  * Express router for Dropbox-related API endpoints.
  */
+export { normalizeDropboxPath }
 export default {
   /**
    * Registers Dropbox routes on the provided webRouter.
@@ -443,8 +444,18 @@ export default {
         if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
         try {
+          // First unlink all projects associated with this user's Dropbox account
+          const credentials = await DropboxUserCredentials.findOne({ userId })
+          let pathToUnlink = '/'
+          if (credentials) {
+            pathToUnlink = normalizeDropboxPath(credentials.path)
+            // Unlink all projects that use this Dropbox path
+            await DropboxSyncProjectStates.deleteMany({ path: pathToUnlink })
+          }
+          
+          // Then delete the user's credentials
           await DropboxUserCredentials.deleteOne({ userId })
-          res.json({ success: true })
+          res.json({ success: true, unlinkedProjects: pathToUnlink })
         } catch (err) {
           logger.error({ err }, 'Failed to disconnect from Dropbox')
           res.status(500).json({ error: err.message })
@@ -632,20 +643,17 @@ export default {
               deletedProject: true,
             })
           }
-          const project = await ProjectGetter.promises.getProject(projectId, { name: true })
-          const deletedFiles = await reconcileDropboxDeletions({
-            userId,
-            projectName: project.name,
-            previousFiles: state.remoteFiles,
-            remoteFiles: toRemoteFilesArray(importResult.remoteFiles),
-          })
+
+          // Note: reconciliation of deletions is intentionally skipped for pull operations.
+          // Pull should only ADD/UPDATE files from Dropbox, not delete local files.
+          // Deletion reconciliation happens in push operations instead.
           await state.updateOne({
             remoteFiles: toRemoteFilesArray(importResult.remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
 
-          res.json({ success: true, message: 'Pull completed', deletedFiles, ...importResult })
+          res.json({ success: true, message: 'Pull completed', ...importResult })
         } catch (err) {
           await DropboxSyncProjectStates.updateOne(
             { projectId },
@@ -696,19 +704,60 @@ export default {
             state.path = dropboxPath
             await state.save()
           }
+          // Save what's on remote BEFORE we push (for deletion reconciliation later)
+          const beforePushRemoteFiles = state.remoteFiles ? toRemoteFilesArray(state.remoteFiles) : []
+
           const syncResult = await uploadProjectToDropbox({
             client,
             projectId,
             rootPath: dropboxPath,
           })
           const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
+
+          // After push: reconcile any files that were deleted locally but still on remote
+          // previousFiles = what we had synced before (local state before this push)
+          // remoteFiles = current state on remote after upload
+          const project = await ProjectGetter.promises.getProject(projectId, { name: true })
+          
+          // Get current local files for comparison during push
+          const localEntities = await ProjectEntityHandler.promises.getAllEntities(projectId)
+          const localFilePaths = new Set([
+            ...Object.keys(localEntities.docs || {}),
+            ...Object.keys(localEntities.files || {}),
+          ])
+
+          // Delete from remote any files that no longer exist locally
+          let deletedFromRemote = 0
+          if (state.remoteFiles) {
+            const previousPaths = Array.isArray(state.remoteFiles)
+              ? state.remoteFiles.map(f => f.path)
+              : Object.keys(state.remoteFiles)
+            
+            for (const filePath of previousPaths) {
+              // Normalize paths - Dropbox uses leading slash, local files don't
+              const normalizedFilePath = filePath.startsWith('/') ? filePath.slice(1) : filePath
+              if (!localFilePaths.has(normalizedFilePath)) {
+                const remotePath = joinDropboxPath(syncResult.projectPath, normalizedFilePath)
+                try {
+                  await client.deleteFile(remotePath)
+                  deletedFromRemote++
+                  logger.debug({ projectId, filePath }, 'deleted from Dropbox during push')
+                } catch (err) {
+                  if (!err.message?.includes('Not found')) {
+                    logger.warn({ err, projectId, filePath }, 'failed to delete file from Dropbox during push')
+                  }
+                }
+              }
+            }
+          }
+          
           await state.updateOne({
             remoteFiles: toRemoteFilesArray(remoteFiles),
             lastSyncAt: new Date(),
             lastSyncError: null,
           })
 
-          res.json({ success: true, message: 'Push completed', ...syncResult })
+          res.json({ success: true, message: 'Push completed', deletedFiles: deletedFromRemote, ...syncResult })
         } catch (err) {
           await DropboxSyncProjectStates.updateOne(
             { projectId },

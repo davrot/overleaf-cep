@@ -7,6 +7,8 @@ export const GitHubSyncUserCredentialsSchema = new Schema(
   {
     userId: { type: ObjectId, ref: 'User', required: true, unique: true },
     github: { type: String, required: true },
+    serverType: { type: String, default: 'github' },
+    lastUsedAt: { type: Date, default: Date.now },
   },
   { collection: 'githubSyncUserCredentials', minimize: false }
 )

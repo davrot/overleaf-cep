@@ -7,7 +7,7 @@ if (process.env.DROPBOX_ENABLED?.toLowerCase() === 'true') {
   logger.debug({}, 'Enabling Dropbox module')
 
   const [
-    { default: DropboxRouter },
+    { default: DropboxRouter, normalizeDropboxPath },
     { DropboxSyncProjectStates },
     { DropboxUserCredentials },
   ] = await Promise.all([
@@ -41,6 +41,17 @@ if (process.env.DROPBOX_ENABLED?.toLowerCase() === 'true') {
   Modules.hooks.attach('expireDeletedUser', async userId => {
     try {
       await DropboxUserCredentials.deleteMany({ userId })
+      
+      // Also unlink all projects associated with this user's Dropbox accounts
+      const credentialsList = await DropboxUserCredentials.find({ userId }).lean()
+      for (const cred of credentialsList) {
+        const path = normalizeDropboxPath(cred.path)
+        await DropboxSyncProjectStates.deleteMany({ path })
+        logger.debug(
+          { userId, path },
+          'on user expire: unlinked all projects with this Dropbox path'
+        )
+      }
     } catch (err) {
       logger.warn({ userId, err }, 'on user expire: failed removing user credentials')
     }

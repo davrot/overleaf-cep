@@ -38,6 +38,28 @@ if (process.env.WEBDAV_ENABLED?.toLowerCase() === 'true') {
   // Delete user credentials from mongo (hook 'expireDeletedUser')
   Modules.hooks.attach('expireDeletedUser', async userId => {
     try {
+      const credentials = await WebdavUserCredentials.get(userId)
+      
+      // Unlink all projects associated with this user's WebDAV accounts
+      if (credentials) {
+        const username = credentials.username
+        
+        // Find all sync states for this user and unlink projects
+        const syncStates = await WebdavSyncProjectStates.find({
+          'connected': true,
+          path: { $regex: new RegExp('.*' + username + '.*', 'i') }
+        }).lean()
+        
+        for (const state of syncStates) {
+          await WebdavSyncProjectStates.deleteOne({ projectId: state.projectId })
+          logger.debug(
+            { userId, projectId: state.projectId },
+            'on user expire: unlinked project from WebDAV'
+          )
+        }
+      }
+      
+      // Then delete credentials
       await WebdavUserCredentials.deleteMany({ userId })
     } catch (err) {
       logger.warn({ userId, err }, 'on user expire: failed removing user credentials')

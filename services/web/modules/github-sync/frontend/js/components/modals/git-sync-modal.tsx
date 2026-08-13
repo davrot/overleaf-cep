@@ -30,6 +30,7 @@ type GitSyncModalProps = {
   projectName: string
   modalStatus: GitSyncModalStatus
   setModalStatus: (modalStatus: GitSyncModalStatus) => void
+  serverType?: 'github' | 'gitlab' | 'gitea' | 'forgejo'
 }
 
 function GitSyncModal({
@@ -39,6 +40,7 @@ function GitSyncModal({
   projectName,
   modalStatus,
   setModalStatus,
+  serverType,
 }: GitSyncModalProps) {
 
   const { t } = useTranslation()
@@ -130,7 +132,11 @@ const {
   return (
     <OLModal show={show} onHide={handleHide} backdrop="static">
       <OLModalHeader closeButton>
-        <OLModalTitle>{t('sync_with_github')}</OLModalTitle>
+        {serverType ? (
+          <OLModalTitle>{t(`sync_with_${serverType}`)}</OLModalTitle>
+        ) : (
+          <OLModalTitle>{t('sync_with_github')}</OLModalTitle>
+        )}
       </OLModalHeader>
 
       {modalStatus === 'loading' && (

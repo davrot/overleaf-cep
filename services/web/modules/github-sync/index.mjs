@@ -3,8 +3,9 @@ import Modules from '../../app/src/infrastructure/Modules.mjs'
 import logger from '@overleaf/logger'
 
 let GitHubSyncModule = {}
-if (process.env.GITHUB_SYNC_ENABLED?.toLowerCase() === 'true') {
-  logger.debug({}, 'Enabling GitHub Sync module')
+if (process.env.GITHUB_SYNC_ENABLED?.toLowerCase() === 'true' || 
+    process.env.GIT_SYNC_ENABLED?.toLowerCase() === 'true') {
+  logger.debug({}, 'Enabling Git Sync module')
 
   const [{ default: GitHubSyncRouter },
          { default: SyncStateManager },
@@ -16,10 +17,17 @@ if (process.env.GITHUB_SYNC_ENABLED?.toLowerCase() === 'true') {
       import('./app/src/TokenManager.mjs'),
     ])
 
+  // Get server URL from environment or use default
   const siteUrl = Settings.siteUrl.replace(/\/+$/, '') || 'http://localhost'
-  Settings.githubSync = {
-    clientID: process.env.GITHUB_SYNC_CLIENT_ID,
-    clientSecret: process.env.GITHUB_SYNC_CLIENT_SECRET,
+  const serverUrl = process.env.GITHUB_SYNC_SERVER_URL ||
+                    process.env.GIT_SYNC_SERVER_URL ||
+                    'https://github.com'
+
+  Settings.gitSync = {
+    enabled: true,
+    serverUrl: serverUrl.replace(/\/$/, ''),
+    clientID: process.env.GITHUB_SYNC_CLIENT_ID || process.env.GIT_SYNC_CLIENT_ID,
+    clientSecret: process.env.GITHUB_SYNC_CLIENT_SECRET || process.env.GIT_SYNC_CLIENT_SECRET,
     callbackURL: `${siteUrl}/user/github-sync/oauth2/callback`,
   },
 
