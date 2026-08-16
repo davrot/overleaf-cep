@@ -45,10 +45,39 @@ const GitSyncExportModal = ({
 }: GitSyncExportModalProps) => {
   const { t } = useTranslation()
 
+  const [servers, setServers] = useState<GitServer[]>([])
+  const [providerId, setProviderId] = useState('')
   const [selectedOwner, setSelectedOwner] = useState('')
   const [repoName, setRepoName] = useState(projectName)
   const [description, setDescription] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'private'>('private')
+
+  // Linked providers the user can export to (same endpoint as the settings list)
+  useEffect(() => {
+    getJSON<GitServer[]>('/user/git-servers')
+      .then(data => setServers(Array.isArray(data) ? data : []))
+      .catch(err => debugConsole.error(err?.data?.message || err?.message || err))
+  }, [])
+
+  // Candidates: the preselected server (e.g. arriving from the auth flow) first,
+  // then the user's linked providers; dedupe by id.
+  const candidates: GitServer[] = (() => {
+    if (!servers.length) return server ? [server] : []
+    if (server && !servers.some(s => s.id === server.id)) return [server, ...servers]
+    return servers
+  })()
+
+  // Preselect: the incoming server when available, otherwise the first linked provider
+  useEffect(() => {
+    if (!candidates.length) return
+    if (candidates.some(s => s.id === providerId)) return
+    const preferred = server?.id && candidates.find(s => s.id === server.id)
+    setProviderId((preferred || candidates[0]).id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates])
+
+  const active: GitServer | null =
+    candidates.find(s => s.id === providerId) || candidates[0] || server || null
 
   const {
     runAsync: runAsyncUserAndOrgs,
@@ -58,15 +87,15 @@ const GitSyncExportModal = ({
 
   useEffect(() => {
     const params = new URLSearchParams()
-    if (server?.provider) params.set('provider', server.provider)
-    if (server?.url) params.set('serverUrl', server.url)
+    if (active?.provider) params.set('provider', active.provider)
+    if (active?.url) params.set('serverUrl', active.url)
     const qs = params.toString()
 
     runAsyncUserAndOrgs(getJSON(`/user/github-sync/orgs${qs ? `?${qs}` : ''}`))
       .then(userAndOrgs => setSelectedOwner(userAndOrgs?.user))
       .catch(err => debugConsole.error(err?.data?.message || err?.message || err))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server?.provider, server?.url])
+  }, [active?.provider, active?.url])
 
   const { isLoading, error, setError, runAsync } = useAsync<void>()
 
@@ -80,9 +109,9 @@ const GitSyncExportModal = ({
         description,
         isPublic,
         org,
-        provider: server?.provider,
-        serverUrl: server?.url,
-        username: server?.username,
+        provider: active?.provider,
+        serverUrl: active?.url,
+        username: active?.username,
       },
     }))
       .then(() => setModalStatus('loading'))
@@ -114,6 +143,30 @@ const GitSyncExportModal = ({
         )}
 
         <OLForm onSubmit={createRepo}>
+          {candidates.length > 1 && (
+            <OLRow>
+              <OLCol xs={12}>
+                <OLFormGroup>
+                  <OLFormLabel htmlFor="github-sync-provider">
+                    {t('provider')}
+                  </OLFormLabel>
+                  <OLFormSelect
+                    id="github-sync-provider"
+                    name="provider"
+                    value={active?.id || ''}
+                    onChange={e => setProviderId(e.target.value)}
+                  >
+                    {candidates.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {t(s.provider)} — {s.url}
+                      </option>
+                    ))}
+                  </OLFormSelect>
+                </OLFormGroup>
+              </OLCol>
+            </OLRow>
+          )}
+
           <OLRow>
             <OLCol xs={4}>
               <OLFormGroup>

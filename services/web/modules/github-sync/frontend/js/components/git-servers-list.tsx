@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import useAsync from '@/shared/hooks/use-async'
 import { getJSON, postJSON, deleteJSON } from '@/infrastructure/fetch-json'
@@ -19,9 +19,12 @@ type GitServersListProps = {
   onLink?: (server: GitServer) => void
 }
 
+type SortKey = 'provider' | 'url' | 'username'
+
 /**
  * Table of a user's registered git providers (provider, url, username)
  * with optional Test / Delete / Link actions per row.
+ * The three data columns are client-side sortable (asc/desc toggle).
  */
 const GitServersList = ({
   showTest = true,
@@ -35,6 +38,7 @@ const GitServersList = ({
   const [testResults, setTestResults] = useState<
     Record<string, { ok?: boolean; message?: string; testing?: boolean }>
   >({})
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null)
 
   const { isLoading: isDeleting, runAsync: runAsyncDelete } = useAsync<void>()
 
@@ -95,6 +99,21 @@ const GitServersList = ({
       })
   }
 
+  const toggleSort = (key: SortKey) => {
+    setSort(prev =>
+      prev?.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: 1 }
+    )
+  }
+
+  const displayList = useMemo(() => {
+    if (!sort) return list
+    const value = (s: GitServer) =>
+      String(sort.key === 'username' ? s.username || '' : s[sort.key] || '').toLowerCase()
+    return [...list].sort(
+      (a, b) => value(a).localeCompare(value(b), undefined, { sensitivity: 'base' }) * sort.dir
+    )
+  }, [list, sort])
+
   if (loading) {
     return <p className="small">{t('loading')}…</p>
   }
@@ -106,16 +125,37 @@ const GitServersList = ({
   return (
     <table className="table table-sm">
       <caption className="visually-hidden">{t('git_sync_servers')}</caption>
-      <thead className="visually-hidden">
+      <thead>
         <tr>
-          <th>{t('provider')}</th>
-          <th>{t('server_url')}</th>
-          <th>{t('username')}</th>
-          <th>{t('actions')}</th>
+          {(['provider', 'url', 'username'] as SortKey[]).map(key => (
+            <th
+              key={key}
+              scope="col"
+              className="small"
+              aria-sort={
+                sort?.key === key
+                  ? (sort.dir === 1 ? 'ascending' : 'descending')
+                  : 'none'
+              }
+            >
+              <button
+                type="button"
+                className="btn btn-link p-0 small text-decoration-none"
+                onClick={() => toggleSort(key)}
+                aria-label={t(key === 'url' ? 'server_url' : key)}
+              >
+                {t(key === 'url' ? 'server_url' : key)}
+                {sort?.key === key ? (sort.dir === 1 ? ' ▴' : ' ▾') : ''}
+              </button>
+            </th>
+          ))}
+          <th scope="col" className="small">
+            {t('actions')}
+          </th>
         </tr>
       </thead>
       <tbody>
-        {list.map(server => {
+        {displayList.map(server => {
           const testResult = testResults[server.id]
           const hasActions = showTest || showDelete || showLink
           return (

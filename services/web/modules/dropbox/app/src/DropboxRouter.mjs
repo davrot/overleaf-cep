@@ -28,6 +28,36 @@ const sha256 = data => createHash('sha256').update(data).digest('hex')
 // C1: normalize a project-relative key (strip leading slashes) for lookups.
 const normKey = p => String(p || '').replace(/^\/+/, '')
 
+/**
+ * BUG1 (user-reported: modal showed "/A5 test" but the files live in
+ * "Apps/Overleaf Dev/A5 test"): combine the owner's configured root folder
+ * (credentials doc `path`, e.g. "Apps/Overleaf Dev" — may be percent-encoded)
+ * with the project state path (e.g. "/A5 test") into the full path exactly as
+ * it appears in the Dropbox UI: no leading slash, spaces decoded.
+ * A root of "/" or empty yields the state path alone (a plain sandbox root
+ * has no displayable name the API exposes).
+ * @param {string|null|undefined} rootPath credentials.path
+ * @param {string|null|undefined} statePath project state path ("/<project>[/…]")
+ * @returns {string}
+ */
+export function joinDisplayPath(rootPath, statePath) {
+  let stateClean = String(statePath || '').replace(/^\/+/, '')
+  try {
+    stateClean = decodeURIComponent(stateClean)
+  } catch {
+    // keep as-is on malformed percent-encoding
+  }
+  if (!stateClean) return ''
+  let rootClean = String(rootPath || '').replace(/^\/+|\/+$/g, '')
+  try {
+    rootClean = decodeURIComponent(rootClean)
+  } catch {
+    // keep as-is on malformed percent-encoding
+  }
+  if (!rootClean) return stateClean
+  return `${rootClean}/${stateClean}`
+}
+
 function normalizeDropboxPath(path) {
   if (path === '/Overleaf/Dropbox' || !path) return DEFAULT_DROPBOX_PATH
   try {
@@ -198,6 +228,44 @@ function toRemoteFilesArray(remoteFiles = {}) {
     path,
     ...metadata,
   }))
+}
+
+/**
+ * BUG2 (CRITICAL, user-reported: push skipped ALL remote deletions with
+ * "remote identity changed" even though nothing changed on Dropbox):
+ * pure planner for guarded deletions. A remote file that was part of a
+ * previous sync (stored entry with a rev baseline) and is absent locally is
+ * eligible for remote deletion ONLY when the current remote listing shows
+ * the SAME rev. Any other case — remote rev changed, unknown/missing rev,
+ * or absent from the current listing — goes to `skipped` so the caller
+ * records a conflict instead of deleting data the user (or someone else)
+ * modified on Dropbox.
+ * @param {Array} storedEntries array of {path, rev, ...} from state.remoteFiles
+ * @param {Set<string>} localFilePaths currently-existing local files, slash-less
+ * @param {Object} currentRemoteMap slashed-normalized current remote listing
+ *   (keys slash-less; values {rev, size, modifiedAt})
+ * @returns {{ deletions: {path: string}[], skipped: {path: string, remoteRev: string | null}[] }}
+ */
+export function planRemoteDeletions(storedEntries, localFilePaths, currentRemoteMap) {
+  const deletions = []
+  const skipped = []
+  for (const entry of storedEntries || []) {
+    const rel = entry?.path ? normKey(entry.path) : ''
+    if (!rel) continue
+    if (localFilePaths && localFilePaths.has(rel)) continue // still exists locally
+    const currentRev = currentRemoteMap?.[rel]?.rev
+    // RF.4 key-shape notes preserved: stored entry paths and listing keys are
+    // carried with a leading slash; both sides are normalized here, and the
+    // caller MUST pass a listing taken against the PROJECT folder (relative
+    // keys) — a root-folder listing would shift every key by the project name
+    // and this guard would skip every deletion (the original live bug).
+    if (!entry?.rev || !currentRev || currentRev !== entry.rev) {
+      skipped.push({ path: rel, remoteRev: currentRev || null })
+    } else {
+      deletions.push({ path: rel })
+    }
+  }
+  return { deletions, skipped }
 }
 
 // H16: update (or create) the remoteFiles entry for a project-relative path,
@@ -717,6 +785,20 @@ export default {
             } catch {
               // project name unavailable -> clients fall back to state.path
             }
+            // BUG1: the display path the user needs is the FULL Dropbox path
+            // (<owner's configured root>/<project folder>, e.g.
+            // "Apps/Overleaf Dev/A5 test"), which needs the OWNER's
+            // credentials doc (the viewer may be a collaborator).
+            try {
+              const owner = state.ownerId || userId
+              const credentials = await DropboxUserCredentials.findOne(
+                { userId: owner },
+                { path: 1 }
+              ).lean()
+              state.fullPath = joinDisplayPath(credentials?.path, state.path)
+            } catch {
+              // display-only field — modal falls back to projectPath/path
+            }
           }
           res.json(state || { connected: false })
         } catch (err) {
@@ -1005,8 +1087,33 @@ export default {
           // DBX-14: don't write on read — just use the normalized local copy
           // (state docs are normalized at creation time)
           state.path = dropboxPath
-          // Snapshot remote state BEFORE push (for guarded deletion + conflict gate)
-          const remoteBeforePush = await getDropboxRemoteFiles(client, dropboxPath)
+          // Snapshot remote state BEFORE push (for guarded deletion + conflict
+          // gate).
+          // BUG2 fix: the snapshot MUST be taken against the PROJECT folder
+          // (<root>/<project name>), because state.remoteFiles, the C1 gate
+          // and the deletion guard all use PROJECT-RELATIVE keys. The old
+          // code listed the ROOT directory, so every key was shifted by the
+          // project name ('A5 test/main.tex'), every guard lookup missed,
+          // and push reported "remote identity changed" for every file
+          // (skipping all deletions) while simultaneously disabling the
+          // remote-changed push gate.
+          const project = await ProjectGetter.promises.getProject(projectId, { name: true })
+          if (!project) throw new Error('Project not found')
+          const prePushProjectPath = joinDropboxPath(dropboxPath, project.name)
+          let remoteBeforePush = {}
+          try {
+            remoteBeforePush = await getDropboxRemoteFiles(client, prePushProjectPath)
+          } catch (err) {
+            // Remote folder missing (deleted since last sync, or never
+            // created yet): nothing to reconcile against. Treat as empty —
+            // safe direction: the guard below deletes nothing and records
+            // conflicts instead. Uploads below still create the folder.
+            if (!isDropboxNotFound(err)) throw err
+            logger.warn(
+              { projectId, projectPath: prePushProjectPath },
+              'push: pre-push remote project folder not found; snapshotting as empty'
+            )
+          }
           const previousRemoteMap = normalizeDropboxPathMap(
             Object.fromEntries(
               toRemoteFilesArray(state.remoteFiles)
@@ -1050,53 +1157,61 @@ export default {
 
           let deletedFromRemote = 0
           const skippedDeletions = []
+          const skippedDeletionConflicts = []
           const previousEntries = toRemoteFilesArray(state.remoteFiles).filter(f => f && f.path)
-          for (const entry of previousEntries) {
-            const normalizedFilePath = entry.path.startsWith('/') ? entry.path.slice(1) : entry.path
-            if (!normalizedFilePath || localFilePaths.has(normalizedFilePath)) continue
-            // RF.4: remoteBeforePush is keyed WITH a leading slash (output of
-            // getDropboxRemoteFiles), but the lookup key is slash-less — the old
-            // direct lookup always missed, so every local deletion was skipped
-            // (stale remote files persisted). Use the normalized map instead.
-            const currentRemote = remoteRemoteMap[normalizedFilePath]
-            if (!currentRemote || !entry.rev || currentRemote.rev !== entry.rev) {
-              // Remote changed since last sync (or identity unknown) — never delete; flag conflict
-              skippedDeletions.push(normalizedFilePath)
-              continue
-            }
-            const remotePath = joinDropboxPath(syncResult.projectPath, normalizedFilePath)
+          // BUG2: pure planner — delete ONLY when the current remote rev
+          // equals the stored baseline; everything else is recorded as a
+          // conflict instead of being deleted.
+          const deletionPlan = planRemoteDeletions(previousEntries, localFilePaths, remoteRemoteMap)
+          for (const plan of deletionPlan.deletions) {
+            const remotePath = joinDropboxPath(syncResult.projectPath, plan.path)
             try {
               await client.delete(remotePath)
               deletedFromRemote += 1
-              logger.debug({ projectId, filePath: normalizedFilePath }, 'deleted from Dropbox during push')
+              logger.debug({ projectId, filePath: plan.path }, 'deleted from Dropbox during push')
             } catch (err) {
               if (!isDropboxNotFound(err)) {
-                logger.warn({ err, projectId, filePath: normalizedFilePath }, 'failed to delete file from Dropbox during push')
+                logger.warn({ err, projectId, filePath: plan.path }, 'failed to delete file from Dropbox during push')
               }
             }
+          }
+          for (const plan of deletionPlan.skipped) {
+            skippedDeletions.push(plan.path)
+            // Record the skipped deletion as a resolvable conflict: entry.rev
+            // is updated when the user resolves (keep-local unblocks the
+            // deletion on the next push; keep-remote re-imports the file).
+            skippedDeletionConflicts.push({
+              path: plan.path,
+              remoteRev: plan.remoteRev || null,
+              localHash: null,
+              remoteHash: null,
+              at: new Date(),
+            })
           }
           if (skippedDeletions.length) {
             logger.warn({ projectId, skippedDeletions }, 'push: skipped remote deletions; remote identity changed since last sync (conflicts recorded)')
           }
 
           const pushConflicts = syncResult.conflicts || []
-          if (pushConflicts.length) {
-            const firstConflict = pushConflicts[0]
-            const remoteRev =
-              remoteRemoteMap[
-                firstConflict.startsWith('/') ? firstConflict.slice(1) : firstConflict
-              ]?.rev || null
+          // The push result OWNS the conflicts array going forward: content
+          // conflicts + guarded-deletion skips together; clean runs clear it.
+          const allConflicts = [...pushConflicts, ...skippedDeletionConflicts]
+          if (allConflicts.length) {
+            const firstConflict = allConflicts[0]
+            const firstRel = normKey(firstConflict.path)
             await state.updateOne({
               remoteFiles: toRemoteFilesArray(remoteFiles),
               lastSyncAt: new Date(),
               mergeStatus: 'conflict',
               lastConflict: {
-                path: firstConflict,
+                path: firstConflict.path,
                 localVersion: 'local HEAD',
-                remoteRev,
+                localHash: null,
+                remoteRev: firstConflict.remoteRev || remoteRemoteMap[firstRel]?.rev || null,
                 timestamp: new Date(),
               },
-              lastSyncError: `${pushConflicts.length} file(s) changed on both sides (first: ${firstConflict}); not pushed`,
+              lastSyncError: `${allConflicts.length} conflict(s) (first: ${firstConflict.path}); changed files NOT pushed/NOT deleted`,
+              conflicts: allConflicts,
             })
           } else {
             await state.updateOne({
@@ -1105,19 +1220,23 @@ export default {
               mergeStatus: 'clean',
               lastConflict: null,
               lastSyncError: null,
+              conflicts: [],
             })
           }
 
           res.json({
+            ...syncResult,
             success: true,
-            message: pushConflicts.length
-              ? `Push completed with ${pushConflicts.length} conflict(s) (conflicting files NOT pushed)`
+            // Explicit keys AFTER the spread: syncResult.conflicts only covers
+            // upload-side conflicts; the response must report ALL recorded
+            // conflicts (upload + guarded-deletion skips).
+            message: allConflicts.length
+              ? `Push completed with ${allConflicts.length} conflict(s) (conflicting files NOT pushed/NOT deleted)`
               : 'Push completed',
             deletedFiles: deletedFromRemote,
             skippedDeletions,
-            conflictCount: pushConflicts.length,
-            conflicts: pushConflicts,
-            ...syncResult,
+            conflictCount: allConflicts.length,
+            conflicts: allConflicts,
           })
           })
         } catch (err) {

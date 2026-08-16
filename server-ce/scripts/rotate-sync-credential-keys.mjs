@@ -137,10 +137,19 @@ try {
       if (typeof enc !== 'string' || !enc) {
         nFailOld++; summary.errors.push(`webdav[${cname}] uid=${doc.userId}: credentials field missing/non-string — skipped`); continue
       }
-      if (enc.startsWith(`${NEW_LABEL}:`)) alreadyNew = true
+      // App labels: the access-token-encryptor only accepts labels of the form
+      // '<prefix>-v3' (single dash separator, version exactly 'v3').
+      const storedLabel = enc.split(':', 1)[0]
+      if (storedLabel === NEW_LABEL) alreadyNew = true
       if (!alreadyNew) {
         try { plain = v3Decrypt(enc, OLD_PW) }
-        catch { nFailOld++; summary.errors.push(`webdav[${cname}] uid=${doc.userId}: decrypt with OLD key failed`); continue }
+        catch {
+          try { plain = v3Decrypt(enc, NEW_PW) } catch { plain = null }
+        }
+        if (plain === null) {
+          nFailOld++; summary.errors.push(`webdav[${cname}] uid=${doc.userId}: label='${storedLabel}' not decryptable with old/new key — skipped (manual review)`); continue
+        }
+        if (storedLabel !== OLD_LABEL) console.log(`note webdav[${cname}] uid=${doc.userId}: migrating label '${storedLabel}' -> '${NEW_LABEL}'`)
       }
       if (alreadyNew) { nAlreadyNew++; console.log(`ok   webdav[${cname}] uid=${doc.userId}: already-new`); continue }
       const reenc = v3EncryptWithLabel(plain, NEW_PW, NEW_LABEL)

@@ -10,6 +10,7 @@
     "@overleaf/o-error": "*",
     "@overleaf/settings": "*",
     "react": "*",
-    "react-i18next": "*"
+    "react-i18next": "*",
+    "vitest": "^4.1.10"
   }
 }

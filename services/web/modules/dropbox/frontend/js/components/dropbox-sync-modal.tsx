@@ -20,6 +20,7 @@ type DropboxUserStatus = {
 
 // Optional status fields for projects
 type ProjectDropboxStatus = DropboxUserStatus & {
+  fullPath?: string
   projectPath?: string
   lastSyncAt?: string | null
   mergeStatus?: string
@@ -360,7 +361,10 @@ function DropboxSyncModal({
 
               <p className="small">
                 <strong>{t('dropbox_path_label')}:</strong>{' '}
-                {formatDropboxPath(status.projectPath || status.path || '/')}
+                {/* BUG1: prefer the FULL Dropbox path (owner root + project
+                    folder, e.g. "Apps/Overleaf Dev/A5 test"); legacy fields
+                    remain as fallbacks. */}
+                {formatDropboxPath(status.fullPath || status.projectPath || status.path || '/')}
               </p>
 
               {connectedStatus.lastSyncAt && (
