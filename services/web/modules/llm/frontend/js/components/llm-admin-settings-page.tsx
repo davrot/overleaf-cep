@@ -9,8 +9,6 @@ import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import OLFormText from '@/shared/components/ol/ol-form-text'
 import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLNotification from '@/shared/components/ol/ol-notification'
-import OLRow from '@/shared/components/ol/ol-row'
-import OLCol from '@/shared/components/ol/ol-col'
 import OLBadge from '@/shared/components/ol/ol-badge'
 import MaterialIcon from '@/shared/components/material-icon'
 import {
@@ -70,17 +68,6 @@ const DEFAULT_SYSTEM_PROMPT = `You are an expert LaTeX debugging assistant and c
 - Focus on solving the immediate problem first
 
 Remember: The user is likely frustrated. Be encouraging and clear!`
-
-const statusBadgeStyle = (variant: 'success' | 'error'): React.CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    fontSize: '0.8125rem',
-    fontWeight: 500,
-    color: variant === 'success'
-        ? 'var(--green-60, #198754)'
-        : 'var(--red-60, #dc3545)',
-})
 
 // overleaf-lab: a small accessible toggle switch (styled from a button) used for
 // the per-feature enable/disable controls.
@@ -149,6 +136,9 @@ export default function LLMAdminSettingsPage() {
         (getMeta('ol-llmApiType') as string) || ''
     )
     const [llmApiKey, setLlmApiKey] = useState<string>('')
+    // overleaf-lab: true = the user explicitly asked to REMOVE the stored key
+    // (blank input otherwise keeps the stored key).
+    const [clearLlmApiKey, setClearLlmApiKey] = useState(false)
     const [allowedModels, setAllowedModels] = useState<string[]>(
         ((getMeta('ol-allowedModels') as string) || '')
             .split(',')
@@ -156,6 +146,14 @@ export default function LLMAdminSettingsPage() {
             .filter(Boolean)
     )
     const [availableModels, setAvailableModels] = useState<string[]>([])
+    // overleaf-lab: item 8 — the FULL model list found by a scan/test (including
+    // unchecked models), persisted so unchecked models stay visible across reloads.
+    const [knownModels, setKnownModels] = useState<string[]>(
+        ((getMeta('ol-knownModels') as string) || '')
+            .split(',')
+            .map(m => m.trim())
+            .filter(Boolean)
+    )
     // overleaf-lab: admin-chosen inline-completion model for the shared backend
     // ('' = auto, i.e. the first allowed model). Separate from the chat models.
     const [completionModel, setCompletionModel] = useState<string>(
@@ -221,7 +219,9 @@ export default function LLMAdminSettingsPage() {
                     llmApiUrl,
                     llmApiType,
                     llmApiKey,
+                    clearLlmApiKey,
                     allowedModels,
+                    knownModels,
                     completionModel,
                     complianceRubrics,
                     reviewModel,
@@ -243,10 +243,16 @@ export default function LLMAdminSettingsPage() {
         setTestStatus('testing')
         try {
             const resp = await postJSON('/admin/llm/settings/check', {
-                body: { apiUrl: llmApiUrl, apiKey: llmApiKey },
+                body: { apiUrl: llmApiUrl, apiKey: llmApiKey, apiType: llmApiType },
             })
             if (resp.success) {
                 setTestStatus('success')
+                // overleaf-lab: item 7 — test = model-list fetch: a successful test
+                // returns the backend's model list, so adopt it in the same round
+                // trip (no separate scan needed).
+                if (Array.isArray(resp.models)) {
+                    setKnownModels(prev => Array.from(new Set([...prev, ...resp.models])))
+                }
             } else {
                 setTestStatus('error')
             }
@@ -258,19 +264,19 @@ export default function LLMAdminSettingsPage() {
     const scanModels = async () => {
         setScanStatus('scanning')
         try {
-            const params = new URLSearchParams()
-            if (llmApiUrl) params.set('apiUrl', llmApiUrl)
-            if (llmApiKey) params.set('apiKey', llmApiKey)
-            const resp = await fetch(`/admin/llm/models?${params.toString()}`, {
-                method: 'GET',
-                credentials: 'same-origin',
+            const resp = await postJSON('/admin/llm/models', {
+                body: {
+                    apiUrl: llmApiUrl,
+                    apiKey: llmApiKey,
+                    apiType: llmApiType,
+                },
             })
-            const json = await resp.json()
-            if (json.success && Array.isArray(json.models)) {
-                setAvailableModels(json.models)
+            if (resp.success && Array.isArray(resp.models)) {
+                setAvailableModels(resp.models)
                 setScanStatus('success')
+                setKnownModels(prev => Array.from(new Set([...prev, ...resp.models])))
                 setAllowedModels(prev => {
-                    const combined = new Set([...prev, ...json.models])
+                    const combined = new Set([...prev, ...resp.models])
                     return Array.from(combined)
                 })
             } else {
@@ -306,7 +312,7 @@ export default function LLMAdminSettingsPage() {
         setComplianceRubrics(prev => prev.filter(r => r.id !== id))
     }
 
-    const allModels = Array.from(new Set([...availableModels, ...allowedModels]))
+    const allModels = Array.from(new Set([...knownModels, ...availableModels, ...allowedModels]))
 //    const allModels = availableModels
 
     return (
@@ -460,9 +466,13 @@ export default function LLMAdminSettingsPage() {
                       <OLFormControl
                           type="password"
                           value={llmApiKey}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                               setLlmApiKey(e.target.value)
-                          }
+                              // overleaf-lab: typing a new key cancels a pending "remove"
+                              if (e.target.value) {
+                                  setClearLlmApiKey(false)
+                              }
+                          }}
                           placeholder={
                               hasStoredKey
                                   ? t('llm_api_key_placeholder_stored', '••••••••  (stored — leave blank to keep)')
@@ -479,6 +489,17 @@ export default function LLMAdminSettingsPage() {
                           <MaterialIcon type="info" className="me-1" style={{ fontSize: '0.875rem' }} />
                           {t('llm_api_key_optional_local', 'Leave blank for a local server with no auth (e.g. a llama.cpp server).')}
                       </OLFormText>
+                      {hasStoredKey && (
+                          <OLButton
+                              variant="link"
+                              onClick={() => {
+                                  setLlmApiKey('')
+                                  setClearLlmApiKey(true)
+                              }}
+                          >
+                              {t('llm_api_key_remove', 'Remove stored key')}
+                          </OLButton>
+                      )}
                   </OLFormGroup>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -1028,7 +1049,7 @@ export default function LLMAdminSettingsPage() {
                                       'Each template runs on the selected text. Use {{selection}} where the selected text should be inserted; if omitted, it is appended.'
                                   )}
                               </OLFormText>
-                              {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'title', 'abstract'].map(key => (
+                              {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'mathFix', 'title', 'abstract'].map(key => (
                                   <div key={key} style={{ marginBottom: '1rem' }}>
                                       <OLFormGroup controlId={`llm-action-${key}`} style={{ marginBottom: '0.25rem' }}>
                                           <OLFormLabel>

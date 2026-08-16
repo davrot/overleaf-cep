@@ -44,6 +44,8 @@ export default function LLMSettingsSection({ initialSettings }: Props) {
         initialSettings?.useOwnSettings || false
     )
     const [llmApiKey, setLlmApiKey] = useState('')
+    // overleaf-lab: true = the user explicitly asked to REMOVE the stored key
+    const [clearLlmApiKey, setClearLlmApiKey] = useState(false)
     // overleaf-lab: llmModelName is a comma-separated list of personal chat
     // models; the first id is the default in the editor's chat model picker.
     const [llmModelName, setLlmModelName] = useState(
@@ -155,6 +157,7 @@ export default function LLMSettingsSection({ initialSettings }: Props) {
                 body: {
                     useOwnLLMSettings,
                     llmApiKey: llmApiKey || undefined,
+                    clearLlmApiKey,
                     llmModelName, // overleaf-lab: comma-separated chat model ids
                     llmApiUrl,
                     llmCompletionModel, // overleaf-lab: resolved completion model id ('' = local)
@@ -189,6 +192,7 @@ export default function LLMSettingsSection({ initialSettings }: Props) {
                     body: {
                         useOwnLLMSettings: false,
                         llmApiKey: undefined,
+                        clearLlmApiKey: true,
                         llmModelName: '',
                         llmApiUrl: '',
                         llmCompletionModel: '',
@@ -328,13 +332,30 @@ export default function LLMSettingsSection({ initialSettings }: Props) {
                             type="password"
                             autoComplete="current-password"
                             value={llmApiKey}
-                            onChange={e => setLlmApiKey(e.target.value)}
+                            onChange={e => {
+                                setLlmApiKey(e.target.value)
+                                // overleaf-lab: typing a new key cancels a pending "remove"
+                                if (e.target.value) {
+                                    setClearLlmApiKey(false)
+                                }
+                            }}
                             placeholder={llmHasApiKey ? '***' : 'Enter API Key'}
                         />
                         {llmHasApiKey && !llmApiKey && (
                             <OLFormText>
                                 Existing API key is set. Enter a new one to update.
                             </OLFormText>
+                        )}
+                        {llmHasApiKey && (
+                            <OLButton
+                                variant="link"
+                                onClick={() => {
+                                    setLlmApiKey('')
+                                    setClearLlmApiKey(true)
+                                }}
+                            >
+                                {t('llm_remove_key', 'Remove stored key')}
+                            </OLButton>
                         )}
                     </OLFormGroup>
 

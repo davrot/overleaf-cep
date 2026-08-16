@@ -1,6 +1,4 @@
 import logger from '@overleaf/logger'
-import fetch from 'node-fetch'
-import { AbortController } from 'abort-controller'
 import { expressify } from '@overleaf/promise-utils'
 import OError from '@overleaf/o-error'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
@@ -10,15 +8,6 @@ import Settings from '@overleaf/settings'
 import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
 import { decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: decrypt user API keys stored at rest
 import { createLLMProvider } from './LLMProviderFactory.mjs'
-
-// Helper function to remove <think> tags (for DeepSeek, Qwen and similar models)
-// Handles both closed <think>...</think> and unclosed <think>... at end of string
-function stripThinkTags(content) {
-    let cleaned = content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
-    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '')
-    return cleaned.trim()
-}
-
 // Parse available models from admin settings or environment variable
 async function getAvailableModels() {
     if (Settings.llm && !Settings.llm.enabled) {
@@ -276,15 +265,7 @@ async function chat(req, res) {
             '[LLM] chat: sending request to LLM API'
         )
 
-
-        const duration = Date.now() - startTime
-
-        const data = await provider.chat({
-          model: modelNameForApi,
-          messages: finalMessages,
-          max_tokens: 8192,
-//          temperature: 0.7,
-        }) 
+        const data = await provider.chat(requestBody)
 
         logger.info(
             { projectId, duration: `${Date.now() - startTime}ms`, model: modelNameForApi },
@@ -298,7 +279,7 @@ async function chat(req, res) {
         logger.error({ projectId, userId, err }, '[LLM] Error communicating with LLM service')
         return res.status(errStatus).json({
           error: err.message,
-          details: info?.error?.message || error.cause?.message,
+          details: info?.error?.message || err.cause?.message,
           status: errStatus,
         })
     }
@@ -307,7 +288,7 @@ async function chat(req, res) {
 async function completion(req, res) {
     const projectId = req.params.Project_id
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const { cursorOffset, leftContext, rightContext, language, maxLength } =
+    const { leftContext, rightContext, language, maxLength } =
         req.body
 
     logger.debug(
@@ -426,9 +407,7 @@ async function completion(req, res) {
         const systemPrompt = `/no_think\nYou are a text completion engine. Output ONLY the missing text, in the same language as the surrounding text. No thinking, no explanation, no markdown, no code fences, no tags. Just the raw continuation characters.`
         const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:\n\n${leftContext}[CURSOR]${rightContext}`
 
-console.log("userPrompt = ", userPrompt)
-
-        const data = await provider.completion({
+        const data = await provider.complete({
             model: completionModel,
             messages: [
                 { role: 'system', content: systemPrompt },
@@ -549,6 +528,188 @@ async function getPrompts(req, res) {
     })
 }
 
+// overleaf-lab: PR item 13 — whole-document generators (title / abstract /
+// keywords). These operate on the ENTIRE project source (not a selection), so
+// they live in the File menu rather than the selection toolbar. Project files
+// are read server-side via the same getAllDocs pattern as getSourceContext.
+// overleaf-lab: generous max_tokens on purpose — reasoning models (e.g. qwen3
+// via Ollama) spend most of the budget on hidden thinking before emitting the
+// answer; the instructions above still constrain visible output size.
+const GENERATOR_TYPES = {
+    title: {
+        max_tokens: 2000,
+        temperature: 0.4,
+        instruction:
+            'Write ONE concise, grammatically correct title for the document below. '
+            + 'Return ONLY the title text — no quotes, no numbering, no explanation.',
+    },
+    abstract: {
+        max_tokens: 4000,
+        temperature: 0.3,
+        instruction:
+            'Write a structured abstract (150–250 words) for the document below: '
+            + 'purpose, methods, key results/findings, and conclusion in that order. '
+            + 'Return ONLY the abstract text — no heading, no quotes, no explanation.',
+    },
+    keywords: {
+        max_tokens: 2000,
+        temperature: 0.2,
+        instruction:
+            'Generate 5–8 keyword phrases for the document below that capture its '
+            + 'core topics, methods, and domain. Return ONLY the keywords, '
+            + 'separated by commas, in order of importance.',
+    },
+}
+
+async function generateDocument(req, res) {
+    const { type, model: requestedModel } = req.body
+    const projectId = req.params.Project_id
+    const userId = SessionManager.getLoggedInUserId(req.session)
+
+    const spec = GENERATOR_TYPES[type]
+    if (!spec) {
+        return res.status(400).json({
+            ok: false,
+            error: 'bad_request',
+            detail: `Unknown generator type. Expected one of: ${Object.keys(GENERATOR_TYPES).join(', ')}`,
+        })
+    }
+
+    if (Settings.llm && !Settings.llm.enabled) {
+        return res.status(503).json({ ok: false, error: 'llm_disabled' })
+    }
+
+    const flags = await getLLMFeatureFlags()
+    if (!flags.chatEnabled) {
+        return res.status(403).json({ ok: false, error: 'feature_disabled' })
+    }
+
+    logger.debug({ projectId, userId, type, hasModel: !!requestedModel }, '[LLM] generateDocument: request')
+
+    try {
+        // overleaf-lab: resolve credentials/model exactly like chat(): the request
+        // model (if any), else the user's personal settings (when allowed and set),
+        // else the shared admin backend.
+        let llmApiUrl = null
+        let llmApiKey = null
+        let llmApiType = null
+        let model = null
+
+        if (requestedModel && requestedModel.startsWith('personal-') && userId) {
+            const user = await User.findById(userId, 'useOwnLLMSettings llmApiUrl llmApiKey llmModelName')
+            if (user && user.useOwnLLMSettings && user.llmApiUrl) {
+                llmApiUrl = user.llmApiUrl
+                llmApiKey = user.llmApiKey ? decryptSecret(user.llmApiKey) : ''
+                model = requestedModel.substring('personal-'.length)
+            }
+        }
+
+        const adminSettings = await getAdminLLMSettings()
+        if (!llmApiUrl) {
+            llmApiUrl = adminSettings.llmApiUrl || process.env.LLM_API_URL
+            llmApiKey = adminSettings.llmApiKey || process.env.LLM_API_KEY
+            llmApiType = adminSettings.llmApiType || null
+        }
+        if (!model) {
+            model =
+                (adminSettings.allowedModels || [])[0] ||
+                (process.env.LLM_MODEL_NAME || '').split(',')[0].trim() ||
+                null
+        }
+
+        if (!llmApiUrl || !model) {
+            return res.status(503).json({
+                ok: false,
+                error: 'not_configured',
+                detail: 'No LLM backend is configured',
+            })
+        }
+
+        // overleaf-lab: concatenate every document in the project (LaTeX sources
+        // first) with file headers, so multi-file projects are covered. The char
+        // cap keeps worst-case prompts inside typical 32k–128k context windows;
+        // the last files in a very large project lose the tail (titles/abstracts
+        // rarely depend on the 100th appendix).
+        const docsByPath = (await ProjectEntityHandler.promises.getAllDocs(projectId)) || {}
+        const entries = Object.entries(docsByPath).filter(([, v]) => v && Array.isArray(v.lines))
+        const isTex = p => /\.(tex|sty|cls|sty\.in|bib)$/i.test(String(p)) || /\btex\b/i.test(String(p))
+        entries.sort((a, b) => Number(isTex(b[0])) - Number(isTex(a[0])))
+
+        const perFileCap = 60000
+        const totalCap = 240000
+        let docText = ''
+        const included = []
+        for (const [docPath, value] of entries) {
+            if (docText.length >= totalCap) {
+                break
+            }
+            const text = (value.lines || []).join('\n')
+            if (!text.trim()) {
+                continue
+            }
+            const clipped = text.length > perFileCap ? text.slice(0, perFileCap) + '\n[...truncated...]' : text
+            docText += `===== FILE: ${docPath} =====\n${clipped}\n\n`
+            included.push(docPath)
+        }
+
+        if (!docText.trim()) {
+            return res.status(422).json({
+                ok: false,
+                error: 'no_document',
+                detail: 'The project contains no readable document file',
+            })
+        }
+
+        // overleaf-lab: honor the admin's global writing system prompt and, when the
+        // admin has tuned a matching action template (title/abstract), append it as
+        // style guidance after the task instruction.
+        const systemPrompt = (await getSystemPrompt()) || ''
+        const templates = (await getLLMPrompts()).askAiActionPrompts || {}
+        const styleGuidance = templates[type] ? `STYLE GUIDANCE from the author's template: ${templates[type]}\n\n` : ''
+
+        const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType })
+        const messages = []
+        if (systemPrompt) {
+            messages.push({ role: 'system', content: systemPrompt })
+        }
+        messages.push({
+            role: 'user',
+            content: `${styleGuidance}${spec.instruction}\n\nDOCUMENT:\n${docText}`,
+        })
+
+        // overleaf-lab: provider.chat() returns the raw response OBJECT; use
+        // chatDetailed() so `output` is the extracted content string (not
+        // "[object Object]").
+        const detailed = await provider.chatDetailed({
+            model,
+            messages,
+            max_tokens: spec.max_tokens,
+            temperature: spec.temperature,
+        })
+        const output = detailed?.content || ''
+
+        const trimmed = String(output).trim()
+        if (!trimmed) {
+            return res.status(502).json({
+                ok: false,
+                error: 'empty_response',
+                detail: 'The model returned an empty answer',
+            })
+        }
+
+        logger.info({ projectId, userId, type, files: included.length, chars: docText.length }, '[LLM] generateDocument: ok')
+
+        res.json({ ok: true, type, output: trimmed, model, files: included.length })
+    } catch (err) {
+        const info = OError.getFullInfo(err)
+        logger.error({ projectId, userId, type, err }, '[LLM] generateDocument: failed')
+        return res.status(info?.status || 502).json({
+            ok: false,
+            error: info?.error?.message || err.message,
+        })
+    }
+}
+
 export default {
     chat: expressify(chat),
     getModels: expressify(getModels),
@@ -556,4 +717,5 @@ export default {
     getFeatures: expressify(getFeatures),
     getSourceContext: expressify(getSourceContext),
     getPrompts: expressify(getPrompts),
+    generateDocument: expressify(generateDocument),
 }

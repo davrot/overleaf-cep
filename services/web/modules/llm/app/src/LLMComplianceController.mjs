@@ -4,6 +4,8 @@ import { expressify } from '@overleaf/promise-utils'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import { getAdminLLMSettings, getComplianceRubrics, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
+import OError from '@overleaf/o-error'
+import { createLLMProvider } from './LLMProviderFactory.mjs' // overleaf-lab: PR item 4 — provider-agnostic review passes
 
 // overleaf-lab: in-memory job queue for compliance reviews. A review sends the
 // whole project to the LLM and can run for minutes, so we run one at a time per
@@ -100,37 +102,51 @@ function recordTimings(timings) {
     }
 }
 
-// overleaf-lab: ask the backend for the EXACT token count of the prompt. llama.cpp
-// exposes /tokenize, and the router maps <base>/v1/tokenize onto the server root where
-// it actually lives, so the module only needs the one OpenAI-style base URL.
+// overleaf-lab: provider errors arrive as OError (BaseProvider.handleError) whose
+// CAUSE carries the transport-level failure, so abort detection must look one
+// level deeper than a bare fetch() would. Both the user cancel and the pass-timeout
+// safety net abort through job.controller.
+function isAbortErr(err) {
+    return (
+        (err && err.name === 'AbortError') ||
+        (err && err.cause && (err.cause.name === 'AbortError' || err.cause.name === 'TimeoutError'))
+    )
+}
+
+// overleaf-lab: rebuild a best-effort error string from an OError (API message +
+// raw body) so parseBackendError's context-overflow detection keeps working against
+// provider errors, exactly as it did against raw fetch bodies.
+function providerErrorText(err) {
+    let apiMessage = ''
+    try {
+        const info = OError.getFullInfo(err)
+        apiMessage =
+            (info && info.error && info.error.message) || (info && info.message) || ''
+    } catch {
+        apiMessage = ''
+    }
+    const raw = (err && err.cause && (err.cause.body || err.cause.message)) || ''
+    return `${apiMessage} ${raw}`.trim()
+}
+
+// overleaf-lab: ask the backend for the EXACT token count of the prompt. The
+// OpenAI-compatible provider maps this to the llama.cpp /tokenize extension;
+// other providers (e.g. Anthropic) have none and report null, which the caller
+// treats as "estimate only". Provider-agnostic since PR item 4: the provider
+// owns the endpoint shape and the auth header.
 //
 // Why this matters more than it looks: a character-per-token heuristic can only ever be
 // roughly right for LaTeX, whose density varies a lot between prose and math. When it
 // errs low the backend rejects the request and tells us the truth, which is recoverable.
 // When it errs HIGH we refuse a document that would actually have fit, and nothing
 // downstream can correct that: the user is simply blocked. The exact count removes both.
-// Returns null for any backend without /tokenize, so the caller falls back.
-async function countPromptTokens(llmApiUrl, llmApiKey, text) {
+// Returns null for any backend without the exact count, so the caller falls back.
+async function countPromptTokens(provider, text) {
     try {
-        const headers = { 'Content-Type': 'application/json' }
-        if (typeof llmApiKey === 'string' && llmApiKey.length > 0) {
-            headers.Authorization = `Bearer ${llmApiKey}`
-        }
-        const response = await fetch(`${llmApiUrl}/tokenize`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ content: text }),
-        })
-        if (!response.ok) {
-            return null
-        }
-        const data = await response.json()
-        if (Array.isArray(data && data.tokens)) {
-            return data.tokens.length
-        }
-        return null
+        const n = await provider.tokenize(text)
+        return typeof n === 'number' ? n : null
     } catch (err) {
-        logger.debug({ err }, '[LLM] compliance: /tokenize unavailable, using the estimate')
+        logger.debug({ err }, '[LLM] compliance: exact token count unavailable, using the estimate')
         return null
     }
 }
@@ -481,19 +497,6 @@ function splitRubric(text) {
     }
     return { preamble: preambleLines.join('\n').trim(), requirements }
 }
-
-// overleaf-lab: the compliance reviewer system prompt now lives in LLMPrompts.mjs as
-// DEFAULT_REVIEW_SYSTEM_PROMPT and is resolved per review via getLLMPrompts() so a
-// super-admin override takes effect. See performReview below.
-
-// overleaf-lab: remove <think>...</think> blocks (case-insensitive, dot-all), same
-// approach as LLMChatController, for models like DeepSeek/Qwen that emit reasoning.
-function stripThinkTags(text) {
-    let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
-    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '')
-    return cleaned.trim()
-}
-
 // overleaf-lab: strip LaTeX line comments to save tokens. For each line, cut from
 // the first unescaped `%` (a `%` not preceded by a backslash) to end of line, while
 // keeping escaped `\%`. This is simple and conservative: it can over-strip inside
@@ -669,6 +672,14 @@ async function performReview(job) {
     if (!llmApiUrl) {
         throw new Error('LLM backend is not configured')
     }
+    // overleaf-lab: PR item 4 — the provider owns endpoint shape, auth, and
+    // response normalization, so the SAME passes run on OpenAI-compatible AND
+    // Anthropic backends. llmApiType may be absent; the factory auto-detects.
+    const provider = createLLMProvider({
+        llmApiUrl,
+        llmApiKey,
+        llmApiType: admin.llmApiType,
+    })
     const maxContextTokens = admin.maxContextTokens || 32000
     // overleaf-lab: the admin-set answer budget wins; fall back to the env default.
     const reviewMaxTokens = admin.reviewMaxTokens || REVIEW_MAX_TOKENS
@@ -751,8 +762,7 @@ async function performReview(job) {
         estimateTokens(rubric.guidelines) +
         estimateTokens(prompts.reviewSystemPrompt)
     const exactPromptTokens = await countPromptTokens(
-        llmApiUrl,
-        llmApiKey,
+        provider,
         `${prompts.reviewSystemPrompt}\n${rubric.guidelines}\n${assembled}\n${scanHints}`
     )
     const promptTokens = exactPromptTokens || heuristicPromptTokens
@@ -793,31 +803,18 @@ async function performReview(job) {
     // surface any real error.
     if (typeof admin.reviewModel === 'string' && admin.reviewModel.trim().length > 0) {
         try {
-            const modelsHeaders = {}
-            if (typeof llmApiKey === 'string' && llmApiKey.length > 0) {
-                modelsHeaders.Authorization = `Bearer ${llmApiKey}`
-            }
-            const modelsResponse = await fetch(`${llmApiUrl}/models`, {
-                method: 'GET',
-                headers: modelsHeaders,
-            })
-            if (modelsResponse.ok) {
-                const modelsData = await modelsResponse.json()
-                const ids = Array.isArray(modelsData?.data)
-                    ? modelsData.data.map(entry => String(entry.id))
-                    : []
-                if (!ids.includes(reviewModel)) {
-                    return {
-                        type: 'error',
-                        errorCode: 'model_unavailable',
-                        message: 'The configured review model is not available on the backend',
-                    }
+            // overleaf-lab: provider-agnostic model preflight (PR item 4) — same list
+            // API as the admin model scan; the provider owns path + auth.
+            const data = await provider.listModels()
+            const ids = Array.isArray(data?.data)
+                ? data.data.map(entry => String(entry.id))
+                : []
+            if (!ids.includes(reviewModel)) {
+                return {
+                    type: 'error',
+                    errorCode: 'model_unavailable',
+                    message: 'The configured review model is not available on the backend',
                 }
-            } else {
-                logger.warn(
-                    { projectId, status: modelsResponse.status },
-                    '[LLM] compliance: /models check returned non-ok, continuing'
-                )
             }
         } catch (err) {
             logger.warn({ projectId, err }, '[LLM] compliance: /models check failed, continuing')
@@ -833,12 +830,8 @@ async function performReview(job) {
     const guidelinesFor = requirement =>
         `GUIDELINES (check ONLY these):\n${preamble ? `${preamble}\n` : ''}${requirement}`
 
-    // overleaf-lab: send Authorization only when a non-empty key exists, so a
-    // keyless local server is not sent a malformed empty Bearer header.
-    const chatHeaders = { 'Content-Type': 'application/json' }
-    if (typeof llmApiKey === 'string' && llmApiKey.length > 0) {
-        chatHeaders.Authorization = `Bearer ${llmApiKey}`
-    }
+    // overleaf-lab: auth is the provider's job now (OpenAI-compatible Bearer or
+    // Anthropic x-api-key, sent only when a key exists).
 
     // overleaf-lab: per-pass safety timeout, SIZED FROM THE WORK with the old fixed
     // hour as the floor. The worst case per pass is a full document prefill (the
@@ -926,30 +919,31 @@ async function performReview(job) {
                     }
                 }, passTimeoutMs())
                 try {
-                    const response = await fetch(`${llmApiUrl}/chat/completions`, {
-                        method: 'POST',
-                        headers: chatHeaders,
-                        body: JSON.stringify(subBody),
-                        signal: job.controller ? job.controller.signal : undefined,
-                    })
-                    if (!response.ok) {
-                        const errorText = await response.text()
-                        logger.warn(
-                            { projectId, pass: i, file: doc.path, status: response.status },
-                            '[LLM] compliance: per-file sub-pass refused'
-                        )
+                    // overleaf-lab: PR item 4 — provider call; a refusal now throws
+                    // (OError) instead of returning a non-ok Response.
+                    let detailed = null
+                    try {
+                        detailed = await provider.chatDetailed(subBody, {
+                            signal: job.controller ? job.controller.signal : undefined,
+                        })
+                    } catch (err) {
+                        if (job.status === 'cancelled' || isAbortErr(err)) {
+                            throw err
+                        }
+                        const backendError = parseBackendError(providerErrorText(err))
                         fileResults.push({
                             path: doc.path,
                             status: 'na',
-                            evidence: `check refused (HTTP ${response.status})`,
+                            evidence: backendError.message
+                                ? `check refused: ${backendError.message.slice(0, 200)}`
+                                : `check refused (${err.message})`,
                             suggestion: '',
                         })
-                    } else {
-                        const data = await response.json()
+                    }
+                    if (detailed) {
+                        const data = detailed.raw
                         recordTimings(data && data.timings)
-                        const content = stripThinkTags(
-                            data?.choices?.[0]?.message?.content || ''
-                        )
+                        const content = detailed.content
                         try {
                             const parsed = extractJson(content)
                             const first = Array.isArray(parsed.items) ? parsed.items[0] : null
@@ -977,7 +971,7 @@ async function performReview(job) {
                         }
                     }
                 } catch (err) {
-                    if (job.status === 'cancelled' || (err && err.name === 'AbortError')) {
+                    if (job.status === 'cancelled' || isAbortErr(err)) {
                         throw err
                     }
                     logger.warn(
@@ -1033,21 +1027,24 @@ async function performReview(job) {
             }
         }, passTimeoutMs())
         try {
-            const response = await fetch(`${llmApiUrl}/chat/completions`, {
-                method: 'POST',
-                headers: chatHeaders,
-                body: JSON.stringify(requestBody),
-                // overleaf-lab: job signal, so cancel (and the pass timeout) abort it.
-                signal: job.controller ? job.controller.signal : undefined,
-            })
-
-            if (!response.ok) {
-                const errorText = await response.text()
-                logger.error(
-                    { projectId, userId, status: response.status, pass: i, error: errorText },
-                    '[LLM] compliance: LLM API error'
-                )
-                const backendError = parseBackendError(errorText)
+            // overleaf-lab: PR item 4 — provider call; a non-ok response now
+            // SURFACES AS A THROW, so the refusal handling moved into the inner
+            // catch (same semantics: context overflow fails the job, anything
+            // else downgrades this requirement).
+            let data
+            let content
+            try {
+                const detailed = await provider.chatDetailed(requestBody, {
+                    signal: job.controller ? job.controller.signal : undefined,
+                })
+                data = detailed.raw
+                content = detailed.content
+            } catch (err) {
+                if (job.status === 'cancelled' || isAbortErr(err)) {
+                    throw err
+                }
+                logger.error({ projectId, userId, pass: i, err }, '[LLM] compliance: LLM API error')
+                const backendError = parseBackendError(providerErrorText(err))
 
                 // overleaf-lab: a context overflow means the DOCUMENT does not fit, so
                 // every other pass would fail identically: fail the whole job, with the
@@ -1071,21 +1068,17 @@ async function performReview(job) {
                 allItems.push({
                     requirement: job.currentRequirement,
                     status: 'na',
-                    evidence: `The check could not run (HTTP ${response.status}${
-                        backendError.message
-                            ? `: ${backendError.message.slice(0, 200)}`
-                            : ''
-                    })`,
+                    evidence: backendError.message
+                        ? `The check could not run: ${backendError.message.slice(0, 200)}`
+                        : `The check could not run: ${err.message}`,
                     suggestion: '',
                 })
                 continue
             }
 
-            let data = await response.json()
             // overleaf-lab: a full-size prefill is the best throughput measurement
             // there is; cache-hit passes are rejected by the sample-size gate.
             recordTimings(data && data.timings)
-            let content = stripThinkTags(data?.choices?.[0]?.message?.content || '')
 
             // overleaf-lab: parse, with ONE retry on an unusable answer. The typical
             // cause is a broad requirement (e.g. "check every citation") whose analysis
@@ -1114,18 +1107,27 @@ async function performReview(job) {
                             requestBody.messages[1],
                         ],
                     }
-                    const retryResponse = await fetch(`${llmApiUrl}/chat/completions`, {
-                        method: 'POST',
-                        headers: chatHeaders,
-                        body: JSON.stringify(retryBody),
-                        signal: job.controller ? job.controller.signal : undefined,
-                    })
-                    if (!retryResponse.ok) {
-                        break
+                    let retryD
+                    let retryOk = false
+                    try {
+                        retryD = await provider.chatDetailed(retryBody, {
+                            signal: job.controller ? job.controller.signal : undefined,
+                        })
+                        retryOk = true
+                    } catch (rerr) {
+                        if (job.status === 'cancelled' || isAbortErr(rerr)) {
+                            throw rerr
+                        }
+                        logger.warn(
+                            { projectId, pass: i, rerr },
+                            '[LLM] compliance: retry refused, treating the answer as unusable'
+                        )
                     }
-                    data = await retryResponse.json()
-                    recordTimings(data && data.timings)
-                    content = stripThinkTags(data?.choices?.[0]?.message?.content || '')
+                    if (retryOk) {
+                        data = retryD.raw
+                        recordTimings(retryD.raw && retryD.raw.timings)
+                        content = retryD.content
+                    }
                 }
                 try {
                     parsed = extractJson(content)
@@ -1174,7 +1176,7 @@ async function performReview(job) {
         } catch (err) {
             // An abort (user cancel or the pass timeout) must stop the whole review;
             // anything else downgrades to an unverifiable requirement.
-            if (job.status === 'cancelled' || (err && err.name === 'AbortError')) {
+            if (job.status === 'cancelled' || isAbortErr(err)) {
                 throw err
             }
             logger.warn({ projectId, pass: i, err }, '[LLM] compliance: pass failed')
@@ -1282,48 +1284,40 @@ async function performReview(job) {
                 }
             }, passTimeoutMs())
             try {
-                const response = await fetch(`${llmApiUrl}/chat/completions`, {
-                    method: 'POST',
-                    headers: chatHeaders,
-                    body: JSON.stringify(verifyBody),
+                // overleaf-lab: PR item 4 — provider call; a refusal now throws and
+                // falls into the outer catch ("keeping the finding"), same as before.
+                const detailed = await provider.chatDetailed(verifyBody, {
                     signal: job.controller ? job.controller.signal : undefined,
                 })
-                if (response.ok) {
-                    const data = await response.json()
-                    recordTimings(data && data.timings)
-                    const content = stripThinkTags(
-                        data?.choices?.[0]?.message?.content || ''
-                    )
-                    try {
-                        const parsed = extractJson(content)
-                        const verified = Array.isArray(parsed.items)
-                            ? parsed.items[0]
-                            : null
-                        if (
-                            verified &&
-                            ['ok', 'partial', 'missing', 'na'].includes(verified.status)
-                        ) {
-                            allItems[idx] = {
-                                // The requirement is not the verifier's to rewrite.
-                                requirement: finding.requirement,
-                                status: verified.status,
-                                evidence: repairJsonEscapeArtifacts(
-                                    verified.evidence || finding.evidence
-                                ).slice(0, 600),
-                                suggestion: repairJsonEscapeArtifacts(
-                                    verified.suggestion || ''
-                                ).slice(0, 600),
-                            }
+                try {
+                    const parsed = extractJson(detailed.content)
+                    const verified = Array.isArray(parsed.items)
+                        ? parsed.items[0]
+                        : null
+                    if (
+                        verified &&
+                        ['ok', 'partial', 'missing', 'na'].includes(verified.status)
+                    ) {
+                        allItems[idx] = {
+                            // The requirement is not the verifier's to rewrite.
+                            requirement: finding.requirement,
+                            status: verified.status,
+                            evidence: repairJsonEscapeArtifacts(
+                                verified.evidence || finding.evidence
+                            ).slice(0, 600),
+                            suggestion: repairJsonEscapeArtifacts(
+                                verified.suggestion || ''
+                            ).slice(0, 600),
                         }
-                    } catch (err) {
-                        logger.warn(
-                            { projectId, err },
-                            '[LLM] compliance: unparseable verification, keeping the finding'
-                        )
                     }
+                } catch (err) {
+                    logger.warn(
+                        { projectId, err },
+                        '[LLM] compliance: unparseable verification, keeping the finding'
+                    )
                 }
             } catch (err) {
-                if (job.status === 'cancelled' || (err && err.name === 'AbortError')) {
+                if (job.status === 'cancelled' || isAbortErr(err)) {
                     throw err
                 }
                 logger.warn(
@@ -1355,6 +1349,7 @@ async function performReview(job) {
     // empty instead of failing a review whose per-requirement work already succeeded.
     let summary = ''
     try {
+        // overleaf-lab: PR item 4 — provider call; refusal fails only the summary.
         const summaryBody = {
             model: reviewModel,
             messages: [
@@ -1386,19 +1381,22 @@ async function performReview(job) {
                 },
             },
         }
-        const response = await fetch(`${llmApiUrl}/chat/completions`, {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(summaryBody),
-            signal: job.controller ? job.controller.signal : undefined,
-        })
-        if (response.ok) {
-            const data = await response.json()
-            const content = stripThinkTags(data?.choices?.[0]?.message?.content || '')
-            summary = repairJsonEscapeArtifacts(extractJson(content).summary || '')
+        let detailed = null
+        try {
+            detailed = await provider.chatDetailed(summaryBody, {
+                signal: job.controller ? job.controller.signal : undefined,
+            })
+        } catch (err) {
+            if (job.status === 'cancelled' || isAbortErr(err)) {
+                throw err
+            }
+            logger.warn({ projectId, err }, '[LLM] compliance: summary synthesis refused')
+        }
+        if (detailed) {
+            summary = repairJsonEscapeArtifacts(extractJson(detailed.content).summary || '')
         }
     } catch (err) {
-        if (job.status === 'cancelled' || (err && err.name === 'AbortError')) {
+        if (job.status === 'cancelled' || isAbortErr(err)) {
             throw err
         }
         logger.warn({ projectId, err }, '[LLM] compliance: summary synthesis failed')
@@ -1473,11 +1471,9 @@ async function processQueue() {
         running = false
         job.controller = null
         // overleaf-lab: never let one job's failure stall the queue.
-        try {
-            processQueue()
-        } catch (err) {
+        processQueue().catch(err => {
             logger.error({ err }, '[LLM] compliance: failed to continue the queue')
-        }
+        })
     }
 }
 
@@ -1555,7 +1551,9 @@ async function startReview(req, res) {
     queue.push(job.id)
     // overleaf-lab: kick the queue; it runs to its first await, so if nothing else
     // is running this job may already be 'running' by the time we respond.
-    processQueue()
+    processQueue().catch(err => {
+        logger.error({ err }, '[LLM] compliance: failed to launch the queue')
+    })
 
     return res.json({
         ok: true,

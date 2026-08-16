@@ -1,10 +1,11 @@
 import logger from '@overleaf/logger'
-import fs from 'fs'
-import path from 'path'
+import fs from 'node:fs'
+import path from 'node:path'
 import { z } from 'zod'
 import { expressify } from '@overleaf/promise-utils'
+import OError from '@overleaf/o-error'
 import { encryptSecret, decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: at-rest encryption of admin API key
-import { createLLMProvider } from './LLMProviderFactory.mjs'
+import { createLLMProvider, detectApiType } from './LLMProviderFactory.mjs'
 import {
   DEFAULT_ASK_AI_SYSTEM_PROMPT,
   DEFAULT_ERROR_PROMPT,
@@ -71,9 +72,24 @@ async function buildDisplaySettings() {
   return {
     systemPrompt: settings.systemPrompt || '',
     llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL || '',
-    llmApiType: settings.llmApiType || process.env.LLM_API_TYPE || 'anthropic',
+    llmApiType:
+      settings.llmApiType ||
+      process.env.LLM_API_TYPE ||
+      detectApiType({
+        llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
+        llmApiKey: settings.llmApiKey || process.env.LLM_API_KEY,
+      }),
     hasLlmApiKey: !!(settings.llmApiKey || process.env.LLM_API_KEY),
     allowedModels: jsonHasModels ? settings.allowedModels : envModels,
+    // overleaf-lab: item 8 (PR decision) — the FULL fetched model list; allowedModels
+    // is the checked/enabled subset. The UI keeps unchecked models visible so an
+    // admin can re-enable them without rescan.
+    knownModels:
+      Array.isArray(settings.knownModels) && settings.knownModels.length > 0
+        ? settings.knownModels
+        : jsonHasModels
+          ? settings.allowedModels
+          : envModels,
     completionModel: settings.completionModel || '',
     llmApiUrlFromEnv: !settings.llmApiUrl && !!process.env.LLM_API_URL,
     llmApiTypeFromEnv: !settings.llmApiType && !!process.env.LLM_API_TYPE,
@@ -120,8 +136,11 @@ const llmSettingsSchema = z.object({
   llmApiUrl: z.string().optional(),
   llmApiType: z.string().optional(),
   llmApiKey: z.string().optional(),
+  clearLlmApiKey: z.boolean().optional(),
 
   allowedModels: z.array(z.string()).optional(),
+  // overleaf-lab: item 8 — the full fetched model list (checked subset = allowedModels)
+  knownModels: z.array(z.string()).optional(),
 
   completionModel: z.string().optional(),
 
@@ -170,7 +189,9 @@ async function saveAdminSettings(req, res) {
     llmApiUrl,
     llmApiType,
     llmApiKey,
+    clearLlmApiKey,
     allowedModels,
+    knownModels,
     completionModel,
     complianceRubrics,
     reviewModel,
@@ -294,6 +315,13 @@ async function saveAdminSettings(req, res) {
     llmApiUrl: typeof llmApiUrl === 'string' ? llmApiUrl : (existing.llmApiUrl || ''),
     llmApiType: typeof llmApiType === 'string' ? llmApiType : (existing.llmApiType || ''),
     allowedModels: Array.isArray(allowedModels) ? allowedModels : existing.allowedModels || [],
+    knownModels: Array.isArray(knownModels)
+      ? knownModels
+      : Array.isArray(existing.knownModels)
+        ? existing.knownModels
+        : Array.isArray(existing.allowedModels)
+          ? existing.allowedModels
+          : [],
     completionModel: typeof completionModel === 'string' ? completionModel : (existing.completionModel || ''),
     complianceRubrics: sanitizedRubrics,
     reviewModel: typeof reviewModel === 'string' ? reviewModel : (existing.reviewModel || ''),
@@ -311,7 +339,9 @@ async function saveAdminSettings(req, res) {
     askAiActionPrompts: sanitizedActionPrompts,
   }
 
-  if (typeof llmApiKey === 'string' && llmApiKey.trim().length > 0) {
+  if (clearLlmApiKey) {
+    updatedSettings.llmApiKey = '' // overleaf-lab: explicit "remove stored key" from the admin UI
+  } else if (typeof llmApiKey === 'string' && llmApiKey.trim().length > 0) {
     updatedSettings.llmApiKey = encryptSecret(llmApiKey.trim()) // overleaf-lab: encrypt admin key at rest
   }
 
@@ -322,6 +352,7 @@ async function saveAdminSettings(req, res) {
     llmApiType: !!updatedSettings.llmApiType,
     hasLlmApiKey: !!updatedSettings.llmApiKey,
     allowedModels: updatedSettings.allowedModels?.length || 0,
+    knownModels: updatedSettings.knownModels?.length || 0,
   }, '[LLM] Admin settings updated')
 
   res.json({ success: true })
@@ -344,7 +375,13 @@ export async function getAdminLLMSettings() {
   const jsonKey = settings.llmApiKey ? decryptSecret(settings.llmApiKey) : ''
   return {
     llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL || null,
-    llmApiType: settings.llmApiType || process.env.LLM_API_TYPE || null,
+    llmApiType:
+      settings.llmApiType ||
+      process.env.LLM_API_TYPE ||
+      detectApiType({
+        llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
+        llmApiKey: settings.llmApiKey || process.env.LLM_API_KEY,
+      }),
     llmApiKey: jsonKey || process.env.LLM_API_KEY || null,
     allowedModels: jsonHasModels ? settings.allowedModels : envModelList(),
     completionModel: settings.completionModel || '',
@@ -392,14 +429,28 @@ export async function getLLMPrompts() {
   }
 }
 
+// overleaf-lab: hard cap for an interactive provider call (model list / token
+// count) so a wedged backend cannot hang the settings UI. The provider's own
+// fetch timeout still applies below this.
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 async function checkAdminLLMConnection(req, res) {
   const { apiUrl, apiKey, apiType } = req.body
   const adminSettings = await getAdminLLMSettings()
   const llmApiUrl = apiUrl || adminSettings.llmApiUrl
-  const llmApiType = apiType || adminSettings.llmApiType
   const llmApiKey = apiKey || adminSettings.llmApiKey
+  const llmApiType = apiType || adminSettings.llmApiType || detectApiType({ llmApiUrl, llmApiKey })
 
-  // use first configured/allowed model, if no model is configured, use a model hardcoded in the provider code
+  // overleaf-lab: PR decision (item 7) — "testing the connection" IS a
+  // successful model-list fetch: it proves reachability, auth, and that the
+  // backend serves at least one model, in ONE round trip. The first configured
+  // model (if any) must be in the list, which catches typos/stopped models.
   const testModel =
     adminSettings.allowedModels[0] ||
     (process.env.LLM_MODEL_NAME || '').split(',')[0].trim()
@@ -413,10 +464,23 @@ async function checkAdminLLMConnection(req, res) {
 
   try {
     const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType })
-    await provider.checkConnection(testModel)
+    const data = await withTimeout(provider.listModels(), 60000, 'Model list fetch')
 
-    res.json({ success: true, message: 'Connection successful' })
+    const ids = Array.isArray(data?.data)
+      ? data.data.map(entry => String(entry.id))
+      : []
 
+    if (testModel && !ids.includes(testModel)) {
+      logger.warn({ testModel, ids: ids.length }, '[LLM] Admin check: configured model not in backend list')
+      return res.status(404).json({
+        success: false,
+        error: `Model "${testModel}" is not available on this backend`,
+        status: 404,
+        models: ids,
+      })
+    }
+
+    res.json({ success: true, message: 'Connection successful', models: ids })
   } catch (err) {
     const info = OError.getFullInfo(err)
     const errStatus  = info?.status || 500
@@ -425,17 +489,19 @@ async function checkAdminLLMConnection(req, res) {
       success: false,
       error: 'LLM connection failed',
       status: errStatus,
-      details: err.message,
+      details: info?.error?.message || err.message,
     })
   }
 }
 
 async function scanAdminModels(req, res) {
-  const { apiUrl, apiKey, apiType } = req.query
+  // overleaf-lab: credentials come from the POST body, never the URL query
+  // string (keys in query strings leak into access logs).
+  const { apiUrl, apiKey, apiType } = req.body
   const adminSettings = await getAdminLLMSettings()
   const llmApiUrl = apiUrl || adminSettings.llmApiUrl
-  const llmApiType = apiType || adminSettings.llmApiType
   const llmApiKey = apiKey || adminSettings.llmApiKey
+  const llmApiType = apiType || adminSettings.llmApiType || detectApiType({ llmApiUrl, llmApiKey })
 
   if (!llmApiUrl || !llmApiType) {
     return res.status(400).json({
@@ -455,14 +521,14 @@ async function scanAdminModels(req, res) {
     res.json({ success: true, models: ids })
 
   } catch (error) {
-    const info = OError.getFullInfo(err)
-    const errStatus  = info?.status || 500
-    logger.error({ err }, '[LLM] Admin connection check failed')
+    const info = OError.getFullInfo(error)
+    const errStatus = info?.status || 500
+    logger.error({ error }, '[LLM] Admin model scan failed')
     res.status(errStatus).json({
       success: false,
       error: 'Model scan failed',
       status: errStatus,
-      details: err.message,
+      details: info?.error?.message || error.message,
     })
   }
 }
