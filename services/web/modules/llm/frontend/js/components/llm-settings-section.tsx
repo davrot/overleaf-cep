@@ -469,7 +469,7 @@ export default function LLMSettingsSection({ initialSettings }: Props) {
                         <OLFormText>
                             {t(
                                 'llm_cheap_models_hint',
-                                '💡 Cheap models — completion (high-frequency, keep it cheap): OpenAI gpt-4.1-nano / gpt-4o-mini · Anthropic claude-haiku-4-5. Chat (quality): OpenAI gpt-4o / gpt-4.1 · Anthropic claude-sonnet-4-6 / claude-sonnet-5. You can pick several chat models and switch between them in the editor.'
+                                'Cheap models — completion (high-frequency, keep it cheap): OpenAI gpt-4.1-nano / gpt-4o-mini · Anthropic claude-haiku-4-5. Chat (quality): OpenAI gpt-4o / gpt-4.1 · Anthropic claude-sonnet-4-6 / claude-sonnet-5. You can pick several chat models and switch between them in the editor.'
                             )}
                         </OLFormText>
                     </OLFormGroup>
