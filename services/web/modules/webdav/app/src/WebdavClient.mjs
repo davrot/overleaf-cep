@@ -1,5 +1,5 @@
 import logger from '@overleaf/logger'
-import { createClient } from 'webdav'
+import { createClient } from 'webdav' // eslint-disable-line import/no-unresolved -- package is exports-map only (no main field); the legacy import resolver cannot read exports, but it resolves at runtime
 
 import { ConflictError } from './ConflictErrors.mjs'
 
@@ -310,7 +310,7 @@ export default class WebdavClient {
    */
   async check() {
     try {
-      const exists = await this.client.exists(this.rootPath)
+      const exists = await this._executeWithRetry(() => this.client.exists(this.rootPath))
       if (!exists) {
         throw new Error(`Root path does not exist: ${this.rootPath}`)
       }
@@ -332,7 +332,7 @@ export default class WebdavClient {
    */
   async list(resourcePath) {
     try {
-      const items = await this.client.getDirectoryContents(resourcePath)
+      const items = await this._executeWithRetry(() => this.client.getDirectoryContents(resourcePath))
       
       logger.debug(
         { resourcePath, itemCount: items.length },
@@ -365,7 +365,7 @@ export default class WebdavClient {
    */
   async createDirectory(resourcePath) {
     try {
-      await this.client.createDirectory(resourcePath)
+      await this._executeWithRetry(() => this.client.createDirectory(resourcePath))
       logger.debug({ resourcePath }, 'WebDAV directory created')
       return 201
     } catch (error) {
@@ -382,9 +382,11 @@ export default class WebdavClient {
     }
   }
 
-  // Retry configuration for transient errors
-  _maxRetries = 2
-  _retryDelayMs = 100
+  // Retry configuration for transient errors (env-overridable per runtime config)
+  _maxRetries = Math.max(0, Number.parseInt(process.env.WEBDAV_RETRY_COUNT ?? '', 10) || 2)
+  _retryDelayMs = Number.parseInt(process.env.WEBDAV_RETRY_DELAY_MS ?? '', 10) || 100
+  // NOTE: per-request timeout is enforced by the webdavinterface microservice (WEBDAV_REQUEST_TIMEOUT_MS); the webdav npm transport does not expose an AbortController surface, so this value is informational here.
+  _requestTimeoutMs = Number.parseInt(process.env.WEBDAV_REQUEST_TIMEOUT_MS ?? '', 10) || 10000
 
   /**
    * Executes an operation with retry logic for transient errors.
@@ -437,11 +439,11 @@ export default class WebdavClient {
          Buffer.isBuffer(body) ? body :  // ← Keep binary buffers as-is!
          body
 
-       await this.client.putFileContents(resourcePath, content, {
+       await this._executeWithRetry(() => this.client.putFileContents(resourcePath, content, {
          overwrite: true,
          contentType: 'application/octet-stream',
          headers: etag ? { 'If-Match': etag } : undefined
-       })
+       }))
        
        logger.debug({ resourcePath }, 'WebDAV file put completed')
        return 200
@@ -472,7 +474,7 @@ export default class WebdavClient {
    */
   async get(resourcePath) {
     try {
-      const content = await this.client.getFileContents(resourcePath)
+      const content = await this._executeWithRetry(() => this.client.getFileContents(resourcePath))
       
       // webdav package returns content as string by default
       // Convert to ArrayBuffer matching previous behavior
@@ -494,7 +496,7 @@ export default class WebdavClient {
    */
   async remove(resourcePath) {
     try {
-      await this.client.deleteFile(resourcePath)
+      await this._executeWithRetry(() => this.client.deleteFile(resourcePath))
       logger.debug({ resourcePath }, 'WebDAV file removed')
       return 204
     } catch (error) {
@@ -516,9 +518,9 @@ export default class WebdavClient {
    */
   async move(sourcePath, destinationPath) {
     try {
-      await this.client.moveFile(sourcePath, destinationPath, {
+      await this._executeWithRetry(() => this.client.moveFile(sourcePath, destinationPath, {
         overwrite: true,
-      })
+      }))
       logger.debug(
         { sourcePath, destinationPath },
         'WebDAV file moved'

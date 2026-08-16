@@ -5,7 +5,7 @@ import GithubLogo from '@/shared/svgs/github-logo'
 import GitLabLogo from '@/shared/svgs/gitlab-logo'  // Will need to add this
 import IntegrationCard from '@/features/integrations-panel/integration-card'
 import GitSyncModal from './modals/git-sync-modal'
-import { GitSyncModalStatus, ProjectSyncState } from '../types/git-sync-types'
+import { GitSyncModalStatus } from '../types/git-sync-types'
 
 const GitHubSyncCard = () => {
   const { t } = useTranslation()
@@ -37,6 +37,7 @@ const GitHubSyncCard = () => {
       case 'gitea':
       case 'forgejo':
         // These should use the same logo as GitHub as a fallback
+        return <GithubLogo size={32} />
       default:
         return <GithubLogo size={32} />
     }

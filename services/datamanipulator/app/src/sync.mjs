@@ -26,12 +26,24 @@ async function getFileEntry(projectDir, relativePath) {
  * @param {Array} remoteFiles - Array of remote file entries with metadata
  * @returns {Object} Sync results with counts and conflicts
  */
-export async function pullFiles(projectDir, remoteFiles) {
+export async function pullFiles(projectDir, remoteFiles, options = {}) {
   const result = {
     downloaded: 0,
     skipped: 0,
     deleted: 0,
     conflicts: []
+  }
+
+  // ARC-06 guard: an EMPTY remote listing is almost certainly an incomplete
+  // or failed listing upstream — never derive deletions from it.
+  // RF.7: callers that pull ONE known project folder (where an empty folder
+  // is a legitimate state) may opt out via options.allowEmptyRemote.
+  if (!remoteFiles || remoteFiles.length === 0) {
+    if (!options?.allowEmptyRemote) {
+      throw new Error(
+        'remote file listing is empty; refusing to derive deletions (possible incomplete listing)'
+      )
+    }
   }
 
   // Get current local tree
@@ -82,15 +94,28 @@ export async function pullFiles(projectDir, remoteFiles) {
     }
   }
 
-  // Check for files deleted from remote (only in local)
+  // Files missing from the remote listing are only deleted when the caller
+  // EXPLICITLY confirmed the deletions (ARC-06: a plain listing must never
+  // silently wipe local data; it is reported as skipped_deletions instead).
+  const deletablePaths = []
   for (const [path] of localMap) {
-    if (!remoteMap.has(path)) {
-      try {
-        await fileOperations.deletePath(projectDir, path)
-        result.deleted++
-      } catch (err) {
-        console.warn({ path, message: err.message }, 'Failed to delete removed file')
+    if (!remoteMap.has(path)) deletablePaths.push(path)
+  }
+  if (deletablePaths.length > 0) {
+    if (options.confirm_remote_deletions === true) {
+      const allowed = new Set(options.deleted_paths || deletablePaths)
+      for (const path of deletablePaths) {
+        if (!allowed.has(path)) continue
+        try {
+          await fileOperations.deletePath(projectDir, path)
+          result.deleted++
+        } catch (err) {
+          console.warn({ path, message: err.message }, 'Failed to delete removed file')
+        }
       }
+    } else {
+      // Default: no destructive deletion; report what WOULD be deleted.
+      result.skipped_deletions = deletablePaths
     }
   }
 
@@ -98,10 +123,12 @@ export async function pullFiles(projectDir, remoteFiles) {
 }
 
 /**
- * Push files from local to remote (upload only changed files)
+ * Push files from local to remote (local side only: validates that each local
+ * file is readable and reports what WOULD be uploaded. This service has no
+ * remote transport; the caller performs the transfer.)
  * @param {string} projectDir - Absolute path to local project directory
  * @param {Array} remoteFiles - Array of remote file entries with metadata
- * @returns {Object} Sync results with counts
+ * @returns {Object} Local push-preparation counts
  */
 export async function pushFiles(projectDir, remoteFiles) {
   const result = {

@@ -34,11 +34,21 @@ export default {
             return res.json({ connected: false })
           }
 
-          // Get project sync state for last sync info
+          // Get project sync state for last sync info (owned by this user, or
+          // legacy docs matched by connection username)
           const projects = await WebdavSyncProjectStates.find(
-            { username: credentials.username },
+            {
+              $or: [
+                { ownerId: userId },
+                { username: credentials.username },
+              ],
+            },
             { projectId: 1, lastSyncAt: 1, lastSyncError: 1, lastConflict: 1 }
           ).lean()
+
+          // H.3 (M10): report the MOST RECENTLY synced project, not an
+          // arbitrary Mongo-order document (null lastSyncAt sorts last).
+          projects.sort((a, b) => ((b.lastSyncAt && b.lastSyncAt.getTime()) || 0) - ((a.lastSyncAt && a.lastSyncAt.getTime()) || 0))
 
           res.json({
             connected: true,
@@ -87,28 +97,8 @@ export default {
       }
     )
 
-    // Poll remote WebDAV for changes and pull them (user settings page)
-    webRouter.post(
-      '/user/webdav/poll',
-      async (req, res) => {
-        const userId = req.user?._id || req.user?.id
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' })
-
-        try {
-          // Get user credentials
-          const credentials = await WebdavCredentials.get(userId)
-          if (!credentials) {
-            return res.status(404).json({ error: 'WebDAV not configured' })
-          }
-
-          // For now, just acknowledge the poll request without performing sync
-          // Full polling requires project-specific logic (handled in project modal)
-          res.json({ success: true, message: 'Poll acknowledged' })
-        } catch (err) {
-          res.status(500).json({ error: err.message })
-        }
-      }
-    )
+    // B1.6 / D1: the automatic-poll stub route was removed (no frontend calls
+    // it; manual per-project pull/push are the supported sync paths).
 
     // Get project state
     webRouter.get(
@@ -183,7 +173,17 @@ export default {
           await WebdavHandler.importRemoteProject(userId, null, projectName, rootPath)
           res.json({ success: true, message: 'Import completed' })
         } catch (err) {
-          logger.error({ err, userId, body: req.body }, 'WebDAV import failed')
+          // Log-safe: req.body carries the user's WebDAV password — never log it
+          logger.error(
+            {
+              err,
+              userId,
+              baseUrl: req.body?.baseUrl || undefined,
+              username: req.body?.username || undefined,
+              projectName: req.body?.projectName || undefined,
+            },
+            'WebDAV import failed'
+          )
           res.status(500).json({ error: err.message || 'Import failed' })
         }
       }

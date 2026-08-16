@@ -3,6 +3,7 @@ import SyncStateManager from './SyncStateManager.mjs'
 import WebdavTokenManager from './WebdavTokenManager.mjs'
 import WebdavCredentials from './WebdavCredentials.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
+import ProjectGetter from '../../../../app/src/Features/Project/ProjectGetter.mjs'
 import logger from '@overleaf/logger'
 import WebdavSync from './WebdavSync.mjs'
 import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
@@ -28,7 +29,11 @@ async function getProjectState(projectId, { userId, verifyConnection = true } = 
     return { connected: false }
   }
   
-  // Verify the connection is still valid (unless disabled)
+  // Verify the connection is still valid (unless disabled).
+  // H13: when disabled (plain state read) do NOT do a live remote check on
+  // every render — the state document's existence IS the link; connectivity
+  // is verified only on the link/push/pull flows (which keep verifyConnection
+  // at its default of true).
   if (verifyConnection) {
     try {
       const credentials = userId ? await WebdavCredentials.get(userId) : null
@@ -39,8 +44,10 @@ async function getProjectState(projectId, { userId, verifyConnection = true } = 
       logger.warn({ err, projectId }, 'Failed to verify WebDAV connection status')
       state.connected = false
     }
+  } else {
+    state.connected = true
   }
-  
+
   return state
 }
 
@@ -49,8 +56,25 @@ async function unlinkProject(projectId) {
   if (!state) {
     throw new Error('Project is not linked to WebDAV')
   }
-  
+
   await SyncStateManager.removeProjectState(projectId)
+
+  // C3: unlinking must actually remove the link — drop the user's
+  // syncedProjects entry + per-project remoteState, otherwise the manual
+  // poll keeps applying remote changes to the "unlinked" project. The state
+  // doc records who linked it (ownerId) — use that user for the cleanup
+  // (legacy docs without ownerId are best-effort skipped).
+  if (state.ownerId) {
+    try {
+      const project = await ProjectGetter.promises.getProject(projectId, { name: 1 })
+      if (project) {
+        await WebdavCredentials.forgetProject(state.ownerId, project.name)
+      }
+    } catch (err) {
+      // Best-effort: the state doc (the authoritative link) is already gone.
+      logger.warn({ err, projectId }, 'C3: failed to forget project after WebDAV unlink (best-effort)')
+    }
+  }
 }
 
 async function importRemoteProject(userId, projectId, projectName, rootPath) {
@@ -102,7 +126,8 @@ async function pushLocalChanges(userId, projectId) {
 
 async function pollRemoteSync(projectId, { userId } = {}) {
   if (!userId) throw new Error('User is required for WebDAV pull')
-  await WebdavSync.pollUser(userId)
+  // Per-project pull: only this project is processed (not all user projects)
+  await WebdavSync.pollProject(userId, projectId)
   return { success: true, message: 'Pull completed' }
 }
 

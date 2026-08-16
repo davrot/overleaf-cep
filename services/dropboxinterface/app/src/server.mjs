@@ -30,6 +30,48 @@ app.get('/health', (req, res) => {
   })
 })
 
+// --- Service authentication (ARC-02) -------------------------------------------------------
+// Enforced when SHARED_SERVICE_TOKEN is configured; when unset (legacy
+// deployments) the service keeps accepting unauthenticated calls and warns,
+// so existing in-container deployments keep working.
+import crypto from 'node:crypto'
+const SERVICE_TOKEN = process.env.SHARED_SERVICE_TOKEN || ''
+let serviceAuthWarned = false
+function requireServiceToken(req, res, next) {
+  if (!SERVICE_TOKEN) {
+    if (!serviceAuthWarned) {
+      serviceAuthWarned = true
+      console.warn(
+        'SHARED_SERVICE_TOKEN is unset; accepting unauthenticated requests (should be restricted to in-container callers)'
+      )
+    }
+    return next()
+  }
+  const authHeader = req.headers.authorization || ''
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const candidate = String(req.headers['x-service-token'] || bearer || '')
+  const candidateBuffer = Buffer.from(candidate)
+  const expectedBuffer = Buffer.from(SERVICE_TOKEN)
+  const ok =
+    candidateBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(candidateBuffer, expectedBuffer)
+  if (!ok) {
+    return res.status(401).json({ error: 'Invalid or missing service token' })
+  }
+  return next()
+}
+app.use(requireServiceToken)
+
+// F2.2 / H8: scrub + truncate provider error text so it is safe for logs
+// and responses (Dropbox error bodies are provider text, not credentials —
+// but a leaked token value must never travel in either).
+function safeProviderError(err, token) {
+  let msg = err && err.message ? String(err.message) : ''
+  if (token) msg = msg.split(token).join('<redacted-token>')
+  msg = msg.replace(/access[_-]?token[=:'"\s]+[A-Za-z0-9._~+-]+/gi, 'access_token=<redacted>')
+  return msg.slice(0, 500)
+}
+
 /**
  * POST /check - Verify credentials work with Dropbox
  */
@@ -54,7 +96,7 @@ app.post('/check', async (req, res) => {
 
     res.json({ status: 'ok', message: 'Connection successful' })
   } catch (err) {
-    console.error('Dropbox check failed:', err)
+    console.error('Dropbox check failed:', safeProviderError(err, req.body?.access_token || req.dropboxToken))
 
     if (err.statusCode === 401) {
       return res
@@ -65,7 +107,7 @@ app.post('/check', async (req, res) => {
     res
       .status(err.statusCode || 500)
       .json({
-        error: err.message || 'Connection failed',
+        error: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'Connection failed',
         statusCode: err.statusCode
       })
   }
@@ -94,7 +136,7 @@ app.post('/list', async (req, res) => {
 
     res.json(result)
   } catch (err) {
-    console.error('Dropbox list failed:', err)
+    console.error('Dropbox list failed:', safeProviderError(err, req.body?.access_token || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.statusCode === 403) return res.status(403).json({ error: 'Permission denied' })
@@ -102,7 +144,7 @@ app.post('/list', async (req, res) => {
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'List failed' })
+      .json({ error: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'List failed' })
   }
 })
 
@@ -129,7 +171,7 @@ app.post('/mkdir', async (req, res) => {
 
     res.json(result)
   } catch (err) {
-    console.error('Dropbox mkdir failed:', err)
+    console.error('Dropbox mkdir failed:', safeProviderError(err, req.body?.access_token || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.statusCode === 409)
@@ -138,12 +180,12 @@ app.post('/mkdir', async (req, res) => {
         .json({
           status: 'ok',
           created: false,
-          message: err.message || 'Directory already exists'
+          message: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'Directory already exists'
         })
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'Create directory failed' })
+      .json({ error: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'Create directory failed' })
   }
 })
 
@@ -177,14 +219,14 @@ app.get('/file', async (req, res) => {
       content_base64: result
     })
   } catch (err) {
-    console.error('Dropbox download failed:', err)
+    console.error('Dropbox download failed:', safeProviderError(err, req.headers['x-access-token'] || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.statusCode === 404) return res.status(404).json({ error: 'File not found' })
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'Download failed' })
+      .json({ error: safeProviderError(err, req.headers['x-access-token'] || req.dropboxToken) || 'Download failed' })
   }
 })
 
@@ -219,7 +261,7 @@ app.post('/file', async (req, res) => {
       dropbox_id: result.dropbox_id
     })
   } catch (err) {
-    console.error('Dropbox upload failed:', err)
+    console.error('Dropbox upload failed:', safeProviderError(err, req.body?.access_token || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.message?.includes('conflict')) {
@@ -233,7 +275,7 @@ app.post('/file', async (req, res) => {
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'Upload failed' })
+      .json({ error: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'Upload failed' })
   }
 })
 
@@ -260,7 +302,7 @@ app.delete('/file', async (req, res) => {
 
     res.json({ status: 'ok', deleted: true })
   } catch (err) {
-    console.error('Dropbox delete failed:', err)
+    console.error('Dropbox delete failed:', safeProviderError(err, req.headers['x-access-token'] || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.statusCode === 404)
@@ -274,7 +316,7 @@ app.delete('/file', async (req, res) => {
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'Delete failed' })
+      .json({ error: safeProviderError(err, req.headers['x-access-token'] || req.dropboxToken) || 'Delete failed' })
   }
 })
 
@@ -301,7 +343,7 @@ app.post('/move', async (req, res) => {
 
     res.json(result)
   } catch (err) {
-    console.error('Dropbox move failed:', err)
+    console.error('Dropbox move failed:', safeProviderError(err, req.body?.access_token || req.dropboxToken))
 
     if (err.statusCode === 401) return res.status(401).json({ error: 'Invalid token' })
     if (err.statusCode === 409)
@@ -309,12 +351,12 @@ app.post('/move', async (req, res) => {
         .status(409)
         .json({
           error: 'Conflict detected',
-          message: err.message
+          message: safeProviderError(err, req.body?.access_token || req.dropboxToken)
         })
 
     res
       .status(err.statusCode || 500)
-      .json({ error: err.message || 'Move failed' })
+      .json({ error: safeProviderError(err, req.body?.access_token || req.dropboxToken) || 'Move failed' })
   }
 })
 

@@ -5,9 +5,37 @@
  * using OAuth 2.0 access tokens for authentication.
  */
 
-import https from 'https'
-import http from 'http'
+import https from 'node:https'
+import http from 'node:http'
 import logger from '@overleaf/logger'
+
+// D2: sync file filter — build artifacts + hidden files/dirs never take part
+// in Dropbox sync (import walk, push upload, remote listings, persisted
+// remoteFiles). Shared so all layers apply the SAME rule.
+const SYNC_EXCLUDED_EXTENSIONS = ['aux', 'log', 'out', 'toc', 'fls', 'idx', 'vrb']
+
+/**
+ * Returns true when a file (or any directory component of its path) should be
+ * excluded from sync: hidden entries (name starts with '.'), transient LaTeX
+ * build outputs, or .synctex.gz files.
+ * @param {string} nameOrPath basename or project-relative/remote path
+ */
+export function isSyncExcluded(nameOrPath) {
+  if (!nameOrPath || typeof nameOrPath !== 'string') return false
+  const parts = nameOrPath.split('/').filter(Boolean)
+  if (!parts.length) return false
+  for (const part of parts) {
+    if (part.startsWith('.')) return true
+  }
+  const base = parts[parts.length - 1]
+  if (base.endsWith('.synctex.gz')) return true
+  const dot = base.lastIndexOf('.')
+  if (dot > 0) {
+    const ext = base.slice(dot + 1).toLowerCase()
+    if (SYNC_EXCLUDED_EXTENSIONS.includes(ext)) return true
+  }
+  return false
+}
 
 export class DropboxClient {
   constructor({ accessToken, apiUrl }) {
@@ -22,7 +50,34 @@ export class DropboxClient {
   /**
    * Make HTTP request to dropboxinterface microservice
    */
+  /**
+   * Retry wrapper (DI-04): the Dropbox API is rate-limited; 429 and 5xx
+   * responses are transient and are retried with exponential backoff.
+   */
   async _request(path, options) {
+    const maxAttempts = 3
+    let lastError
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await this._requestOnce(path, options)
+      } catch (error) {
+        lastError = error
+        const status = error?.status
+        const transient =
+          status === 429 || status === 502 || status === 503 || status === 504
+        if (!transient || attempt === maxAttempts - 1) throw error
+        const delay = 250 * Math.pow(2, attempt)
+        logger.warn(
+          { status, attempt: attempt + 1, delayMs: delay, path },
+          'Dropbox request transiently failed; retrying'
+        )
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    throw lastError
+  }
+
+  async _requestOnce(path, options) {
     const url = `${this.apiUrl}${path}`
 
     return new Promise((resolve, reject) => {
@@ -33,6 +88,12 @@ export class DropboxClient {
       const headers = { ...(options.headers || {}) }
       if (this.accessToken && !headers['X-Access-Token']) {
         headers['X-Access-Token'] = this.accessToken
+      }
+      // Service-to-service auth (ARC-02): forwarded when configured; the
+      // interface accepts unauthenticated calls (with a warning) when the
+      // token is unset, so existing deployments keep working.
+      if (process.env.SHARED_SERVICE_TOKEN) {
+        headers['x-service-token'] = process.env.SHARED_SERVICE_TOKEN
       }
       if (options.body) {
         headers['Content-Type'] = 'application/json'
@@ -54,18 +115,25 @@ export class DropboxClient {
         res.on('data', chunk => { data += chunk })
 
         res.on('end', () => {
+          const fail = (message) => {
+            const error = new Error(message)
+            error.status = res.statusCode
+            reject(error)
+          }
           try {
             if (res.statusCode >= 200 && res.statusCode < 300) {
               const jsonData = data ? JSON.parse(data) : {}
               resolve(jsonData)
             } else if (res.statusCode === 401 || res.statusCode === 403) {
-              reject(new Error(`Dropbox: Unauthorized - ${data}`))
+              fail(`Dropbox: Unauthorized - ${data}`)
             } else if (res.statusCode === 404) {
-              reject(new Error(`Dropbox: Not found - ${path}`))
+              fail(`Dropbox: Not found - ${path}`)
+            } else if (res.statusCode === 429) {
+              fail(`Dropbox: Rate limited (429) - ${data}`)
             } else if (res.statusCode >= 500) {
-              reject(new Error(`Dropbox: Service error (${res.statusCode}) - ${data}`))
+              fail(`Dropbox: Service error (${res.statusCode}) - ${data}`)
             } else {
-              reject(new Error(`Dropbox: Error (${res.statusCode}) - ${data}`))
+              fail(`Dropbox: Error (${res.statusCode}) - ${data}`)
             }
           } catch (parseError) {
             reject(parseError)

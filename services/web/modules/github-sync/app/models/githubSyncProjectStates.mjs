@@ -9,6 +9,8 @@ export const GitHubSyncProjectStatesSchema = new Schema(
     repoFullName: { type: String, required: true },
     defaultBranchName: { type: String, default: null },
     mergeStatus: { type: String, enum: ['clean', 'conflict', 'diverged'], default: 'clean' },
+    // GS-16: who created this link — allows expireDeletedUser cleanup
+    ownerId: { type: ObjectId, ref: 'User', default: null },
     lastSyncCommit: { type: String, default: null },
     lastSyncVersion: { type: Number, default: null },
     unmergedBranchName: { type: String, default: null },

@@ -5,7 +5,7 @@
  * Adapted from WebdavTokenEncryption for use with OAuth 2.0 access tokens.
  */
 
-import { createCipheriv, createDecipheriv, randomFillSync } from 'node:crypto'
+import { createCipheriv, createDecipheriv, randomFillSync, createHash } from 'node:crypto'
 import logger from '@overleaf/logger'
 
 const ALGORITHM = 'aes-256-gcm'
@@ -13,24 +13,51 @@ const IV_LENGTH = 12
 const TAG_LENGTH = 16
 
 /**
- * Get encryption key from environment or generate new one
+ * Get encryption key (DBX-07): derived with SHA-256 from a real secret.
+ * Preference: WEBDAV_TOKEN_CIPHER_PASSWORD (shared with the WebDAV module),
+ * then Overleaf's SECRET_TOKEN. Never falls back to a deterministic
+ * NODE_ENV-based key — that made all deployments share the same cipher key.
  */
+function deriveKey(secret, purpose) {
+  return createHash('sha256').update(`${purpose}|${secret}`).digest()
+}
+
 export function getEncryptionKey() {
   const password = process.env.WEBDAV_TOKEN_CIPHER_PASSWORD
-
   if (password) {
     if (password.length < 16) {
       logger.warn('WEBDAV_TOKEN_CIPHER_PASSWORD should be at least 16 characters for security')
     }
-    const key = Buffer.alloc(32, 'x')
-    Buffer.from(password, 'utf8').copy(key, 0, 0, 32)
-    return key
+    return deriveKey(password, 'overleaf-dropbox-credentials-v2')
   }
 
-  logger.warn(
-    'WEBDAV_TOKEN_CIPHER_PASSWORD not set. Using auto-generated key. Tokens will not persist across restarts.'
+  const secretToken = process.env.SECRET_TOKEN
+  if (secretToken) {
+    logger.warn(
+      'WEBDAV_TOKEN_CIPHER_PASSWORD not set; using SECRET_TOKEN to derive the Dropbox credential key'
+    )
+    return deriveKey(secretToken, 'overleaf-dropbox-credentials-secret-token-fallback')
+  }
+
+  logger.error(
+    'Neither WEBDAV_TOKEN_CIPHER_PASSWORD nor SECRET_TOKEN is set; Dropbox credential encryption is disabled'
   )
-  // Generate deterministic key based on environment
+  throw new Error(
+    'No encryption secret available for Dropbox credentials (set WEBDAV_TOKEN_CIPHER_PASSWORD or SECRET_TOKEN)'
+  )
+}
+
+/**
+ * Legacy key from the pre-fix implementation (deterministic NODE_ENV string,
+ * kept ONLY so tokens encrypted by old deployments can still be decrypted).
+ * New tokens are never written with this key.
+ */
+function legacyNodeEnvKey() {
+  const envString = process.env.NODE_ENV || 'development'
+  return Buffer.from(`overleaf-dropbox-credentials-v2|${envString}`.padEnd(32, 'x').slice(0, 32), 'utf8')
+}
+
+function legacyRawKey() {
   const envString = process.env.NODE_ENV || 'development'
   return Buffer.from(envString.padEnd(32, 'x').slice(0, 32), 'utf8')
 }
@@ -59,14 +86,14 @@ export function encryptToken(token) {
 }
 
 /**
- * Decrypt token using AES-256-GCM
+ * Decrypt token using AES-256-GCM. Tries the current key first, then the
+ * legacy (pre-fix) key so tokens from older deployments keep working.
  */
 export function decryptToken(encryptedData) {
   if (!encryptedData || typeof encryptedData !== 'string') {
     throw new Error('Invalid encrypted data for decryption')
   }
 
-  const key = getEncryptionKey()
   const buffer = Buffer.from(encryptedData, 'base64')
 
   // Extract parts
@@ -78,18 +105,34 @@ export function decryptToken(encryptedData) {
     throw new Error('Invalid encrypted data format')
   }
 
+  const keyCandidates = []
   try {
-    const decipher = createDecipheriv(ALGORITHM, key, iv)
-    decipher.setAuthTag(authTag)
-
-    let decrypted = decipher.update(encryptedContent, 'base64', 'utf8')
-    decrypted += decipher.final('utf8')
-
-    return decrypted
-  } catch (error) {
-    logger.error({ err: error }, 'Token decryption failed')
-    throw new Error('Decryption failed. Invalid token or encryption key.')
+    keyCandidates.push(getEncryptionKey())
+  } catch (keyErr) {
+    // Current key unavailable; continue to legacy candidates
   }
+  keyCandidates.push(legacyNodeEnvKey(), legacyRawKey())
+
+  let lastError
+  for (const key of keyCandidates) {
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv)
+      decipher.setAuthTag(authTag)
+
+      let decrypted = decipher.update(encryptedContent, 'base64', 'utf8')
+      decrypted += decipher.final('utf8')
+
+      if (key !== keyCandidates[0]) {
+        logger.warn('Decrypted Dropbox token with a LEGACY key; it should be re-encrypted with the current key')
+      }
+      return decrypted
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  logger.error({ err: lastError }, 'Token decryption failed with all key candidates')
+  throw new Error('Decryption failed. Invalid token or encryption key.')
 }
 
 /**

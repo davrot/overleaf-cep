@@ -36,6 +36,12 @@ export async function walkTree(projectDir, basePath = '') {
         const fullPath = Path.join(currentPath, entry.name)
         const relPath = relativeBase ? `${relativeBase}/${entry.name}` : entry.name
 
+        // D2 / M5: hidden entries and LaTeX build transients never enter the
+        // synced tree (no listing, no recursion, no checksumming).
+        if (fileUtils.isSyncExcluded(relPath)) {
+          continue
+        }
+
         if (entry.isDirectory()) {
           result.entries.push({
             relative_path: relPath,
@@ -44,8 +50,9 @@ export async function walkTree(projectDir, basePath = '') {
             depth: relPath.split('/').length - 1
           })
 
-          // Recurse into subdirectories, skip node_modules and hidden dirs
-          if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          // Recurse into subdirectories, skip node_modules (kept listed but
+          // never recursed — pre-existing behaviour, unaffected by D2).
+          if (entry.name !== 'node_modules') {
             await walk(fullPath, relPath)
           }
         } else if (entry.isFile()) {
@@ -83,11 +90,13 @@ export async function readFile(projectDir, relativePath) {
 
   try {
     const buffer = await fs.readFile(fullPath)
+    const stats = await fs.stat(fullPath)
     return {
       content_base64: buffer.toString('base64'),
       size: buffer.length,
       ...fileUtils.getFileMetadata(relativePath, buffer),
-      mtime: new Date().toISOString()
+      // DM-04: real file mtime (scan time made mtime/etag conflict logic meaningless)
+      mtime: stats.mtime.toISOString()
     }
   } catch (err) {
     if (err.code === 'ENOENT') {

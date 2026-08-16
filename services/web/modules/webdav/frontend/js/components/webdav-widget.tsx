@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLNotification from '@/shared/components/ol/ol-notification'
@@ -72,7 +72,7 @@ export default function WebdavWidget() {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string>()
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const nextStatus = await getJSON<WebdavStatus>('/user/webdav/status')
@@ -97,11 +97,11 @@ export default function WebdavWidget() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [t])
 
   useEffect(() => {
     refresh()
-  }, [])
+  }, [refresh])
 
   const updateField = (field: keyof WebdavForm, value: string) => {
     setForm(current => ({ ...current, [field]: value }))
@@ -150,7 +150,7 @@ export default function WebdavWidget() {
       <div className="settings-widget-container">
         <div className="d-none d-md-block" aria-hidden="true" />
         <div className="description-container">
-          <h4>WebDAV</h4>
+          <h4>{t('webdav')}</h4>
           <p className="small">{t('loading')}...</p>
         </div>
       </div>
@@ -162,11 +162,9 @@ export default function WebdavWidget() {
       <div className="d-none d-md-block" aria-hidden="true" />
       <div className="description-container">
         <div className="title-row">
-          <h4 id="webdav">WebDAV</h4>
+          <h4 id="webdav">{t('webdav')}</h4>
         </div>
-        <p className="small">
-          Connect a WebDAV or Nextcloud account to synchronize project files.
-        </p>
+        <p className="small">{t('webdav_description')}</p>
         {error && <OLNotification type="error" content={error} />}
         {status?.lastSyncError && (
           <OLNotification type="error" content={status.lastSyncError} />
@@ -174,36 +172,38 @@ export default function WebdavWidget() {
         {status?.connected ? (
           <>
             <p className="small">
-              Connected to <strong>{status.baseUrl}</strong>.
+              {t('connected_to')} <strong>{status.baseUrl}</strong>.
               {status.lastSyncAt && (
-                <> Last synchronized {formatLastSync(status.lastSyncAt)} ({new Date(status.lastSyncAt).toLocaleString()}).</>
+                <> {t('last_synced')} {formatLastSync(status.lastSyncAt)} ({new Date(status.lastSyncAt).toLocaleString()}).</>
               )}
             </p>
             {/* Sync buttons moved to project pages */}
             <p className="small text-muted mb-2">
-              To sync files, open a project and click the WebDAV icon in the integrations panel.
+              {t('webdav_sync_hint')}
             </p>
             <OLButton
               variant="danger-ghost"
               onClick={disconnect}
               disabled={working}
             >
-              Disconnect
+              {t('webdav_disconnect')}
             </OLButton>
+            <p className="small text-muted">{t('webdav_unlink_note')}</p>
           </>
         ) : (
           <>
-            <label className="form-label" htmlFor="webdav-base-url">Server URL</label>
+            <label className="form-label" htmlFor="webdav-base-url">{t('webdav_base_url_label')}</label>
+            <p className="small form-text">{t('webdav_base_url_description')}</p>
             <input
               id="webdav-base-url"
               className="form-control mb-2"
               value={form.baseUrl}
               onChange={event => updateField('baseUrl', event.target.value)}
-              placeholder="https://cloud.example/remote.php/dav/files/user"
+              placeholder={t('webdav_server_url_placeholder')}
               type="url"
               required
             />
-            <label className="form-label" htmlFor="webdav-username">Username</label>
+            <label className="form-label" htmlFor="webdav-username">{t('webdav_username_label')}</label>
             <input
               id="webdav-username"
               className="form-control mb-2"
@@ -212,7 +212,7 @@ export default function WebdavWidget() {
               autoComplete="username"
               required
             />
-            <label className="form-label" htmlFor="webdav-password">Password or app password</label>
+            <label className="form-label" htmlFor="webdav-password">{t('webdav_password_label')}</label>
             <input
               id="webdav-password"
               className="form-control mb-2"
@@ -222,7 +222,7 @@ export default function WebdavWidget() {
               autoComplete="current-password"
               required
             />
-            <label className="form-label" htmlFor="webdav-root-path">Remote root folder</label>
+            <label className="form-label" htmlFor="webdav-root-path">{t('webdav_remote_root_label')}</label>
             <input
               id="webdav-root-path"
               className="form-control mb-2"
@@ -235,7 +235,7 @@ export default function WebdavWidget() {
               onClick={connect}
               disabled={working || !form.baseUrl || !form.username || !form.password}
             >
-              {working ? t('loading') : 'Connect'}
+              {working ? t('loading') : t('webdav_connect')}
             </OLButton>
           </>
         )}

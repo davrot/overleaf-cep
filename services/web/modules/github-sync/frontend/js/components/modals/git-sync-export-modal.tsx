@@ -21,6 +21,7 @@ import OLFormSelect from '@/shared/components/ol/ol-form-select'
 import OLRow from '@/shared/components/ol/ol-row'
 import OLCol from '@/shared/components/ol/ol-col'
 import { GitSyncModalStatus } from '../../types/git-sync-types'
+import { GitServer } from '../git-servers-list'
 
 type OrgsResponse = {
   user: string
@@ -32,18 +33,19 @@ type GitSyncExportModalProps = {
   projectName: string
   handleHide: () => void
   setModalStatus: (modalStatus: GitSyncModalStatus) => void
+  server?: GitServer | null
 }
 
 const GitSyncExportModal = ({
   projectId,
   projectName,
   handleHide,
-  setModalStatus
+  setModalStatus,
+  server
 }: GitSyncExportModalProps) => {
   const { t } = useTranslation()
 
   const [selectedOwner, setSelectedOwner] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
   const [repoName, setRepoName] = useState(projectName)
   const [description, setDescription] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'private'>('private')
@@ -55,10 +57,16 @@ const GitSyncExportModal = ({
   } = useAsync<OrgsResponse>()
 
   useEffect(() => {
-    runAsyncUserAndOrgs(getJSON('/user/github-sync/orgs'))
+    const params = new URLSearchParams()
+    if (server?.provider) params.set('provider', server.provider)
+    if (server?.url) params.set('serverUrl', server.url)
+    const qs = params.toString()
+
+    runAsyncUserAndOrgs(getJSON(`/user/github-sync/orgs${qs ? `?${qs}` : ''}`))
       .then(userAndOrgs => setSelectedOwner(userAndOrgs?.user))
       .catch(err => debugConsole.error(err?.data?.message || err?.message || err))
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server?.provider, server?.url])
 
   const { isLoading, error, setError, runAsync } = useAsync<void>()
 
@@ -72,6 +80,9 @@ const GitSyncExportModal = ({
         description,
         isPublic,
         org,
+        provider: server?.provider,
+        serverUrl: server?.url,
+        username: server?.username,
       },
     }))
       .then(() => setModalStatus('loading'))
@@ -117,8 +128,8 @@ const GitSyncExportModal = ({
                   value={selectedOwner}
                   onChange={e => setSelectedOwner(e.target.value)}
                 >
-                  <option key={userAndOrgs?.user} value={userAndOrgs?.user}>
-                    {userAndOrgs?.user}
+                  <option key={userAndOrgs?.user || 'me'} value={userAndOrgs?.user || ''}>
+                    {userAndOrgs?.user || t('github')}
                   </option>
                   {userAndOrgs?.orgs.map(org => (
                     <option key={org} value={org}>
@@ -218,6 +229,7 @@ const GitSyncExportModal = ({
           onClick={createRepo}
           disabled={!repoName.trim() || isLoading}
           isLoading={isLoading}
+          loadingLabel={t('creating')}
         >
           {t('create_project_in_github')}
         </OLButton>

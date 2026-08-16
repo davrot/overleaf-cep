@@ -1,29 +1,21 @@
-// Integration tests for WebDAV routes
-// These tests verify the route handlers are properly configured
+// Integration tests for WebDAV route paths and helpers
+import { expect, it } from 'vitest'
+import { remotePath, default as webdavPaths } from '../../../app/src/WebdavPaths.mjs'
 
-import { expect } from 'vitest'
-
-describe('WebDAV Routes', function () {
-  it('should export route paths correctly', async function () {
-    const webdavPaths = await import('./../../app/src/WebdavPaths.mjs')
-
-    // Verify all path constants exist
-    expect(webdavPaths).to.include.keys([
-      'webdavRoot',
-      'configPath',
-      'credentialsPath',
-      'syncStatePath',
-      'rootDirectoryPath',
-    ])
+describe('WebDAV Paths', function () {
+  it('exposes remotePath as both named and default export', () => {
+    expect(typeof remotePath).toBe('function')
+    expect(webdavPaths.remotePath).toBe(remotePath)
   })
 
-  it('should have correct route configuration', async function () {
-    const { webdavRoot } = await import('./../../app/src/WebdavPaths.mjs')
+  it('builds project remote paths by joining root, project and file path', () => {
+    expect(remotePath('/Overleaf', 'demo', '/main.tex')).toBe(
+      '/Overleaf/demo/main.tex'
+    )
+    expect(remotePath('/Overleaf/', 'demo')).toBe('/Overleaf/demo/')
+  })
 
-    // The root path should start with a slash
-    expect(webdavRoot).to.match(/^\/webdav/)
-
-    // Verify the path is properly formatted
-    expect(webdavRoot.length).to.be.greaterThan(0)
+  it('collapses duplicate slashes in the remote path', () => {
+    expect(remotePath('/a//b', 'c', '/d/e.tex')).toBe('/a/b/c/d/e.tex')
   })
 })

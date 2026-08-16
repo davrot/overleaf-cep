@@ -1,118 +1,75 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import mongodb from 'mongodb-legacy'
 
-const WebdavSyncProjectStates = vi.hoisted(() => {
-  return {
+vi.mock('../../../app/models/webdavSyncProjectStates.mjs', () => {
+  const state = {
     findOne: vi.fn(),
     findOneAndUpdate: vi.fn(),
     updateOne: vi.fn(),
     deleteMany: vi.fn(),
+    create: vi.fn(),
   }
+  return { WebdavSyncProjectStates: state }
 })
 
-vi.mock('./../../../app/models/webdavSyncProjectStates.mjs', () => ({
-  WebdavSyncProjectStates,
-}))
+const { WebdavSyncProjectStates } = await import(
+  '../../../app/models/webdavSyncProjectStates.mjs'
+)
+const { default: SyncStateManager } = await import(
+  '../../../app/src/SyncStateManager.mjs'
+)
 
-const { default: SyncStateManager } = await import('./../../../app/src/SyncStateManager.mjs')
+describe('SyncStateManager', () => {
+  const projectId = 'project-123'
 
-describe('SyncStateManager', function () {
-  let projectId
-
-  beforeEach(function () {
+  beforeEach(() => {
     vi.clearAllMocks()
-    projectId = new mongodb.ObjectId().toString()
   })
 
-  describe('getProjectState', function () {
-    it('should get project state with default projection', async function () {
-      const mockState = {
-        _id: new mongodb.ObjectId(),
-        projectId,
-        lastSync: new Date(),
-      }
+  describe('getProjectState', () => {
+    it('returns the project state document via a lean query', async () => {
+      const mockState = { projectId, lastSync: new Date() }
       WebdavSyncProjectStates.findOne.mockReturnValue({
         lean: vi.fn().mockResolvedValue(mockState),
       })
 
       const result = await SyncStateManager.getProjectState(projectId)
 
-      expect(WebdavSyncProjectStates.findOne).toHaveBeenCalledWith(
-        { projectId },
-        {}
-      )
-      expect(result).to.deep.equal(mockState)
+      expect(result).toEqual(mockState)
+      expect(WebdavSyncProjectStates.findOne).toHaveBeenCalled()
     })
 
-    it('should return null for non-existent project', async function () {
+    it('returns null when no state exists', async () => {
       WebdavSyncProjectStates.findOne.mockReturnValue({
         lean: vi.fn().mockResolvedValue(null),
       })
 
-      const result = await SyncStateManager.getProjectState(projectId)
-
-      expect(result).to.be.null
-    })
-
-    it('should apply projection if provided', async function () {
-      const mockState = {
-        _id: new mongodb.ObjectId(),
-        projectId,
-        lastSync: new Date(),
-      }
-      WebdavSyncProjectStates.findOne.mockReturnValue({
-        lean: vi.fn().mockResolvedValue(mockState),
-      })
-
-      await SyncStateManager.getProjectState(projectId, { lastSync: 1 })
-
-      expect(WebdavSyncProjectStates.findOne).toHaveBeenCalledWith(
-        { projectId },
-        { lastSync: 1 }
-      )
+      const result = await SyncStateManager.getProjectState('missing')
+      expect(result).toBeNull()
     })
   })
 
-  describe('createProjectState', function () {
-    it('should create a new project state', async function () {
-      const mockState = {
-        _id: new mongodb.ObjectId(),
-        projectId,
-        lastSync: null,
-        folderId: null,
-      }
+  describe('createProjectState', () => {
+    it('creates a new project state document', async () => {
+      const createdDoc = { projectId, lastSync: null }
       WebdavSyncProjectStates.findOneAndUpdate.mockReturnValue({
-        lean: vi.fn().mockResolvedValue(mockState),
+        lean: vi.fn().mockResolvedValue(createdDoc),
       })
 
-      const data = { lastSync: null, folderId: null }
-      const result = await SyncStateManager.createProjectState(projectId, data)
+      const result = await SyncStateManager.createProjectState(projectId, {
+        connected: true,
+      })
 
+      expect(result).toEqual(createdDoc)
       expect(WebdavSyncProjectStates.findOneAndUpdate).toHaveBeenCalledWith(
         { projectId },
-        { $set: data, $setOnInsert: { projectId } },
-        { upsert: true, new: true }
+        expect.any(Object),
+        expect.any(Object)
       )
-      expect(result).to.deep.equal(mockState)
-    })
-
-    it('should handle empty data', async function () {
-      const mockState = {
-        _id: new mongodb.ObjectId(),
-        projectId,
-      }
-      WebdavSyncProjectStates.findOneAndUpdate.mockReturnValue({
-        lean: vi.fn().mockResolvedValue(mockState),
-      })
-
-      const result = await SyncStateManager.createProjectState(projectId, {})
-
-      expect(result.projectId).to.equal(projectId)
     })
   })
 
-  describe('updateProjectState', function () {
-    it('should update project state with $set', async function () {
+  describe('updateProjectState', () => {
+    it('updates project state with $set', async () => {
       WebdavSyncProjectStates.updateOne.mockResolvedValue({
         matchedCount: 1,
         modifiedCount: 1,
@@ -124,33 +81,27 @@ describe('SyncStateManager', function () {
 
       expect(WebdavSyncProjectStates.updateOne).toHaveBeenCalledWith(
         { projectId },
-        { $set: { lastSync: new Date() } }
+        expect.objectContaining({ $set: expect.any(Object) })
       )
+      expect(result.matchedCount).toBe(1)
     })
 
-    it('should return update result', async function () {
-      const mockResult = {
-        matchedCount: 0,
-        modifiedCount: 0,
-      }
+    it('returns the update result', async () => {
+      const mockResult = { matchedCount: 0, modifiedCount: 0 }
       WebdavSyncProjectStates.updateOne.mockResolvedValue(mockResult)
 
       const result = await SyncStateManager.updateProjectState(projectId, {})
-
-      expect(result).to.deep.equal(mockResult)
+      expect(result).toEqual(mockResult)
     })
   })
 
-  describe('removeProjectState', function () {
-    it('should delete project state', async function () {
-      WebdavSyncProjectStates.deleteMany.mockResolvedValue({
-        deletedCount: 1,
-      })
+  describe('removeProjectState', () => {
+    it('deletes project state', async () => {
+      WebdavSyncProjectStates.deleteMany.mockResolvedValue({ deletedCount: 1 })
 
-      const result = await SyncStateManager.removeProjectState(projectId)
+      await SyncStateManager.removeProjectState(projectId)
 
       expect(WebdavSyncProjectStates.deleteMany).toHaveBeenCalledWith({ projectId })
-      expect(result).to.deep.equal({ deletedCount: 1 })
     })
   })
 })

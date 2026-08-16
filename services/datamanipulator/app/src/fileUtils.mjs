@@ -7,6 +7,27 @@ export const FileTypes = {
 }
 
 /**
+ * D2 / M5: shared sync-exclusion filter. Files and directories matching
+ * these patterns (LaTeX build transients, hidden entries) are excluded from
+ * the synced file set: they never appear in /tree, are never read for push,
+ * never applied from pull, and never participate in tree comparison.
+ * @param {string} name - file name or relative path
+ * @returns {boolean} true when the entry must be excluded from sync
+ */
+export function isSyncExcluded(name) {
+  if (!name) return true
+  // RF.5: hidden component in ANY segment (the old check only inspected the
+  // first and last segment, so e.g. 'sub/.git/config' slipped through).
+  const parts = String(name).split('/').filter(Boolean)
+  if (!parts.length) return true
+  for (const part of parts) {
+    if (part.startsWith('.')) return true
+  }
+  const base = parts[parts.length - 1]
+  return /\.(aux|log|out|toc|fls|idx|vrb)$/i.test(base) || /\.synctex\.gz$/i.test(base)
+}
+
+/**
  * Detect if a file is binary based on extension and content sample
  * @param {string} filepath - Path to the file (for extension check)
  * @param {Buffer} buffer - File content bytes
@@ -51,17 +72,10 @@ export function detectFileType(filepath, buffer) {
     decoder.decode(sample)
     return { type: FileTypes.TEXT, encoding: 'utf8' }
   } catch {
-    // Check if it's valid Latin-1 (every byte is valid)
-    let allValid = true
-    for (let i = 0; i < sample.length; i++) {
-      const byte = sample[i]
-      if (!(byte >= 0 && byte <= 255)) {
-        allValid = false
-        break
-      }
-    }
-
-    if (allValid && nullCount === 0) {
+    // Not UTF-8. M8: byte range check was tautological; simplified.
+    // (Bytes from a Buffer are always 0..255, so the old per-byte loop
+    // could never fail; behaviour is preserved without the dead loop.)
+    if (nullCount === 0) {
       return { type: FileTypes.TEXT, encoding: 'latin1' }
     }
 
@@ -112,5 +126,6 @@ export default {
   FileTypes,
   detectFileType,
   calculateChecksum,
-  getFileMetadata
+  getFileMetadata,
+  isSyncExcluded
 }

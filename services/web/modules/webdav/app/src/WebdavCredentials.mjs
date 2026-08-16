@@ -1,4 +1,5 @@
 import Mongo from '../../../../app/src/Features/Helpers/Mongo.mjs'
+import logger from '@overleaf/logger'
 import { WebdavUserCredentials } from '../models/webdavUserCredentials.mjs'
 import { decrypt, encrypt } from './WebdavTokenEncryption.mjs'
 import { WebdavSyncProjectStates } from '../models/webdavSyncProjectStates.mjs'
@@ -22,7 +23,9 @@ async function withUserLock(userId, operation) {
     release = resolve
   })
   credentialLocks.set(key, current)
-  await previous
+  // B1.1 (H1): swallow a rejected previous op so it cannot hang all later ops
+  // for this user. The lock chain must stay rejection-safe.
+  await previous.catch(() => {})
   try {
     return await operation()
   } finally {
@@ -73,33 +76,32 @@ async function save(userId, credentials) {
 }
 
 /**
- * Remove user's WebDAV credentials from the database.
+ * Remove user's WebDAV credentials and all project sync state they own.
+ *
+ * Safety notes:
+ * - States are collected and deleted BEFORE the credentials disappear.
+ * - H6-class scope (RF.3): ONLY state docs with `ownerId === userId` are
+ *   removed. The old legacy fallback (`$or: [{ ownerId }, { connected: true,
+ *   baseUrl }]`) cross-deleted OTHER users' state docs when several users
+ *   linked the same shared server (baseUrl match is not ownership). Legacy
+ *   docs without ownerId are deliberately left in place.
  *
  * @param {string} userId - The Overleaf user ID
  */
 async function remove(userId) {
-  // First unlink all projects associated with this user's WebDAV accounts
-  const credentials = await get(userId)
-  if (credentials) {
-    // Extract usernames to find linked projects
-    const username = credentials.username
-    
-    // Unlink all projects that use this WebDAV username
-    const syncStates = await WebdavSyncProjectStates.find({
-      'connected': true,
-      path: { $regex: new RegExp(`^.*${username}.*$`, 'i') }
-    }).lean()
-    
-    for (const state of syncStates) {
-      await WebdavSyncProjectStates.deleteOne({ projectId: state.projectId })
-      logger.debug(
-        { userId, projectId: state.projectId },
-        'on disconnect: unlinked project due to credential removal'
-      )
-    }
+  // H6-class: strict owner scope; never cross-delete on shared baseUrl.
+  const selector = { ownerId: userId }
+
+  const syncStates = await WebdavSyncProjectStates.find(selector).lean()
+  for (const state of syncStates) {
+    await WebdavSyncProjectStates.deleteOne({ projectId: state.projectId })
+    logger.debug(
+      { userId, projectId: state.projectId?.toString?.() },
+      'on disconnect: removed project sync state'
+    )
   }
-  
-  // Then delete credentials
+
+  // Then delete the credentials themselves.
   await withUserLock(userId, () =>
     WebdavUserCredentials.deleteOne(normalizeQuery({ userId }))
   )
@@ -190,6 +192,40 @@ async function updateSyncStatus(userId, status) {
   })
 }
 
+/**
+ * Rename a synced project inside the stored credentials (syncedProjects
+ * list + remoteState key). Used by WebdavSync.moveEntityForLinkedUsers.
+ * (WD-14: this method was called but never exported before.)
+ *
+ * @param {string} userId - The Overleaf user ID
+ * @param {string} oldProjectName - Previous project name
+ * @param {string} newProjectName - New project name
+ */
+async function renameProject(userId, oldProjectName, newProjectName) {
+  return withUserLock(userId, async () => {
+    const credentials = await get(userId)
+    if (!credentials) return
+    const hasOwn = Object.prototype.hasOwnProperty
+    let changed = false
+    if (
+      Array.isArray(credentials.syncedProjects) &&
+      credentials.syncedProjects.includes(oldProjectName)
+    ) {
+      credentials.syncedProjects = credentials.syncedProjects.map(name =>
+        name === oldProjectName ? newProjectName : name
+      )
+      changed = true
+    }
+    if (credentials.remoteState && hasOwn.call(credentials.remoteState, oldProjectName)) {
+      credentials.remoteState[newProjectName] = credentials.remoteState[oldProjectName]
+      delete credentials.remoteState[oldProjectName]
+      changed = true
+    }
+    if (!changed) return
+    await saveUnlocked(userId, credentials)
+  })
+}
+
 export default {
   /**
    * Get user's WebDAV credentials from the database.
@@ -245,4 +281,12 @@ export default {
    * @param {Object} status - Status object to merge into credentials
    */
   updateSyncStatus,
+
+  /**
+   * Rename a synced project inside the stored credentials.
+   * @param {string} userId - The Overleaf user ID
+   * @param {string} oldProjectName - Previous project name
+   * @param {string} newProjectName - New project name
+   */
+  renameProject,
 }

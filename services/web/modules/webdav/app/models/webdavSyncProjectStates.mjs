@@ -21,6 +21,10 @@ const webdavSyncSchema = new Schema(
       enum: ['clean', 'diverged', 'conflict'],
       default: 'clean',
     },
+    // Owning user (whoever linked the project). Required for correct unlink/
+    // user-expire cleanup (docs created before this field lack ownerId — cleanups
+    // fall back to matching the user's credentials baseUrl).
+    ownerId: { type: Schema.Types.Mixed, ref: 'User' },
     // Sync tracking (optional)
     lastSyncAt: { type: Date }, // Last successful sync time
     lastSyncError: { type: String }, // Error message from last sync attempt
@@ -35,6 +39,9 @@ const webdavSyncSchema = new Schema(
 )
 
 webdavSyncSchema.index({ projectId: 1 })
+webdavSyncSchema.index({ ownerId: 1 })
+// H.2: legacy lookup selector (pre-ownerId docs matched by username)
+webdavSyncSchema.index({ username: 1 })
 
 export const WebdavSyncProjectStates =
   Mongoose.model('WebdavSyncProjectState', webdavSyncSchema)

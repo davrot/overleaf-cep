@@ -60,7 +60,7 @@ export class WebDAVClient {
         href: item.basename,
         path: item.filename || `${parentPath}/${item.basename}`.replace(/\/+/g, '/'),
         isDirectory: item.type === 'directory',
-        etag: null,
+        etag: item.etag || null,
         modifiedAt: item.lastmod ? new Date(item.lastmod).toISOString() : null,
         size: item.size || 0
       }))

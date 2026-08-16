@@ -22,6 +22,7 @@ import GitSyncUnlinkUnavailableModal from './git-sync-unlink-unavailable-modal'
 import GitSyncCannotExportModal from './git-sync-cannot-export-modal'
 
 import { GitSyncModalStatus, ProjectSyncState } from '../../types/git-sync-types'
+import { GitServer } from '../git-servers-list'
 
 type GitSyncModalProps = {
   show: boolean
@@ -46,19 +47,17 @@ function GitSyncModal({
   const { t } = useTranslation()
   const [commitMessage, setCommitMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [selectedServer, setSelectedServer] = useState<GitServer | null>(null)
 
 const {
   runAsync: runAsyncConn,
-  error: errorConn,
   setError: setErrorConn,
-  data: dataConn,
-} = useAsync<boolean>()
+} = useAsync<{ connected?: boolean; providers?: GitServer[] }>()
 
 const {
   runAsync,
   data: projectSyncState,
   setData: setProjectSyncState,
-  error,
   setError,
 } = useAsync<ProjectSyncState>()
 
@@ -111,9 +110,12 @@ const {
       setErrorConn(null)
       setErrorMessage('')
 
-      runAsyncConn(getJSON(`/user/github-sync/status`))
-        .then(isConnected => {
-          if (!isConnected) {
+      runAsyncConn(getJSON<{ connected?: boolean; providers?: GitServer[] }>(`/user/github-sync/status`))
+        .then(status => {
+          const connected =
+            (status && status.connected) ||
+            (Array.isArray(status?.providers) && status.providers.length > 0)
+          if (!connected) {
             setModalStatus('need-auth')
             return
           }
@@ -127,16 +129,15 @@ const {
 
     fetchConnectionStatus()
 
-  }, [show, modalStatus, projectId, runAsyncConn, runAsync])
+    // setModalStatus is a stable useState setter, provided by the parent
+  }, [show, modalStatus, projectId, runAsyncConn, runAsync, setError, setErrorConn, setModalStatus, t])
 
   return (
     <OLModal show={show} onHide={handleHide} backdrop="static">
       <OLModalHeader closeButton>
-        {serverType ? (
-          <OLModalTitle>{t(`sync_with_${serverType}`)}</OLModalTitle>
-        ) : (
-          <OLModalTitle>{t('sync_with_github')}</OLModalTitle>
-        )}
+        <OLModalTitle>
+          {t(`sync_with_${selectedServer?.provider || serverType || 'github'}`)}
+        </OLModalTitle>
       </OLModalHeader>
 
       {modalStatus === 'loading' && (
@@ -153,6 +154,7 @@ const {
           projectName={projectName}
           handleHide={handleHide}
           setModalStatus={setModalStatus}
+          server={selectedServer}
         />
       )}
 
@@ -166,6 +168,10 @@ const {
       {modalStatus === 'need-auth' && (
         <GitSyncNeedAuthModal
           handleHide={handleHide}
+          selectServer={server => {
+            setSelectedServer(server)
+            setModalStatus('need-export')
+          }}
         />
       )}
 

@@ -2,9 +2,70 @@
 
 import express from 'express'
 import { WebDAVClient } from './WebDAVClient.mjs'
+import { sanitizeUrlForLogging } from './auth.mjs'
 
 const app = express()
-app.use(express.json({ limit: '10mb' }))
+app.use(express.json({ limit: '50mb' })) // files can be large; match dropboxinterface
+
+// --- Service authentication (ARC-02) -------------------------------------------------------
+// Enforced when SHARED_SERVICE_TOKEN is configured; when unset (legacy
+// deployments) the service keeps accepting unauthenticated calls and warns,
+// so existing in-container deployments keep working.
+import crypto from 'node:crypto'
+const SERVICE_TOKEN = process.env.SHARED_SERVICE_TOKEN || ''
+let serviceAuthWarned = false
+function requireServiceToken(req, res, next) {
+  if (!SERVICE_TOKEN) {
+    if (!serviceAuthWarned) {
+      serviceAuthWarned = true
+      console.warn(
+        'SHARED_SERVICE_TOKEN is unset; accepting unauthenticated requests (should be restricted to in-container callers)'
+      )
+    }
+    return next()
+  }
+  const authHeader = req.headers.authorization || ''
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const candidate = String(req.headers['x-service-token'] || bearer || '')
+  const candidateBuffer = Buffer.from(candidate)
+  const expectedBuffer = Buffer.from(SERVICE_TOKEN)
+  const ok =
+    candidateBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(candidateBuffer, expectedBuffer)
+  if (!ok) {
+    return res.status(401).json({ error: 'Invalid or missing service token' })
+  }
+  return next()
+}
+app.use(requireServiceToken)
+
+// --- Error sanitization (H8/M9) -------------------------------------------------------
+// The webdav client embeds `user:pass@host` URLs into error messages. Provider
+// error text must never reach logs or clients verbatim:
+//   - safeError(err): string for LOGS with credential-looking URLs redacted
+//   - providerStatusError(err): generic {status, error} for RESPONSES (no provider text)
+const CREDENTIAL_URL_RE = /(https?|webdav):\/\/[^@\s]+@/gi
+function safeError(err) {
+  const raw = err && (err.message || err.error) ? String(err.message || err.error) : 'unknown error'
+  return raw.replace(CREDENTIAL_URL_RE, '$1://<redacted>@').slice(0, 1000)
+}
+function providerStatusError(err) {
+  const status = err && (err.status || err.statusCode)
+  const msg = (err && err.message) || ''
+  if (status === 401 || /unauthorized|authentication|invalid (token|credential)/i.test(msg)) {
+    return { status: 401, error: 'authentication failed' }
+  }
+  if (status === 404 || /not found|no such/i.test(msg)) {
+    return { status: 404, error: 'not found' }
+  }
+  if (status === 409 || status === 412 || /conflict|precondition/i.test(msg)) {
+    return { status: 409, error: 'modified since last sync' }
+  }
+  return { status: 502, error: 'provider request failed' }
+}
+function logProviderError(label, err, url) {
+  console.error(label, safeError(err), url ? sanitizeUrlForLogging(url) : '')
+}
 
 /**
  * POST /check - Verify credentials work with the WebDAV server
@@ -26,8 +87,9 @@ app.post('/check', async (req, res) => {
     await client.check()
     res.json({ status: 'ok', message: 'Connection successful' })
   } catch (err) {
-    console.error('WebDAV check failed:', err)
-    res.status(500).json({ error: err.message || 'Connection failed' })
+    logProviderError('WebDAV check failed:', err, req.body?.server_url)
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -51,8 +113,9 @@ app.post('/list', async (req, res) => {
     const entries = await client.list(path)
     res.json({ entries })
   } catch (err) {
-    console.error('WebDAV list failed:', err)
-    res.status(500).json({ error: err.message || 'List failed' })
+    logProviderError('WebDAV list failed:', err, req.body?.server_url)
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -76,11 +139,12 @@ app.post('/mkdir', async (req, res) => {
     await client.createDirectory(path)
     res.json({ status: 'ok', created: true })
   } catch (err) {
-    console.error('WebDAV mkdir failed:', err)
+    logProviderError('WebDAV mkdir failed:', err, req.body?.server_url)
     if (err.status === 405 || err.message?.includes('already exists')) {
       return res.status(200).json({ status: 'ok', created: false, message: 'Directory already exists' })
     }
-    res.status(500).json({ error: err.message || 'Create directory failed' })
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -97,18 +161,16 @@ app.get('/file', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters' })
     }
 
-    // Extract password from Authorization header or body
+    // M9: the Authorization (Basic) header is the ONLY credential path for GETs
+    // (the req.body password fallback was removed — GETs-with-body are discarded
+    // by most clients/proxies anyway).
     const authHeader = req.headers.authorization
     let password
     if (authHeader && authHeader.startsWith('Basic ')) {
-      const base64Auth = authHeader.split(' ')[1]
-      const [, pass] = Buffer.from(base64Auth, 'base64').toString().split(':')
-      password = pass
-    }
-
-    // Fall back to body for POST/PUT requests
-    if (!password && req.body?.password) {
-      password = req.body.password
+      // WI-05: split on the FIRST ':' — usernames containing ':' used to break this
+      const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString()
+      const separator = decoded.indexOf(':')
+      password = separator === -1 ? '' : decoded.slice(separator + 1)
     }
 
     if (!password) {
@@ -127,8 +189,14 @@ app.get('/file', async (req, res) => {
       content_base64: contentBase64
     })
   } catch (err) {
-    console.error('WebDAV get file failed:', err)
-    res.status(500).json({ error: err.message || 'Get file failed' })
+    // F2.1: accessToken/serverUrl are consts inside the try block — re-derive
+    // from req (guaranteed in scope) for the scrub arg.
+    logProviderError('WebDAV get file failed:', err, req.headers['x-server-url'])
+    if (err?.status === 404) {
+      return res.status(404).json({ error: 'not found' })
+    }
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -152,11 +220,15 @@ app.post('/file', async (req, res) => {
     await client.upload(path, content_base64, { etag })
     res.json({ status: 'ok', uploaded: true })
   } catch (err) {
-    console.error('WebDAV upload failed:', err)
-    if (err.message?.includes('Precondition') || err.message?.includes('conflict')) {
+    logProviderError('WebDAV upload failed:', err, req.body?.server_url)
+    if (err?.status === 412 || /precondition|conflict/i.test(err?.message || '')) {
       return res.status(412).json({ error: 'ETag mismatch - file modified', status: 412 })
     }
-    res.status(500).json({ error: err.message || 'Upload failed' })
+    if (err?.status === 404) {
+      return res.status(404).json({ error: 'parent path not found' })
+    }
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -177,9 +249,10 @@ app.delete('/file', async (req, res) => {
     const authHeader = req.headers.authorization
     let password
     if (authHeader && authHeader.startsWith('Basic ')) {
-      const base64Auth = authHeader.split(' ')[1]
-      const [, pass] = Buffer.from(base64Auth, 'base64').toString().split(':')
-      password = pass
+      // WI-05: split on the FIRST ':' — usernames containing ':' used to break this
+      const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString()
+      const separator = decoded.indexOf(':')
+      password = separator === -1 ? '' : decoded.slice(separator + 1)
     }
 
     if (!password) {
@@ -195,11 +268,12 @@ app.delete('/file', async (req, res) => {
     await client.delete(path)
     res.json({ status: 'ok', deleted: true })
   } catch (err) {
-    console.error('WebDAV delete failed:', err)
+    logProviderError('WebDAV delete failed:', err, req.headers['x-server-url'])
     if (err.status === 404 || err.message?.includes('not found')) {
       return res.status(200).json({ status: 'ok', notFound: true, message: 'File not found' })
     }
-    res.status(500).json({ error: err.message || 'Delete failed' })
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 
@@ -223,8 +297,9 @@ app.post('/move', async (req, res) => {
     await client.move(src, dst)
     res.json({ status: 'ok', moved: true })
   } catch (err) {
-    console.error('WebDAV move failed:', err)
-    res.status(500).json({ error: err.message || 'Move failed' })
+    logProviderError('WebDAV move failed:', err, req.body?.server_url)
+    const mapped = providerStatusError(err)
+    res.status(mapped.status).json({ error: mapped.error })
   }
 })
 

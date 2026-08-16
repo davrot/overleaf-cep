@@ -165,7 +165,7 @@ export class GitServerClient {
       const head = await git.resolveRef({ fs, dir, ref: 'HEAD' })
       
       // Create tree from staged changes
-      const tree = await git.writeTree({ fs, dir })
+      await git.writeTree({ fs, dir })
       
       // Create commit
       const commitSha = await git.commit({

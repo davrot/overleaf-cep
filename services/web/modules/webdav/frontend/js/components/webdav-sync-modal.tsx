@@ -9,6 +9,7 @@ import {
     OLModalTitle,
 } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
+import OLNotification from '@/shared/components/ol/ol-notification'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
 
@@ -20,7 +21,16 @@ type WebdavUserStatus = {
 }
 
 // Optional status fields for projects
-type ProjectWebdavStatus = WebdavUserStatus & { lastSyncAt?: string | null; mergeStatus?: string }
+type ProjectWebdavStatus = WebdavUserStatus & {
+    lastSyncAt?: string | null
+    mergeStatus?: string
+    lastConflict?: {
+        path?: string | null
+        localVersion?: string
+        remoteVersion?: string
+        timestamp?: string
+    } | null
+}
 
 type ProjectInfo = {
     projectName?: string
@@ -96,13 +106,13 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                 setStatus({ connected: false } as WebdavUserStatus)
                 setModalStatus('disconnected')
             })
-    }, [show])
+    }, [show, projectId, initialProjectName])
 
     // Unlink project from WebDAV
     const handleUnlinkProject = async () => {
         setWorking(true)
         try {
-            await fetch(`/project/${projectId}/webdav/state`, { 
+            const res = await fetch(`/project/${projectId}/webdav/state`, { 
                 method: 'DELETE',
                 headers: {
                     'X-Csrf-Token': getMeta('ol-csrfToken'),
@@ -111,16 +121,43 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                 credentials: 'same-origin'
             })
 
+            let data: { message?: string; error?: string } = {}
+            try { data = await res.json() } catch { /* non-JSON body */ }
+
+            // D.4 / H7: only proceed to the "unlinked" UI when the server
+            // confirmed (ok, or 404 = never linked). A failed unlink (500 etc.)
+            // must NOT flip the UI to "unlinked".
+            if (!res.ok && res.status !== 404) {
+                debugConsole.error(`WebDAV unlink failed (${res.status})`, data)
+                alert(t('failed_to_unlink_webdav', { fallback: data.message || data.error || 'Unknown error' }))
+                return
+            }
+
             setStatus({ connected: false } as ProjectWebdavStatus)
             setModalStatus('notLinkedProject')
         } catch (err: any) {
             debugConsole.error(err?.message || err)
-            // If 404, it means the project wasn't linked anyway
-            if (err?.response?.status !== 404) {
-                alert(t('failed_to_unlink_webdav', { fallback: 'Failed to unlink project from WebDAV: Unknown error' }))
-            }
-            setStatus({ connected: false } as ProjectWebdavStatus)
-            setModalStatus('notLinkedProject')
+            alert(t('failed_to_unlink_webdav', { fallback: err?.message || 'Unknown error' }))
+        } finally {
+            setWorking(false)
+        }
+    }
+
+    // Resolve a sync conflict: push the kept version to the remote (or apply
+    // the remote version locally) via the backend resolver, then refetch state.
+    const handleResolveConflict = async (choice: 'local' | 'remote') => {
+        const path = (status as ProjectWebdavStatus | undefined)?.lastConflict?.path
+        if (!path) return
+        setWorking(true)
+        try {
+            await postJSON(`/project/${projectId}/webdav/conflict/resolve`, {
+                body: { path, choice }
+            })
+            const data = await getJSON('/project/' + projectId + '/webdav/state')
+            setStatus(data as ProjectWebdavStatus)
+        } catch (err: any) {
+            debugConsole.error(err?.message || err)
+            alert(err?.data?.message || err?.message || t('generic_something_went_wrong'))
         } finally {
             setWorking(false)
         }
@@ -133,7 +170,7 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
             // Get user's current WebDAV status (baseUrl, rootPath)
             const userData: WebdavUserStatus | null = await getJSON('/user/webdav/status')
             if (!userData?.connected) {
-                throw new Error('WebDAV credentials not found. Please connect your account first.')
+                throw new Error(t('webdav_credentials_not_found'))
             }
 
             // Create project sync state with user's WebDAV configuration
@@ -296,6 +333,37 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                                 </p>
                             )}
 
+                            {/* D.4: conflict view — both sides changed since last sync */}
+                            {connectedStatus.mergeStatus === 'conflict' && (
+                                <div className="mb-3">
+                                    <OLNotification type="warning" content={t('webdav_conflict_title')} />
+                                    <p className="small">{t('webdav_conflict_detail')}</p>
+                                    {connectedStatus.lastConflict?.path && (
+                                        <p className="small">
+                                            <code>{connectedStatus.lastConflict.path}</code>
+                                        </p>
+                                    )}
+                                    {connectedStatus.lastConflict?.path && (
+                                        <div className="d-flex gap-2">
+                                            <OLButton
+                                                variant="secondary"
+                                                onClick={() => handleResolveConflict('local')}
+                                                disabled={working}
+                                            >
+                                                {t('webdav_conflict_keep_local_button')}
+                                            </OLButton>
+                                            <OLButton
+                                                variant="primary"
+                                                onClick={() => handleResolveConflict('remote')}
+                                                disabled={working}
+                                            >
+                                                {t('webdav_conflict_keep_remote_button')}
+                                            </OLButton>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="d-flex gap-2 mt-3 mb-3">
                                 <OLButton variant="secondary" onClick={handlePoll} disabled={working}>
                                     {working ? t('loading') : t('webdav_import_from_webdav')}
@@ -313,6 +381,9 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                             >
                                 {t('webdav_unlink_button')}
                             </OLButton>
+                            <p className="small text-muted">
+                                {t('webdav_unlink_note')}
+                            </p>
                         </>
                     )}
                 </OLModalBody>

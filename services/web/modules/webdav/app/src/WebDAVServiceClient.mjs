@@ -27,9 +27,40 @@ export class WebDAVServiceClient {
     
     this.webdavInterfaceUrl = process.env.WEBDAVINTERFACE_API_URL || 'http://localhost:4002'
     
-    // Retry configuration
-    this._maxRetries = 2
-    this._retryDelayMs = 100
+    // Retry configuration (env-overridable per runtime config: WEBDAV_RETRY_COUNT /
+    // WEBDAV_RETRY_DELAY_MS / WEBDAV_REQUEST_TIMEOUT_MS)
+    this._maxRetries = Math.max(0, Number.parseInt(process.env.WEBDAV_RETRY_COUNT ?? '', 10) || 2)
+    this._retryDelayMs = Number.parseInt(process.env.WEBDAV_RETRY_DELAY_MS ?? '', 10) || 100
+    this._requestTimeoutMs = Number.parseInt(process.env.WEBDAV_REQUEST_TIMEOUT_MS ?? '', 10) || 10000
+  }
+
+  /**
+   * fetch with per-request timeout (AbortController). Throws an error with
+   * name 'TimeoutError' when the request exceeds _requestTimeoutMs.
+   */
+  async _fetch(url, options = {}) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this._requestTimeoutMs)
+    const headers = { ...(options.headers || {}) }
+    // Service-to-service auth (ARC-02): forwarded when configured; the
+    // services accept unauthenticated calls (with a warning) when the token
+    // is unset, so existing deployments keep working.
+    if (process.env.SHARED_SERVICE_TOKEN) {
+      headers['x-service-token'] = process.env.SHARED_SERVICE_TOKEN
+    }
+    try {
+      return await fetch(url, { ...options, headers, signal: controller.signal })
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw Object.assign(
+          new Error(`WebDAV request timed out after ${this._requestTimeoutMs}ms`),
+          { name: 'TimeoutError', code: 'ETIMEDOUT' }
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   /**
@@ -45,7 +76,7 @@ export class WebDAVServiceClient {
     // This allows existing projects without passwords to be linked (password can be added later)
 
     try {
-      const response = await fetch(`${this.webdavInterfaceUrl}/check`, {
+      const response = await this._fetch(`${this.webdavInterfaceUrl}/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -72,7 +103,7 @@ export class WebDAVServiceClient {
    */
   async list(resourcePath) {
     try {
-      const response = await fetch(`${this.webdavInterfaceUrl}/list`, {
+      const response = await this._fetch(`${this.webdavInterfaceUrl}/list`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,7 +132,7 @@ export class WebDAVServiceClient {
    */
   async createDirectory(resourcePath) {
     try {
-      const response = await fetch(`${this.webdavInterfaceUrl}/mkdir`, {
+      const response = await this._fetch(`${this.webdavInterfaceUrl}/mkdir`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +162,7 @@ export class WebDAVServiceClient {
   async get(resourcePath) {
     try {
       const url = `${this.webdavInterfaceUrl}/file?path=${encodeURIComponent(resourcePath)}`
-      const response = await fetch(url, {
+      const response = await this._fetch(url, {
         method: 'GET',
         headers: {
           'X-Server-URL': this.baseUrl,
@@ -158,7 +189,7 @@ export class WebDAVServiceClient {
    */
   async put(resourcePath, body, { etag } = {}) {
     try {
-      const response = await fetch(`${this.webdavInterfaceUrl}/file`, {
+      const response = await this._fetch(`${this.webdavInterfaceUrl}/file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +227,7 @@ export class WebDAVServiceClient {
   async remove(resourcePath) {
     try {
       const url = `${this.webdavInterfaceUrl}/file?path=${encodeURIComponent(resourcePath)}`
-      const response = await fetch(url, {
+      const response = await this._fetch(url, {
         method: 'DELETE',
         headers: {
           'X-Server-URL': this.baseUrl,
@@ -223,7 +254,7 @@ export class WebDAVServiceClient {
    */
   async move(sourcePath, destinationPath) {
     try {
-      const response = await fetch(`${this.webdavInterfaceUrl}/move`, {
+      const response = await this._fetch(`${this.webdavInterfaceUrl}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

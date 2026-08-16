@@ -9,6 +9,7 @@ import {
   OLModalTitle,
 } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
+import OLNotification from '@/shared/components/ol/ol-notification'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
 
@@ -18,7 +19,13 @@ type DropboxUserStatus = {
 }
 
 // Optional status fields for projects
-type ProjectDropboxStatus = DropboxUserStatus & { lastSyncAt?: string | null; mergeStatus?: string }
+type ProjectDropboxStatus = DropboxUserStatus & {
+  projectPath?: string
+  lastSyncAt?: string | null
+  mergeStatus?: string
+  conflicts?: { path?: string }[]
+  lastConflict?: { path?: string | null } | null
+}
 
 function formatDropboxPath(path: string) {
   if (!path || path === '/') return 'Apps/Overleaf Dev'
@@ -99,7 +106,7 @@ function DropboxSyncModal({
   const handleUnlinkProject = async () => {
     setWorking(true)
     try {
-      await fetch(`/project/${projectId}/dropbox/state`, {
+      const res = await fetch(`/project/${projectId}/dropbox/state`, {
         method: 'DELETE',
         headers: {
           'X-Csrf-Token': getMeta('ol-csrfToken'),
@@ -108,15 +115,41 @@ function DropboxSyncModal({
         credentials: 'same-origin',
       })
 
+      let data: { message?: string; error?: string } = {}
+      try { data = await res.json() } catch { /* non-JSON body */ }
+
+      // D.5 / H7: only proceed to the "unlinked" UI when the server confirmed
+      // (ok, or 404 = never linked). A failed unlink must NOT flip the UI.
+      if (!res.ok && res.status !== 404) {
+        debugConsole.error(`Dropbox unlink failed (${res.status})`, data)
+        alert(t('failed_to_unlink_dropbox', { fallback: data.message || data.error || 'Unknown error' }))
+        return
+      }
+
       setStatus({ connected: false } as ProjectDropboxStatus)
       setModalStatus('notLinkedProject')
     } catch (err: any) {
       debugConsole.error(err?.message || err)
-      if (err?.response?.status !== 404) {
-        alert(t('failed_to_unlink_dropbox', { fallback: 'Failed to unlink project from Dropbox: Unknown error' }))
-      }
-      setStatus({ connected: false } as ProjectDropboxStatus)
-      setModalStatus('notLinkedProject')
+      alert(t('failed_to_unlink_dropbox', { fallback: err?.message || 'Unknown error' }))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  // Resolve a Dropbox sync conflict (keep-local publishes local on next push;
+  // keep-remote applies the remote file now). Backend picks the first
+  // unresolved conflict when filePath is omitted.
+  const handleResolveConflict = async (choice: 'keep-local' | 'keep-remote') => {
+    setWorking(true)
+    try {
+      await postJSON(`/project/${projectId}/dropbox/conflict/resolve`, {
+        body: { choice },
+      })
+      const data = await getJSON('/project/' + projectId + '/dropbox/state')
+      setStatus(data as ProjectDropboxStatus)
+    } catch (err: any) {
+      debugConsole.error(err?.message || err)
+      alert(err?.data?.message || err?.message || t('generic_something_went_wrong'))
     } finally {
       setWorking(false)
     }
@@ -129,7 +162,7 @@ function DropboxSyncModal({
       // Get user's current Dropbox status (path)
       const userData: DropboxUserStatus | null = await getJSON('/user/dropbox/status')
       if (!userData?.connected) {
-        throw new Error('Dropbox credentials not found. Please connect your account first.')
+        throw new Error(t('dropbox_credentials_not_found'))
       }
 
       // Create project sync state with user's Dropbox configuration
@@ -161,12 +194,35 @@ function DropboxSyncModal({
   const handlePull = () => {
     setWorking(true)
     postJSON('/project/' + projectId + '/dropbox/pull')
-      .then(() => {
+      .then((pullResult) => {
+        // RF.8: the server can answer 200 with `success: false` (e.g. the
+        // remote folder no longer exists) — that is NOT a success. Surface
+        // the server message, refresh state, and KEEP the linked UI state
+        // (do not flip to "not linked").
+        if (pullResult && (pullResult as { success?: boolean }).success === false) {
+          const message = (pullResult as { message?: string }).message
+          debugConsole.error('Dropbox pull reported not successful', pullResult)
+          return getJSON('/project/' + projectId + '/dropbox/state')
+            .then((stateData) => setStatus(stateData as ProjectDropboxStatus))
+            .catch(() => { /* keep current state */ })
+            .then(() => {
+              alert(
+                message || t('dropbox_pull_failed', { fallback: 'Failed to import from Dropbox' })
+              )
+            })
+        }
         // Refresh status after pull
-        getJSON('/project/' + projectId + '/dropbox/state').then((data) => {
-          setStatus(data as ProjectDropboxStatus)
-          alert(t('dropbox_pull_success', { fallback: 'Successfully imported from Dropbox' }))
-        })
+        return getJSON('/project/' + projectId + '/dropbox/state')
+          .then((data) => {
+            const next = data as ProjectDropboxStatus
+            setStatus(next)
+            // D.5: a pull that recorded conflicts is NOT a plain success
+            if (Array.isArray(next?.conflicts) && next.conflicts.length > 0) {
+              alert(t('dropbox_conflict_unresolved', { count: next.conflicts.length }))
+            } else {
+              alert(t('dropbox_pull_success', { fallback: 'Successfully imported from Dropbox' }))
+            }
+          })
       })
       .catch((err: any) => {
         debugConsole.error(err?.message || err)
@@ -182,7 +238,21 @@ function DropboxSyncModal({
   const handlePush = () => {
     setWorking(true)
     postJSON('/project/' + projectId + '/dropbox/push')
-      .then(() => {
+      .then((pushResult) => {
+        // RF.8: same as pull — a 200 with `success: false` is a failure
+        // (e.g. remote not linked/missing), not a success.
+        if (pushResult && (pushResult as { success?: boolean }).success === false) {
+          const message = (pushResult as { message?: string }).message
+          debugConsole.error('Dropbox push reported not successful', pushResult)
+          return getJSON('/project/' + projectId + '/dropbox/state')
+            .then((stateData) => setStatus(stateData as ProjectDropboxStatus))
+            .catch(() => { /* keep current state */ })
+            .then(() => {
+              alert(
+                message || t('dropbox_push_failed', { fallback: 'Failed to export to Dropbox' })
+              )
+            })
+        }
         // Refresh status after push
         getJSON('/project/' + projectId + '/dropbox/state').then((data) => {
           setStatus(data as ProjectDropboxStatus)
@@ -290,13 +360,37 @@ function DropboxSyncModal({
 
               <p className="small">
                 <strong>{t('dropbox_path_label')}:</strong>{' '}
-                {formatDropboxPath(status.path || '/')}
+                {formatDropboxPath(status.projectPath || status.path || '/')}
               </p>
 
               {connectedStatus.lastSyncAt && (
                 <p className="small">
                   <strong>{t('last_synced')}:</strong> {new Date(connectedStatus.lastSyncAt).toLocaleString()}
                 </p>
+              )}
+
+              {/* D.5: unresolved conflicts — both sides changed, pull was skipped */}
+              {Array.isArray(status?.conflicts) && status.conflicts.length > 0 && (
+                <div className="mb-3">
+                  <OLNotification type="warning" content={t('dropbox_conflict_title')} />
+                  <p className="small">
+                    {t('dropbox_conflict_unresolved', { count: status.conflicts.length })}
+                  </p>
+                  <p className="small mb-2">
+                    {(status.conflicts || [])
+                      .filter(c => c?.path)
+                      .map(c => c.path)
+                      .join(', ')}
+                  </p>
+                  <div className="d-flex gap-2">
+                    <OLButton variant="secondary" disabled={working} onClick={() => handleResolveConflict('keep-local')}>
+                      {t('dropbox_conflict_keep_local_button')}
+                    </OLButton>
+                    <OLButton variant="primary" disabled={working} onClick={() => handleResolveConflict('keep-remote')}>
+                      {t('dropbox_conflict_keep_remote_button')}
+                    </OLButton>
+                  </div>
+                </div>
               )}
 
               <div className="d-flex gap-2 mt-3 mb-3">
@@ -316,6 +410,9 @@ function DropboxSyncModal({
               >
                 {t('dropbox_unlink_button')}
               </OLButton>
+              <p className="small text-muted">
+                {t('dropbox_unlink_note')}
+              </p>
             </>
           )}
         </OLModalBody>

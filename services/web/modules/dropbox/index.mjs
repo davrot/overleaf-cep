@@ -38,20 +38,29 @@ if (process.env.DROPBOX_ENABLED?.toLowerCase() === 'true') {
   })
 
   // Delete user credentials from mongo (hook 'expireDeletedUser')
+  // Order matters: collect credentials FIRST, delete the project states they
+  // own, and only then delete the credentials (DBX-05: deleting first left the
+  // "unlink all projects" loop with an empty credential list and orphaned state).
   Modules.hooks.attach('expireDeletedUser', async userId => {
     try {
-      await DropboxUserCredentials.deleteMany({ userId })
-      
-      // Also unlink all projects associated with this user's Dropbox accounts
       const credentialsList = await DropboxUserCredentials.find({ userId }).lean()
+
+      // Unlink all projects associated with this user's Dropbox accounts
       for (const cred of credentialsList) {
-        const path = normalizeDropboxPath(cred.path)
-        await DropboxSyncProjectStates.deleteMany({ path })
-        logger.debug(
-          { userId, path },
-          'on user expire: unlinked all projects with this Dropbox path'
-        )
+        if (cred.path) {
+          const path = normalizeDropboxPath(cred.path)
+          await DropboxSyncProjectStates.deleteMany({ $or: [{ path }, { ownerId: userId }] })
+          logger.debug(
+            { userId, path },
+            'on user expire: unlinked all projects with this Dropbox path'
+          )
+        }
       }
+      // Catch any legacy state docs only keyed by owner
+      await DropboxSyncProjectStates.deleteMany({ ownerId: userId })
+
+      // Finally delete the credentials
+      await DropboxUserCredentials.deleteMany({ userId })
     } catch (err) {
       logger.warn({ userId, err }, 'on user expire: failed removing user credentials')
     }

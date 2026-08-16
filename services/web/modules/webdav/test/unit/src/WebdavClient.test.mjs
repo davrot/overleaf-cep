@@ -4,6 +4,23 @@ vi.mock('@overleaf/settings', () => ({
   default: { webdav: { requestTimeoutMs: 1000 } },
 }))
 
+// Mock the webdav npm package so no real network calls happen and the
+// transport behavior is fully deterministic.
+const fakeWebdavClient = vi.hoisted(() => ({
+  baseUrl: 'https://cloud.example/remote.php/dav/files/alice',
+  exists: vi.fn().mockResolvedValue(true),
+  getDirectoryContents: vi.fn(),
+  createDirectory: vi.fn().mockResolvedValue(undefined),
+  putFileContents: vi.fn().mockResolvedValue(undefined),
+  getFileContents: vi.fn().mockResolvedValue(undefined),
+  deleteFile: vi.fn().mockResolvedValue(undefined),
+  moveFile: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('webdav', () => ({
+  createClient: vi.fn(() => fakeWebdavClient),
+}))
+
 const { default: WebdavClient, parseMultistatus } = await import(
   '../../../app/src/WebdavClient.mjs'
 )
@@ -11,7 +28,7 @@ const { remotePath } = await import('../../../app/src/WebdavPaths.mjs')
 
 describe('WebdavClient', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   it('keeps the configured WebDAV endpoint path when building URLs', () => {
@@ -22,13 +39,13 @@ describe('WebdavClient', () => {
       rootPath: '/Overleaf',
     })
 
-    expect(client.url('/Overleaf/demo/main.tex').toString()).to.equal(
+    expect(client.url('/Overleaf/demo/main.tex').toString()).toBe(
       'https://cloud.example/remote.php/dav/files/alice/Overleaf/demo/main.tex'
     )
   })
 
   it('uses the connected user root for project paths', () => {
-    expect(remotePath('/alice-files', 'demo', '/main.tex')).to.equal(
+    expect(remotePath('/alice-files', 'demo', '/main.tex')).toBe(
       '/alice-files/demo/main.tex'
     )
   })
@@ -52,7 +69,7 @@ describe('WebdavClient', () => {
         '/Overleaf/demo',
         '/remote.php/dav/files/alice'
       )
-    ).to.deep.equal([
+    ).toEqual([
       {
         href: '/remote.php/dav/files/alice/Overleaf/demo/main%20file.tex',
         path: '/Overleaf/demo/main file.tex',
@@ -65,7 +82,7 @@ describe('WebdavClient', () => {
   })
 
   it('rejects malformed multistatus XML', () => {
-    expect(() => parseMultistatus('<not-xml', '/Overleaf/demo')).to.throw(
+    expect(() => parseMultistatus('<not-xml', '/Overleaf/demo')).toThrow(
       'invalid WebDAV multistatus response'
     )
   })
@@ -77,14 +94,14 @@ describe('WebdavClient', () => {
       password: 'secret',
       rootPath: '/Overleaf',
     })
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+
+    fakeWebdavClient.getFileContents
+      .mockRejectedValueOnce(Object.assign(new Error('unavailable'), { status: 503 }))
+      .mockResolvedValueOnce('ok')
 
     const body = await client.get('/Overleaf/demo/main.tex')
-    expect(body.byteLength).to.equal(2)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(body.byteLength).toBe(2)
+    expect(fakeWebdavClient.getFileContents).toHaveBeenCalledTimes(2)
   })
 
   it('uses If-Match when replacing a known remote file', async () => {
@@ -94,12 +111,28 @@ describe('WebdavClient', () => {
       password: 'secret',
       rootPath: '/Overleaf',
     })
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 204 }))
 
     await client.put('/Overleaf/demo/main.tex', 'updated', { etag: '"v1"' })
 
-    expect(fetchMock.mock.calls[0][1].headers['if-match']).to.equal('"v1"')
+    expect(fakeWebdavClient.putFileContents).toHaveBeenCalledTimes(1)
+    const [, , options] = fakeWebdavClient.putFileContents.mock.calls[0]
+    expect(options.headers['If-Match']).toBe('"v1"')
+  })
+
+  it('surfaces 404 as a not-found status from remove()', async () => {
+    const client = new WebdavClient({
+      baseUrl: 'https://cloud.example/remote.php/dav/files/alice',
+      username: 'alice',
+      password: 'secret',
+      rootPath: '/Overleaf',
+    })
+
+    fakeWebdavClient.deleteFile.mockRejectedValueOnce(
+      Object.assign(new Error('not found'), { status: 404 })
+    )
+
+    await expect(
+      client.remove('/Overleaf/demo/gone.tex')
+    ).resolves.toBe(404)
   })
 })

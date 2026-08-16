@@ -1,15 +1,13 @@
-import { normalize } from 'path/posix'
+import { normalize } from 'node:path/posix'
 import pLimit from 'p-limit'
-import { createHash } from 'crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import logger from '@overleaf/logger'
 import SyncStateManager from './SyncStateManager.mjs'
 import api from './GitHubApiClient.mjs'
 import HistoryManager from './HistoryManager.mjs'
-import { GitConflictError } from './GitSyncErrors.mjs'
+import { GitConflictError, GitNotLinkedError } from './GitSyncErrors.mjs'
 import TokenManager from './TokenManager.mjs'
-import { ObjectId } from '../../../../app/src/infrastructure/mongodb.mjs'
 import LockManager from '../../../../app/src/infrastructure/LockManager.mjs'
-import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import UpdateMerger from '../../../../app/src/Features/ThirdPartyDataStore/UpdateMerger.mjs'
 import DocumentUpdaterHandler from '../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs'
 
@@ -30,7 +28,9 @@ async function doGitMergeWithoutLock(userId, projectId, message, claimConflictIs
     repoFullName,
     defaultBranchName,
     mergeStatus,
-    unmergedBranchName
+    unmergedBranchName,
+    syncProvider,
+    syncServerUrl
   } = projectSyncState
 
   // do nothing if conflict is not yet resolved and 'Sync' button is pushed
@@ -40,7 +40,33 @@ async function doGitMergeWithoutLock(userId, projectId, message, claimConflictIs
     claimConflictIsResolved && mergeStatus !== 'conflict'
   ) return { mergeStatus, repoFullName, unmergedBranchName }
 
-  const token = await TokenManager.getUserToken(userId)
+  // E2.1 / D3 (P2-1): the REST merge engine speaks the GitHub v3 tree/blob/ref
+  // API. Gitea and Forgejo implement that compatible subset (their /api/v3
+  // routes), and setApiBaseForServer() already resolves `${origin}/api/v3` for
+  // them — so the engine is provider-agnostic once the base URL resolves.
+  // GitLab does NOT expose that API: keep it on the 501 path (its import/pull
+  // and export/push via the git-based githubinterface service still work).
+  const provider = syncProvider || 'github'
+  const mergeAllowedProviders = ['github', 'gitea', 'forgejo']
+  if (!mergeAllowedProviders.includes(provider)) {
+    throw Object.assign(
+      new Error(
+        provider === 'gitlab'
+          ? 'Automatic merge is not supported for GitLab yet — import (pull) and export (push) work normally with GitLab.'
+          : `Git merge is not supported for provider '${provider}'; import and export work with all providers`
+      ),
+      { status: 501 }
+    )
+  }
+
+  const serverUrl = syncServerUrl || 'https://github.com'
+  // E2 (critical): look the PAT up under the ACTUAL provider key — Gitea
+  // tokens are stored at tokens.gitea[serverUrl], not tokens.github[...].
+  const creds = await TokenManager.getUserPATCredentials(userId, provider, serverUrl)
+  const token = creds.token
+
+  // point the REST client at the linked instance (github.com → api.github.com)
+  api.setApiBaseForServer(serverUrl)
 
   await DocumentUpdaterHandler.promises.flushProjectToMongo(projectId)
 
@@ -504,9 +530,17 @@ async function applyGitSnapshotToProject({ token, userId, projectId, repoFullNam
 
     blobPaths.add(path)
 
-    const hstSha = historySnapshot[path]?.data?.hash
+    const hstEntry = historySnapshot[path]
+    // GS-10: compare in git blob-sha form. History stores an Overleaf raw
+    // `data.hash` which never equals a git blob sha — derive the blob sha
+    // from `data.content` when available; otherwise the file cannot be
+    // proven unchanged, so it is (re)written.
+    const hstBlobSha =
+      hstEntry?.data?.content != null
+        ? gitBlobShaFromString(hstEntry.data.content)
+        : null
     // File at path is not changed, do not touch it
-    if (hstSha === sha) continue
+    if (hstBlobSha !== null && hstBlobSha === sha) continue
 
     updates.push(path)
   }
@@ -573,8 +607,8 @@ async function buildDetachedSyncPlan({
       } else {
         buffer = await HistoryManager.getProjectFileBuffer(projectId, currentVersion, path)
       }
-      const sha = await api.uploadBlob(token, repoFullName, buffer)
-      // assert sha !== localHash
+      await api.uploadBlob(token, repoFullName, buffer)
+      // (blob sha intentionally not used here)
     }
 
     // OL == GH, do nothing
@@ -737,7 +771,9 @@ async function exportChangesToGit({
 function generateBranchName() {
   const d = new Date()
   const pad = n => `${n}`.padStart(2, '0')
-  return `overleaf-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
+  // GS-18: suffix so concurrent/same-minute merges on the same repo can't collide
+  const suffix = randomBytes(3).toString('hex')
+  return `overleaf-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${suffix}`
 }
 
 async function getGitBlobMap(token, repoFullName, commit) {
@@ -749,10 +785,12 @@ async function getGitBlobMap(token, repoFullName, commit) {
 
 function getEntryHash(entry) {
   if (!entry?.data) return null
-  return (
-    entry.data.hash ||
-    gitBlobShaFromString(entry.data.content)
-  )
+  // GS-10: prefer git blob-sha of the snapshot content — that is the only
+  // format that is comparable to git-side blob shas. Entries without
+  // content (binary) fall back to the raw Overleaf hash, which is only
+  // comparable to other OL entries (three-way consistency stays safe).
+  if (entry.data.content != null) return gitBlobShaFromString(entry.data.content)
+  return entry.data.hash || null
 }
 
 function gitBlobShaFromString(str) {

@@ -1,17 +1,33 @@
 #!/usr/bin/env node
 
 import express from 'express'
+import Path from 'node:path'
 import * as fileOperations from './fileOperations.mjs'
 import * as syncService from './sync.mjs'
+import { isSyncExcluded } from './fileUtils.mjs'
 import { FileNotFoundError, DirectoryNotFoundError } from './errors.mjs'
 
 const app = express()
 app.use(express.json({ limit: '10mb' }))
 
+// P0-1 / C6: Overleaf project ids are 12-char hex (mongo ObjectId)
+function isValidProjectId(id) {
+  return typeof id === 'string' && /^[0-9a-f]{12}$/i.test(id)
+}
+
 // Helper to get project directory
 function getProjectDir(projectId) {
   const projectsRoot = process.env.DATAMANIPULATOR_PROJECTS_ROOT || '/projects'
-  return `${projectsRoot}/${projectId}`
+  // Belt-and-braces (C6): even with a valid-format id, refuse any path that
+  // resolves outside the projects root.
+  const root = Path.resolve(projectsRoot)
+  const resolved = Path.resolve(root, projectId)
+  if (resolved !== root && !resolved.startsWith(root + Path.sep)) {
+    const error = new Error('Invalid project_id')
+    error.status = 400
+    throw error
+  }
+  return resolved
 }
 
 /**
@@ -21,16 +37,49 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'datamanipulator' })
 })
 
+// --- Service authentication (ARC-02) -------------------------------------------------------
+// Enforced when SHARED_SERVICE_TOKEN is configured; when unset (legacy
+// deployments) the service keeps accepting unauthenticated calls and warns,
+// so existing in-container deployments keep working.
+import crypto from 'node:crypto'
+const SERVICE_TOKEN = process.env.SHARED_SERVICE_TOKEN || ''
+let serviceAuthWarned = false
+function requireServiceToken(req, res, next) {
+  if (!SERVICE_TOKEN) {
+    if (!serviceAuthWarned) {
+      serviceAuthWarned = true
+      console.warn(
+        'SHARED_SERVICE_TOKEN is unset; accepting unauthenticated requests (should be restricted to in-container callers)'
+      )
+    }
+    return next()
+  }
+  const authHeader = req.headers.authorization || ''
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const candidate = String(req.headers['x-service-token'] || bearer || '')
+  const candidateBuffer = Buffer.from(candidate)
+  const expectedBuffer = Buffer.from(SERVICE_TOKEN)
+  const ok =
+    candidateBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(candidateBuffer, expectedBuffer)
+  if (!ok) {
+    return res.status(401).json({ error: 'Invalid or missing service token' })
+  }
+  return next()
+}
+app.use(requireServiceToken)
+
 /**
  * GET /tree?project_id={id} - Get full project tree
  */
 app.get('/tree', async (req, res) => {
   try {
-    if (!req.query.project_id) {
-      return res.status(400).json({ error: 'Missing project_id parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
+    const projectDir = getProjectDir(projectId)
     const tree = await fileOperations.walkTree(projectDir)
     res.json(tree)
   } catch (err) {
@@ -47,11 +96,12 @@ app.get('/tree', async (req, res) => {
  */
 app.get('/files', async (req, res) => {
   try {
-    if (!req.query.project_id) {
-      return res.status(400).json({ error: 'Missing project_id parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
+    const projectDir = getProjectDir(projectId)
     const tree = await fileOperations.walkTree(projectDir, req.query.path || '')
     
     // Filter to only the requested path's contents
@@ -85,11 +135,15 @@ app.get('/files', async (req, res) => {
  */
 app.get('/file', async (req, res) => {
   try {
-    if (!req.query.project_id || !req.query.path) {
-      return res.status(400).json({ error: 'Missing project_id or path parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
+    }
+    if (!req.query.path) {
+      return res.status(400).json({ error: 'Missing path parameter' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
+    const projectDir = getProjectDir(projectId)
     const fileData = await fileOperations.readFile(projectDir, req.query.path)
     
     // Return content as base64
@@ -114,18 +168,20 @@ app.get('/file', async (req, res) => {
  */
 app.post('/file', async (req, res) => {
   try {
-    if (!req.query.project_id || !req.query.path) {
-      return res.status(400).json({ error: 'Missing project_id or path parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
+    }
+    if (!req.query.path) {
+      return res.status(400).json({ error: 'Missing path parameter' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
+    const projectDir = getProjectDir(projectId)
     
-    // Handle both raw content and base64
+    // DM-09: express.json() guarantees an object — the old string-body branch was unreachable
     let contentBuffer
     if (req.body.content_base64) {
       contentBuffer = Buffer.from(req.body.content_base64, 'base64')
-    } else if (typeof req.body === 'string') {
-      contentBuffer = Buffer.from(req.body, 'utf8')
     } else {
       return res.status(400).json({ error: 'Missing content in request body' })
     }
@@ -148,11 +204,15 @@ app.post('/file', async (req, res) => {
  */
 app.delete('/file', async (req, res) => {
   try {
-    if (!req.query.project_id || !req.query.path) {
-      return res.status(400).json({ error: 'Missing project_id or path parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
+    }
+    if (!req.query.path) {
+      return res.status(400).json({ error: 'Missing path parameter' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
+    const projectDir = getProjectDir(projectId)
     await fileOperations.deletePath(projectDir, req.query.path)
     
     res.json({ success: true })
@@ -170,13 +230,24 @@ app.delete('/file', async (req, res) => {
  */
 app.post('/pull', async (req, res) => {
   try {
-    if (!req.query.project_id) {
-      return res.status(400).json({ error: 'Missing project_id parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
-    const result = await syncService.pullFiles(projectDir, req.body.remote_files || [])
-    
+    const projectDir = getProjectDir(projectId)
+    // D2: never apply sync-excluded entries (LaTeX transients, hidden) from
+    // a remote listing to the local project.
+    const remoteFiles = (req.body.remote_files || []).filter(f => !isSyncExcluded(f.relative_path))
+    const result = await syncService.pullFiles(projectDir, remoteFiles, {
+      confirm_remote_deletions: req.body.confirm_remote_deletions === true,
+      deleted_paths: Array.isArray(req.body.deleted_paths) ? req.body.deleted_paths.filter(p => !isSyncExcluded(p)) : undefined,
+      // RF.7: /pull pulls ONE known project folder — an empty folder is
+      // legitimate here, so the ARC-06 empty-listing throw is opted out.
+      // (The strict guard is kept for every other caller; default false.)
+      allowEmptyRemote: true
+    })
+
     res.json(result)
   } catch (err) {
     console.error(err)
@@ -186,22 +257,30 @@ app.post('/pull', async (req, res) => {
 
 /**
  * POST /push?project_id={id} - Push files from local to remote
+ *
+ * HONEST LIMITATION (DM-01): this is a local-file-system service and has no
+ * remote transport, so it cannot actually upload files. Instead of reporting
+ * a fake success (counting files it merely read), it returns 501 with a
+ * manifest of the local files that SHOULD be uploaded, for the caller to
+ * transfer.
  */
 app.post('/push', async (req, res) => {
   try {
-    if (!req.query.project_id) {
-      return res.status(400).json({ error: 'Missing project_id parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
-    const result = await syncService.pushFiles(projectDir, req.body.remote_files || [])
-    
-    // Return updated tree after push
-    const tree = await fileOperations.walkTree(projectDir)
-    
-    res.json({
-      ...result,
-      tree
+    const projectDir = getProjectDir(projectId)
+    const localTree = await fileOperations.walkTree(projectDir)
+    const remoteFiles = req.body.remote_files || []
+    const remotePaths = new Set(remoteFiles.map(f => f.relative_path))
+    const toUpload = localTree.entries.filter(e => !remotePaths.has(e.relative_path))
+
+    return res.status(501).json({
+      error: 'datamanipulator is a local-filesystem service and has no remote transport; push (upload) is not implemented',
+      to_upload_count: toUpload.length,
+      to_upload_paths: toUpload.map(e => e.relative_path)
     })
   } catch (err) {
     console.error(err)
@@ -232,13 +311,16 @@ app.post('/compare', async (req, res) => {
  */
 app.post('/sync/full', async (req, res) => {
   try {
-    if (!req.query.project_id) {
-      return res.status(400).json({ error: 'Missing project_id parameter' })
+    const projectId = req.query.project_id
+    if (!isValidProjectId(projectId)) {
+      return res.status(400).json({ error: 'Invalid project_id format' })
     }
 
-    const projectDir = getProjectDir(req.query.project_id)
-    const result = await syncService.fullSync(projectDir, req.body.remote_files || [])
-    
+    const projectDir = getProjectDir(projectId)
+    // D2: exclude sync-excluded entries from the remote side of the sync.
+    const remoteFiles = (req.body.remote_files || []).filter(f => !isSyncExcluded(f.relative_path))
+    const result = await syncService.fullSync(projectDir, remoteFiles)
+
     res.json(result)
   } catch (err) {
     console.error(err)

@@ -27,7 +27,20 @@ function getEncryptor() {
   let data
 
   if (password) {
-    data = { cipherLabel: label, cipherPasswords: { [label]: password } }
+    const cipherPasswords = { [label]: password }
+    // Key-rotation support (P0-3): an optional LEGACY label + password is added
+    // to the cipher map so documents encrypted under the old key keep decrypting
+    // (the library selects the scheme by the stored string's label prefix),
+    // while NEW documents are always encrypted with the default (new) label.
+    const prevLabel = process.env.WEBDAV_TOKEN_CIPHER_PREVIOUS_LABEL
+    const prevPassword = process.env.WEBDAV_TOKEN_CIPHER_PREVIOUS_PASSWORD
+    if (prevLabel && prevPassword) {
+      if (prevLabel === label) {
+        throw new Error('WEBDAV_TOKEN_CIPHER_PREVIOUS_LABEL must differ from the active label')
+      }
+      cipherPasswords[prevLabel] = prevPassword
+    }
+    data = { cipherLabel: label, cipherPasswords }
   } else {
     try {
       data = JSON.parse(fs.readFileSync(file, 'utf8'))

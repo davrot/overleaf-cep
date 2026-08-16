@@ -8,6 +8,7 @@ import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
 import WebdavPaths from './WebdavPaths.mjs'
 import ConflictResolver from './ConflictResolver.mjs'
 import WebdavCredentials from './WebdavCredentials.mjs'
+import Settings from '@overleaf/settings'
 
 const SyncStateManager = WebdavHandler.SyncStateManager || (await import('./SyncStateManager.mjs')).default
 
@@ -28,7 +29,7 @@ async function getConnectionStatus(req, res) {
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, userId }, 'failed to get connection status')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
@@ -45,12 +46,19 @@ async function getProjectState(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    const state = await WebdavHandler.getProjectState(projectId, { userId })
+    // B1.5 (H13): don't perform a live remote PROPFIND on every state read.
+    // The handler supports `verifyConnection: false` and then reports the
+    // stored state (set at link time) — live verification stays on the
+    // link/sync flows (in WebdavHandler, out of this slice's file list).
+    const state = await WebdavHandler.getProjectState(projectId, {
+      userId,
+      verifyConnection: false,
+    })
     return res.json(state)
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to get project state')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
@@ -74,7 +82,7 @@ async function pullRemoteChanges(req, res) {
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to poll remote WebDAV')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
@@ -97,7 +105,7 @@ async function pushLocalChanges(req, res) {
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to push local changes')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
@@ -121,7 +129,9 @@ async function listFiles(req, res) {
     }
 
     // Build remote path and list files using WebDAVServiceClient
-    const projectName = await getProjectName(projectId)
+    // B1.2 (H2): use the real by-id helper; `getProjectName` is the Express
+    // route handler and always threw when called with a bare projectId.
+    const projectName = await getProjectNameFromId(projectId)
     const remoteRoot = WebdavPaths.remotePath(state.rootPath, projectName)
 
     const credentials = await WebdavCredentials.get(userId)
@@ -138,11 +148,24 @@ async function listFiles(req, res) {
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to list remote files')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
 import ProjectGetter from '../../../../app/src/Features/Project/ProjectGetter.mjs'
+
+/**
+ * B1.2 (H2): Fetch the project name by id (non-Express helper).
+ * The `getProjectName` handler below stays exactly as-is because the router
+ * imports it as a route handler.
+ *
+ * @param {string} projectId - Overleaf project id
+ * @returns {Promise<string>} Project name (falls back to `project_<id>`)
+ */
+async function getProjectNameFromId(projectId) {
+  const projectDoc = await ProjectGetter.promises.getProject(projectId, { name: 1 })
+  return projectDoc?.name || `project_${projectId}`
+}
 
 /**
  * Get project name helper (Express-wrapped)
@@ -176,9 +199,14 @@ async function linkProject(req, res) {
 
   try {
     const credentials = await WebdavCredentials.get(userId)
-    const { baseUrl, rootPath, username, password } = credentials || {}
+    const { baseUrl, username, password } = credentials || {}
 
-    if (!baseUrl || !rootPath) {
+    // B1.4 (H12): fall back to the server-wide default root path (Settings)
+    // instead of 400ing, so users who connected without an explicit rootPath
+    // can still link.
+    const rootPath = credentials?.rootPath || Settings.webdav?.rootPath || '/Overleaf'
+
+    if (!baseUrl) {
       return res.status(400).json({
         message: 'WebDAV credentials are not configured'
       })
@@ -193,17 +221,36 @@ async function linkProject(req, res) {
     const client = new WebDAVServiceClient(credentials)
     await client.check()
 
-    // Create project sync state with all credentials
+    // Create project sync state with all credentials (ownerId scopes unlink/
+    // user-expire cleanup to the linking user)
     await SyncStateManager.createProjectState(projectId, {
       connected: true,
       baseUrl,
       rootPath,
       username,
+      ownerId: userId,
       lastSyncAt: null,
       mergeStatus: 'clean'
     })
 
-    await WebdavHandler.pushLocalChanges(userId, projectId)
+    try {
+      await WebdavHandler.pushLocalChanges(userId, projectId)
+    } catch (pushErr) {
+      // B1.3 (H5): failed initial push — remove the orphan "linked" state so
+      // neither the UI nor the poller can see a project that is not really
+      // linked. Then rethrow so the caller still sees the original error.
+      try {
+        await SyncStateManager.removeProjectState(projectId)
+        const projectName = await getProjectNameFromId(projectId)
+        await WebdavCredentials.forgetProject(userId, projectName)
+      } catch (cleanupErr) {
+        logger.warn(
+          { message: cleanupErr?.message, projectId },
+          'failed to clean up orphan WebDAV state after failed push'
+        )
+      }
+      throw pushErr
+    }
 
     return res.json({
       success: true,
@@ -213,13 +260,14 @@ async function linkProject(req, res) {
   } catch (err) {
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to link project to WebDAV')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
 async function resolveProjectConflict(req, res) {
   const { project_id: projectId } = req.params
   const { path, choice } = req.body
+  const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
     if (!path || !choice) {
@@ -234,7 +282,10 @@ async function resolveProjectConflict(req, res) {
       })
     }
 
-    await ConflictResolver.resolve(projectId, path, choice)
+    // B1.6: pass the requesting userId into the resolver (the real sync work
+    // in a later slice needs it). ConflictResolver's signature must be
+    // updated to (userId, projectId, path, choice) in that slice.
+    await ConflictResolver.resolve(userId, projectId, path, choice)
 
     return res.json({
       success: true,
@@ -251,7 +302,7 @@ async function resolveProjectConflict(req, res) {
 
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to resolve conflict')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 
@@ -283,7 +334,7 @@ async function unlinkProject(req, res) {
 
     logger.error(OError.getFullStack(err))
     logger.error({ message: err.message, projectId }, 'failed to unlink project from WebDAV')
-    return res.status(err?.response?.status || 500).json({ message: err.message })
+    return res.status(err?.status || err?.response?.status || 500).json({ message: err.message })
   }
 }
 

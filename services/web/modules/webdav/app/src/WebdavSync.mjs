@@ -1,5 +1,6 @@
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
+import crypto from 'node:crypto'
 import { Readable } from 'node:stream'
 import DocumentUpdaterHandler from '../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
@@ -10,10 +11,70 @@ import NotificationsBuilder from '../../../../app/src/Features/Notifications/Not
 import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
 import WebdavCredentials from './WebdavCredentials.mjs'
 import { WebDAVServiceClient } from './WebDAVServiceClient.mjs'
+import SyncStateManager from './SyncStateManager.mjs'
 import { remotePath } from './WebdavPaths.mjs'
 
-const syncingProjects = new Set()
+const syncLocks = new Map()
 const recentlyInboundProjects = new Map()
+
+/**
+ * Serializes all remote-touching operations for one user (pull, push, link,
+ * conflict resolution, project move/delete sync). Prevents interleaved
+ * list/delete/upload sequences from tearing remote state (shared lock,
+ * ARC-03/WD-04).
+ */
+async function withUserSyncLock(userId, task) {
+  const key = `webdav-sync:${userId.toString()}`
+  const previous = syncLocks.get(key) || Promise.resolve()
+  let release
+  const current = new Promise(resolve => {
+    release = resolve
+  })
+  syncLocks.set(key, current)
+  try {
+    // Swallow previous rejections — this task must start even if the prior
+    // holder failed (a rejected mutex promise would otherwise poison all
+    // future syncs for the user).
+    await previous.catch(() => {})
+    return await task()
+  } finally {
+    release()
+    if (syncLocks.get(key) === current) syncLocks.delete(key)
+  }
+}
+
+function sha256(content) {
+  if (!content) return null
+  const buffer = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content)
+  return crypto.createHash('sha256').update(buffer).digest('hex')
+}
+
+// D2: keep in sync with DropboxClient.isSyncExcluded (dropbox module) and
+// datamanipulator's fileUtils.isSyncExcluded — same rules: hidden entry (ANY
+// path segment starting with a dot), transient LaTeX build outputs
+// (aux/log/out/toc/fls/idx/vrb), and .synctex.gz files.
+const SYNC_EXCLUDED_EXT = /\.(aux|log|out|toc|fls|idx|vrb)$/i
+function isSyncExcluded(nameOrPath) {
+  if (!nameOrPath || typeof nameOrPath !== 'string') return false
+  const parts = nameOrPath.split('/').filter(Boolean)
+  if (!parts.length) return false
+  for (const part of parts) {
+    if (part.startsWith('.')) return true
+  }
+  const base = parts[parts.length - 1]
+  if (base.endsWith('.synctex.gz')) return true
+  return SYNC_EXCLUDED_EXT.test(base)
+}
+
+/**
+ * Two remote file identities are "unchanged" when etag matches, or (when no
+ * etag is available) modifiedAt+size both match.
+ */
+function sameIdentity(prev, current) {
+  if (!prev || !current) return false
+  if (prev.etag) return current.etag === prev.etag
+  return prev.modifiedAt === current.modifiedAt && prev.size === current.size
+}
 
 async function notifyWebdav(userId, event, details) {
   try {
@@ -112,6 +173,7 @@ async function getFileBody(project, file) {
 }
 
 async function syncProject(userId, projectId, { force = false } = {}) {
+  return withUserSyncLock(userId, async () => {
   const startedAt = Date.now()
   const credentials = await WebdavCredentials.get(userId)
   if (!credentials) throw new Error('WebDAV is not connected')
@@ -148,50 +210,174 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     ...Object.keys(docs),
     ...Object.keys(files),
   ])
-  const existingRemote = await collectEntries(
-    client,
-    projectRoot
-  )
+  // State of the remote as recorded at the LAST successful sync (per file):
+  // { etag, modifiedAt, size, localHash?, entityId?, type? }
+  const previousState = (credentials.remoteState || {})[project.name] || {}
+  const existingRemote = await collectEntries(client, projectRoot)
   const existingRemoteByPath = new Map(
     existingRemote.files.map(entry => [entry.path, entry])
   )
+
+  // --- Guarded deletion (ARC-06: never delete on the basis of a listing
+  // that is not the previously-synced set, and never when the remote identity
+  // changed since the last sync) ---
+  let deletedRemote = 0
   for (const entry of existingRemote.files) {
     const relativePath = entry.path.slice(projectRoot.length) || '/'
-    if (!localPaths.has(relativePath)) {
+    // D2/RF.5: excluded remote entries are never deletable (not part of a
+    // real sync baseline; may be user data that must never be touched).
+    if (isSyncExcluded(relativePath)) continue
+    if (localPaths.has(relativePath)) continue
+    const prev = previousState[relativePath]
+    if (!prev) continue // not part of a previous sync — do not delete
+    if (!sameIdentity(prev, entry)) continue // remote changed — do not delete
+    try {
       await client.removeRetry(entry.path)
+      deletedRemote += 1
+    } catch (error) {
+      logger.warn({ err: error, path: entry.path }, 'WebDAV push: skip remote deletion')
     }
   }
   for (const directory of existingRemote.directories.sort(
     (left, right) => right.path.length - left.path.length
   )) {
     const relativePath = directory.path.slice(projectRoot.length) || '/'
+    // D2/RF.5: excluded remote directories are never deletable.
+    if (isSyncExcluded(relativePath)) continue
+    const prev = previousState[relativePath]
+    if (!prev) continue // never synced — do not delete
     const localDirectory = entities.folders.some(folder => folder.path === relativePath)
-    if (!localDirectory) await client.removeRetry(directory.path)
+    if (localDirectory) continue
+    if (prev.etag && directory.etag && directory.etag !== prev.etag) continue // remote changed
+    try {
+      await client.removeRetry(directory.path)
+    } catch (error) {
+      logger.warn({ err: error, path: directory.path }, 'WebDAV push: skip remote directory deletion')
+    }
   }
+
+  // --- Push local files with conflict gate (ARC-05 decision table) ---
+  // A local file must NOT overwrite a remote file that changed since the last
+  // sync unless the local side is the only side that changed (or force=true).
+  const conflicts = []
+  // H4/B2.4: remote etags at conflict-detection time, used later by
+  // resolveConflict keep-local as an If-Match precondition (clobber guard).
+  const conflictEtags = {}
+  const nextState = { ...previousState }
   for (const [filePath, doc] of Object.entries(docs)) {
+    // D2/RF.5: never push sync-excluded entries (hidden, LaTeX transients).
+    if (isSyncExcluded(filePath)) continue
     const resourcePath = remotePath(rootPath, project.name, filePath)
-    await putProjectFile(client, resourcePath, doc.lines.join('\n'), filePath, {
-      etag: force ? undefined : existingRemoteByPath.get(resourcePath)?.etag,
+    const localContent = doc.lines.join('\n')
+    const localHash = sha256(localContent)
+    const remoteEntry = existingRemoteByPath.get(resourcePath)
+    const prev = previousState[filePath]
+    if (remoteEntry && !force && prev) {
+      const localChanged = prev.localHash == null ? true : prev.localHash !== localHash
+      const remoteChanged = !sameIdentity(prev, remoteEntry)
+      if (localChanged && remoteChanged) {
+        conflicts.push(filePath)
+        conflictEtags[filePath] = remoteEntry?.etag ?? null
+        continue // both sides changed — block + notify, never auto-overwrite
+      }
+    }
+    // H3: the webdavinterface POST /file response carries only { status } — the
+    // server-side new etag is NOT available here, so we cannot store a fresh
+    // etag after put. The H3 no-phantom guard in pollUser (below) prevents
+    // the stale-etag re-download churn this used to cause.
+    await putProjectFile(client, resourcePath, localContent, filePath, {
+      etag: force ? undefined : remoteEntry?.etag || undefined,
     })
+    nextState[filePath] = {
+      ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
+      localHash,
+      ...(prev?.entityId ? { entityId: prev.entityId, type: prev.type || 'doc' } : {}),
+    }
   }
   for (const [filePath, file] of Object.entries(files)) {
+    // D2/RF.5: never push sync-excluded entries (hidden, LaTeX transients).
+    if (isSyncExcluded(filePath)) continue
     const resourcePath = remotePath(rootPath, project.name, filePath)
-    await putProjectFile(
-      client,
-      resourcePath,
-      await getFileBody(project, file),
-      filePath,
-      { etag: force ? undefined : existingRemoteByPath.get(resourcePath)?.etag }
-    )
+    const localContent = await getFileBody(project, file)
+    const localHash = sha256(localContent)
+    const remoteEntry = existingRemoteByPath.get(resourcePath)
+    const prev = previousState[filePath]
+    if (remoteEntry && !force && prev) {
+      const localChanged = prev.localHash == null ? true : prev.localHash !== localHash
+      const remoteChanged = !sameIdentity(prev, remoteEntry)
+      if (localChanged && remoteChanged) {
+        conflicts.push(filePath)
+        conflictEtags[filePath] = remoteEntry?.etag ?? null
+        continue
+      }
+    }
+    await putProjectFile(client, resourcePath, localContent, filePath, {
+      etag: force ? undefined : remoteEntry?.etag || undefined,
+    })
+    nextState[filePath] = {
+      ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
+      localHash,
+      ...(prev?.entityId ? { entityId: prev.entityId, type: prev.type || 'file' } : {}),
+    }
   }
-  await WebdavCredentials.updateSyncStatus(userId, {
-    lastSyncAt: new Date().toISOString(),
-    lastSyncError: null,
-    lastConflict: null,
-  })
-  if (hadSyncIssue) {
-    await notifyWebdav(userId, 'recovered', { projectName: project.name, projectId })
+
+  // Drop state entries for local files we no longer pushed (they were deleted locally)
+  for (const key of Object.keys(nextState)) {
+    if (!localPaths.has(key)) delete nextState[key]
   }
+
+  if (conflicts.length) {
+    const [firstConflict] = conflicts
+    await WebdavCredentials.updateSyncStatus(userId, {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncError: `${conflicts.length} file(s) changed on both sides (first: ${firstConflict})`,
+      lastConflict: {
+        path: firstConflict,
+        allPaths: conflicts,
+        projectId: projectId.toString(),
+        detectedAt: new Date().toISOString(),
+        // H4/B2.4: remote etag at detection — resolveConflict keep-local uses
+        // it as If-Match so a third edit cannot be silently clobbered.
+        remoteEtag: conflictEtags[firstConflict] ?? null,
+      },
+    })
+    // RF.2: mirror the conflict onto the project STATE doc so the sync modal
+    // (mergeStatus === 'conflict' + lastConflict.path) can offer resolution.
+    await SyncStateManager.updateProjectState(projectId, {
+      $set: {
+        mergeStatus: 'conflict',
+        lastSyncAt: new Date(),
+        lastConflict: {
+          path: firstConflict,
+          allPaths: conflicts,
+          projectId: projectId.toString(),
+          detectedAt: new Date().toISOString(),
+          remoteEtag: conflictEtags[firstConflict] ?? null,
+        },
+      },
+    })
+    await notifyWebdav(userId, 'conflict', {
+      projectName: project.name,
+      projectId: projectId.toString(),
+      path: firstConflict,
+    })
+  } else {
+    await WebdavCredentials.updateSyncStatus(userId, {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncError: null,
+      lastConflict: null,
+    })
+    // RF.2: clean sync clears any previously recorded conflict on the state
+    // doc ($set/$unset as separate operators; no-op if the doc has none).
+    await SyncStateManager.updateProjectState(projectId, {
+      $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
+      $unset: { lastConflict: 1 },
+    })
+    if (hadSyncIssue) {
+      await notifyWebdav(userId, 'recovered', { projectName: project.name, projectId })
+    }
+  }
+  await WebdavCredentials.updateRemoteState(userId, project.name, nextState)
   await WebdavCredentials.markProjectSynced(userId, project.name)
   logger.info(
     {
@@ -203,13 +389,17 @@ async function syncProject(userId, projectId, { force = false } = {}) {
       localFolderCount: entities.folders.length,
       remoteFileCount: existingRemote.files.length,
       remoteDirectoryCount: existingRemote.directories.length,
+      deletedRemote,
+      conflictCount: conflicts.length,
       durationMs: Date.now() - startedAt,
     },
     'WebDAV project sync completed'
   )
+  })
 }
 
 async function resolveConflict(userId, projectId, filePath, resolution) {
+  return withUserSyncLock(userId, async () => {
   if (!['keep-local', 'keep-remote'].includes(resolution)) {
     throw new Error('invalid WebDAV conflict resolution')
   }
@@ -240,15 +430,31 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
       'webdav'
     )
   } else {
+    // H4: conditional keep-local — pass the remote etag captured at conflict
+    // detection (if any) as an If-Match precondition. If the remote file
+    // rotated between detection and resolution the server rejects with 412
+    // instead of the local write silently clobbering a third edit.
+    const conflictEtag =
+      credentials.lastConflict && credentials.lastConflict.path === localFilePath
+        ? credentials.lastConflict.remoteEtag
+        : null
     await DocumentUpdaterHandler.promises.flushProjectToMongo(projectId)
     const [docs, files] = await Promise.all([
       ProjectEntityHandler.promises.getAllDocs(projectId),
       ProjectEntityHandler.promises.getAllFiles(projectId),
     ])
     if (docs[localFilePath]) {
-      await client.put(resourcePath, docs[localFilePath].lines.join('\n'))
+      await client.put(
+        resourcePath,
+        docs[localFilePath].lines.join('\n'),
+        { etag: conflictEtag || undefined }
+      )
     } else if (files[localFilePath]) {
-      await client.put(resourcePath, await getFileBody(project, files[localFilePath]))
+      await client.put(
+        resourcePath,
+        await getFileBody(project, files[localFilePath]),
+        { etag: conflictEtag || undefined }
+      )
     } else {
       throw new Error(`local WebDAV conflict path not found: ${localFilePath}`)
     }
@@ -258,58 +464,55 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
     lastSyncError: null,
     lastConflict: null,
   })
+  })
 }
 
 async function syncProjectForLinkedUsers(projectId) {
+  // Per-user locks are acquired inside syncProject; iterate users without
+  // a shared project Set (removes the previous global guard).
   const projectKey = projectId.toString()
-  if (syncingProjects.has(projectKey)) return
-  syncingProjects.add(projectKey)
 
-  try {
-    const users = await WebdavCredentials.getLinkedUserIds()
-    const results = await Promise.allSettled(
-      users.map(async userId => {
-        if (isRecentlyInbound(userId, projectId)) return
-        const projects = await ProjectGetter.promises.findAllUsersProjects(
-          userId,
-          '_id archived trashed'
-        )
-        const writableProjects = [
-          ...projects.owned,
-          ...projects.readAndWrite,
-        ].filter(project => !ProjectHelper.isArchivedOrTrashed(project, userId))
-        if (
-          writableProjects.some(project => project._id.toString() === projectKey)
-        ) {
-          await syncProject(userId, projectId)
-        }
-      })
-    )
-    for (const [index, result] of results.entries()) {
-      if (result.status === 'rejected') {
-        logger.error({ err: result.reason, projectId }, 'WebDAV sync failed')
-        const conflict = result.reason?.status === 412
-          ? {
-            projectId: projectId.toString(),
-            path: result.reason.projectPath || null,
-            detectedAt: new Date().toISOString(),
-          }
-          : null
-        await WebdavCredentials.updateSyncStatus(users[index], {
-          lastSyncError: conflict
-            ? 'A remote file changed before it could be synchronized.'
-            : result.reason?.message || 'sync failed',
-          lastConflict: conflict,
-        })
-        await notifyWebdav(
-          users[index],
-          conflict ? 'conflict' : 'failure',
-          { projectId, path: conflict?.path }
-        )
+  const users = await WebdavCredentials.getLinkedUserIds()
+  const results = await Promise.allSettled(
+    users.map(async userId => {
+      if (isRecentlyInbound(userId, projectId)) return
+      const projects = await ProjectGetter.promises.findAllUsersProjects(
+        userId,
+        '_id archived trashed'
+      )
+      const writableProjects = [
+        ...projects.owned,
+        ...projects.readAndWrite,
+      ].filter(project => !ProjectHelper.isArchivedOrTrashed(project, userId))
+      if (
+        writableProjects.some(project => project._id.toString() === projectKey)
+      ) {
+        await syncProject(userId, projectId)
       }
+    })
+  )
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'rejected') {
+      logger.error({ err: result.reason, projectId }, 'WebDAV sync failed')
+      const conflict = result.reason?.status === 412
+        ? {
+          projectId: projectId.toString(),
+          path: result.reason.projectPath || null,
+          detectedAt: new Date().toISOString(),
+        }
+        : null
+      await WebdavCredentials.updateSyncStatus(users[index], {
+        lastSyncError: conflict
+          ? 'A remote file changed before it could be synchronized.'
+          : result.reason?.message || 'sync failed',
+        lastConflict: conflict,
+      })
+      await notifyWebdav(
+        users[index],
+        conflict ? 'conflict' : 'failure',
+        { projectId, path: conflict?.path }
+      )
     }
-  } finally {
-    syncingProjects.delete(projectKey)
   }
 }
 
@@ -470,71 +673,191 @@ async function walk(client, resourcePath, callback) {
   }
 }
 
-async function pollUser(userId) {
+async function pollUser(userId, { onlyProjectName = null } = {}) {
+  return withUserSyncLock(userId, async () => {
   const startedAt = Date.now()
   const credentials = await WebdavCredentials.get(userId)
   if (!credentials) return
   const client = new WebDAVServiceClient(credentials)
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   let changedFileCount = 0
-  logger.info({ userId, rootPath }, 'WebDAV poll started')
+  let conflictCount = 0
+  logger.info({ userId, rootPath, onlyProjectName }, 'WebDAV poll started')
   const rootEntries = await client.list(rootPath)
-  const remoteProjectNames = new Set()
-  for (const project of rootEntries.filter(entry => entry.isDirectory)) {
-    const projectName = project.path.split('/').filter(Boolean).pop()
-    remoteProjectNames.add(projectName)
-    const projectRoot = project.path.replace(/\/$/, '')
+  const remoteProjects = rootEntries
+    .filter(entry => entry.isDirectory && entry.path !== rootPath)
+    .map(entry => ({
+      projectName: entry.path.split('/').filter(Boolean).pop(),
+      projectRoot: entry.path.replace(/\/$/, ''),
+    }))
+    .filter(({ projectName }) => (onlyProjectName ? projectName === onlyProjectName : true))
+
+  if (onlyProjectName && remoteProjects.length === 0) {
+    // Remote project folder is missing. Do NOT treat a missing folder as
+    // confirmation that the project should be deleted (ARC-06): record the
+    // suspicion, notify, and let the user decide.
+    await WebdavCredentials.updateSyncStatus(userId, {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncError: `Remote project folder "${onlyProjectName}" not found`,
+    })
+    await notifyWebdav(userId, 'remote-missing', { projectName: onlyProjectName })
+    return
+  }
+
+  for (const { projectName, projectRoot } of remoteProjects) {
     const projects = await ProjectGetter.promises.findUsersProjectsByName(
       userId,
       projectName
     )
-    if (projects.length === 1) markInboundProject(userId, projects[0]._id)
-    const remotePaths = new Set()
+    // WD-19: mark ALL same-name projects inbound so the auto-sync echo is
+    // suppressed even when multiple projects share the name
+    projects.forEach(project => markInboundProject(userId, project._id))
+
+    // C3: unlink must stop the poller — a project receives remote changes
+    // ONLY while it is still linked: a WebdavSyncProjectStates doc exists for
+    // it AND the user's credentials still list it in syncedProjects. (Before
+    // this gate, unlinking the project was cosmetic: the poll kept applying
+    // remote changes to "unlinked" projects.)
+    if (projects.length === 1) {
+      const stillLinked = Boolean(credentials.syncedProjects?.includes(projectName))
+      const stateDoc = stillLinked
+        ? await SyncStateManager.getProjectState(projects[0]._id, { _id: 1 })
+        : null
+      if (!stillLinked || !stateDoc) {
+        logger.info(
+          { userId, projectName, stillLinked, hasStateDoc: Boolean(stateDoc) },
+          'C3: poller skipping unlinked project'
+        )
+        if (stillLinked) {
+          // State doc is gone (e.g. unlink removed it) but the credentials
+          // still list the project — drop the orphan entry so it cannot
+          // resurface on a later poll. Best-effort: never fail the poll for it.
+          try {
+            await WebdavCredentials.forgetProject(userId, projectName)
+          } catch (cleanupErr) {
+            logger.warn(
+              { err: cleanupErr, userId, projectName },
+              'C3: orphan syncedProjects cleanup failed'
+            )
+          }
+        }
+        continue
+      }
+    }
+
     const previousState = credentials.remoteState?.[projectName] || {}
-    const nextState = {}
+    const nextState = { ...previousState }
+    const conflicts = []
+    // RF.2: etags captured at conflict-detection time (mirror of the push lane
+    // so the state-doc lastConflict carries the same shape).
+    const conflictEtags = {}
+
+    // Local content is needed to detect "local also changed" conflicts (ARC-05).
+    let localDocs = {}
+    let localFiles = {}
+    let projectDoc = null
+    if (projects.length === 1) {
+      const [d, f] = await Promise.all([
+        ProjectEntityHandler.promises.getAllDocs(projects[0]._id),
+        ProjectEntityHandler.promises.getAllFiles(projects[0]._id),
+      ])
+      localDocs = d
+      localFiles = f
+      projectDoc = await ProjectGetter.promises.getProject(projects[0]._id, {
+        name: 1,
+        overleaf: 1,
+      })
+    }
+
     await walk(client, projectRoot, async entry => {
       const relativePath = entry.path.slice(projectRoot.length) || '/'
-      remotePaths.add(relativePath)
-      const state = {
+      // D2/RF.5: never process sync-excluded remote entries (hidden, LaTeX
+      // transients) — they are neither applied, baselined, nor reported.
+      if (isSyncExcluded(relativePath)) return
+      const remoteState = {
         etag: entry.etag,
         modifiedAt: entry.modifiedAt,
         size: entry.size,
       }
-      nextState[relativePath] = state
-      if (
-        previousState[relativePath]?.etag &&
-        previousState[relativePath].etag === state.etag
-      ) {
+      const prev = previousState[relativePath]
+
+      if (prev && sameIdentity(prev, remoteState)) {
+        // Remote unchanged since last sync — keep what we had.
+        nextState[relativePath] = prev
         return
       }
-      if (
-        !state.etag &&
-        previousState[relativePath]?.modifiedAt === state.modifiedAt &&
-        previousState[relativePath]?.size === state.size
-      ) {
+
+      const localDoc = localDocs[relativePath]
+      const localFile = localFiles[relativePath]
+      const localExists = Boolean(localDoc || localFile)
+
+      if (localExists) {
+        const localContent = localDoc
+          ? localDoc.lines.join('\n')
+          : await getFileBody(projectDoc, localFile)
+        const localHashNow = sha256(localContent)
+        const localHashAtLastSync = prev?.localHash
+        // Both sides changed (or legacy state with unknown local hash) → CONFLICT:
+        // block, notify, never auto-overwrite local edits.
+        if (localHashAtLastSync == null || localHashNow !== localHashAtLastSync) {
+          if (localHashAtLastSync != null && localHashNow !== localHashAtLastSync) {
+            conflicts.push(relativePath)
+            conflictEtags[relativePath] = entry.etag ?? null
+            logger.warn(
+              { userId, projectName, relativePath },
+              'WebDAV pull: both sides changed — conflict, remote NOT applied'
+            )
+          } else {
+            // Legacy state (no stored local hash) — cannot prove local
+            // unmodified. Conservative: treat as conflict, do not auto-overwrite.
+            conflicts.push(relativePath)
+            conflictEtags[relativePath] = entry.etag ?? null
+            logger.warn(
+              { userId, projectName, relativePath },
+              'WebDAV pull: unknown local state (no previous localHash) — treated as conflict'
+            )
+          }
+          return
+        }
+        // Remote-only change → apply safely.
+      }
+
+      const body = await client.get(entry.path)
+      // H3: no-phantom-update guard — if the remote body is byte-identical to
+      // what we last synced locally, the "remote changed" flag is a stale-etag
+      // artifact (the post-put etag was never recorded). Refresh the identity
+      // record and SKIP the apply: no project update, no history churn.
+      if (prev?.localHash && prev.localHash === sha256(body)) {
+        nextState[relativePath] = {
+          ...remoteState,
+          localHash: prev.localHash,
+          ...(prev?.entityId ? { entityId: prev.entityId, type: prev.type } : {}),
+        }
         return
       }
       changedFileCount++
-      const body = await client.get(entry.path)
-      await TpdsUpdateHandler.promises.newUpdate(
-        userId,
-        null,
-        projectName,
-        relativePath,
-        Readable.from([Buffer.from(body)]),
-        'webdav'
-      )
+      if (projects.length === 1) {
+        await TpdsUpdateHandler.promises.newUpdate(
+          userId,
+          projects[0]._id,
+          projectName,
+          relativePath,
+          Readable.from([Buffer.from(body)]),
+          'webdav'
+        )
+      }
+      nextState[relativePath] = {
+        ...remoteState,
+        localHash: sha256(body),
+        ...(prev?.entityId ? { entityId: prev.entityId, type: prev.type } : {}),
+      }
     })
 
     if (projects.length === 1) {
-      await ProjectDeleter.promises.unmarkAsDeletedByExternalSource(
-        projects[0]._id
-      )
-      const entities = await ProjectEntityHandler.promises.getAllEntities(
-        projects[0]._id
-      )
+      const project = projects[0]
+      await ProjectDeleter.promises.unmarkAsDeletedByExternalSource(project._id)
+      const entities = await ProjectEntityHandler.promises.getAllEntities(project._id)
       for (const entity of entities.docs) {
-        // Normalize path: nextState keys have leading slash, local paths don't
         const normalizedEntityPath = entity.path.startsWith('/') ? entity.path : '/' + entity.path
         if (nextState[normalizedEntityPath]) {
           nextState[normalizedEntityPath].entityId = entity.doc._id.toString()
@@ -542,54 +865,109 @@ async function pollUser(userId) {
         }
       }
       for (const entity of entities.files) {
-        // Normalize path: nextState keys have leading slash, local paths don't
         const normalizedEntityPath = entity.path.startsWith('/') ? entity.path : '/' + entity.path
         if (nextState[normalizedEntityPath]) {
           nextState[normalizedEntityPath].entityId = entity.file._id.toString()
           nextState[normalizedEntityPath].type = 'file'
         }
       }
-      // Note: Deletion reconciliation is intentionally skipped during pull operations.
-      // Pull should only ADD/UPDATE files from remote, not delete local files.
+      // Deletion reconciliation is intentionally NOT part of pull: a missing
+      // remote file never auto-deletes the local Overleaf file (ARC-06).
     }
+
+    if (conflicts.length) {
+      conflictCount += conflicts.length
+      const firstConflict = conflicts[0]
+      await WebdavCredentials.updateSyncStatus(userId, {
+        lastSyncError: `${conflicts.length} file(s) changed on both sides (first: ${firstConflict})`,
+        lastConflict: {
+          path: firstConflict,
+          allPaths: conflicts,
+          projectId: projects[0]?._id.toString(),
+          detectedAt: new Date().toISOString(),
+        },
+      })
+      // RF.2: mirror the conflict onto the project STATE doc — the sync modal
+      // renders the conflict view (and the resolve buttons) from
+      // mergeStatus === 'conflict' + lastConflict on that doc. Credentials-side
+      // bookkeeping above is kept (resolve() consults both locations).
+      if (projects[0]?._id) {
+        await SyncStateManager.updateProjectState(projects[0]._id, {
+          $set: {
+            mergeStatus: 'conflict',
+            lastSyncAt: new Date(),
+            lastConflict: {
+              path: firstConflict,
+              allPaths: conflicts,
+              projectId: projects[0]._id.toString(),
+              detectedAt: new Date().toISOString(),
+              remoteEtag: conflictEtags[firstConflict] ?? null,
+            },
+          },
+        })
+      }
+      await notifyWebdav(userId, 'conflict', {
+        projectName,
+        projectId: projects[0]?._id.toString(),
+        path: firstConflict,
+      })
+    } else if (projects.length === 1) {
+      // RF.2: a conflict-free poll clears a previously recorded conflict on
+      // the state doc (separate operators; updateOne is a no-op if no doc).
+      await SyncStateManager.updateProjectState(projects[0]._id, {
+        $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
+        $unset: { lastConflict: 1 },
+      })
+    }
+
     await WebdavCredentials.updateRemoteState(userId, projectName, nextState)
     await WebdavCredentials.markProjectSynced(userId, projectName)
   }
 
+  // Projects that were synced but whose remote folder no longer exists:
+  // unlink the sync state + notify — never mark the Overleaf project as
+  // deleted by an external source (ARC-06).
   for (const projectName of credentials.syncedProjects || []) {
-    if (remoteProjectNames.has(projectName)) continue
-    const projects = await ProjectGetter.promises.findUsersProjectsByName(
-      userId,
-      projectName
-    )
-    const activeProjects = projects.filter(
-      project => !ProjectHelper.isArchivedOrTrashed(project, userId)
-    )
-    if (activeProjects.length === 1) {
-      await ProjectDeleter.promises.markAsDeletedByExternalSource(
-        activeProjects[0]._id
-      )
-      await notifyWebdav(userId, 'deleted', {
-        projectName,
-        projectId: activeProjects[0]._id.toString(),
-      })
-    }
+    if (remoteProjects.some(({ projectName: p }) => p === projectName)) continue
+    if (onlyProjectName && projectName !== onlyProjectName) continue
     await WebdavCredentials.forgetProject(userId, projectName)
+    await notifyWebdav(userId, 'remote-missing', { projectName })
   }
-  await WebdavCredentials.updateSyncStatus(userId, {
-    lastSyncAt: new Date().toISOString(),
-    lastSyncError: null,
-  })
+  if (conflictCount === 0) {
+    await WebdavCredentials.updateSyncStatus(userId, {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncError: null,
+      lastConflict: null,
+    })
+  }
   logger.info(
     {
       userId,
       rootPath,
-      remoteProjectCount: remoteProjectNames.size,
+      remoteProjectCount: remoteProjects.length,
       changedFileCount,
+      conflictCount,
       durationMs: Date.now() - startedAt,
     },
     'WebDAV poll completed'
   )
+  })
+}
+
+/**
+ * Pull remote changes for a SINGLE project (per-project scope, WD-05).
+ *
+ * @param {string} userId
+ * @param {string|ObjectId} projectId
+ */
+async function pollProject(userId, projectId) {
+  const credentials = await WebdavCredentials.get(userId)
+  if (!credentials) {
+    throw Object.assign(new Error('WebDAV is not connected'), { status: 409 })
+  }
+  const project = await ProjectGetter.promises.getProject(projectId, { name: 1 })
+  if (!project) throw new Error('project not found')
+  await pollUser(userId, { onlyProjectName: project.name })
 }
 
 export default {
@@ -600,4 +978,5 @@ export default {
   moveEntityForLinkedUsers,
   deleteProjectForUsers,
   pollUser,
+  pollProject,
 }

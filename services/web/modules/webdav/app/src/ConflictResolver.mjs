@@ -3,6 +3,8 @@ import logger from '@overleaf/logger'
 import crypto from 'node:crypto'
 
 import SyncStateManager from './SyncStateManager.mjs'
+import WebdavSync from './WebdavSync.mjs'
+import WebdavCredentials from './WebdavCredentials.mjs'
 import { ConflictError } from './ConflictErrors.mjs'
 
 /**
@@ -69,15 +71,15 @@ async function detectConflict({ projectId, path, localHash, remoteETag }) {
 
   // Check if this file is already in conflict state
   const existingConflict = projectState.lastConflict?.path === path
-  
+
   if (existingConflict) {
     return { exists: true, path, localHash, remoteETag }
   }
 
-  // Store for conflict check on next poll
-  await SyncStateManager.updateProjectState(projectId, {
-    $push: { conflictingPaths: path },
-  })
+  // Note (C2): the previous code tried to accumulate `conflictingPaths` via a
+  // `$push` passed INSIDE `$set` (stored as a literal field, never an array).
+  // Nothing reads that field (the frontend only reads `lastConflict`), so the
+  // accumulation is dropped entirely rather than half-fixed.
 
   return { exists: false, shouldCheckNextPoll: true }
 }
@@ -106,55 +108,77 @@ async function getConflictingVersions(projectId, path) {
 }
 
 /**
- * Resolve a conflict by keeping one version
- * Marks a conflict as resolved and updates the project's sync state.
- * 
- * @param {string} projectId - Project ID
- * @param {string} path - Path of conflicting file
+ * Resolve a conflict by keeping one version — REAL content work (C2).
+ *
+ * The previous implementation only touched state (and stored `$unset` inside
+ * `$set`, a no-op), so conflicts could never be resolved from the UI. Now:
+ *   - 'local'  → WebdavSync pushes the Overleaf content to the remote
+ *   - 'remote' → WebdavSync pulls the remote content into the Overleaf project
+ * and only AFTER the content work succeeds is the conflict state cleared with
+ * a proper Mongo update ($set and $unset as separate operators).
+ *
+ * Note: sync conflicts are recorded on the user's credentials document
+ * (lastConflict) by WebdavSync — the project state document is an additional
+ * (legacy) location, so both are consulted for the "conflict exists" check.
+ *
+ * @param {string|ObjectId} userId - Requesting user (performs the sync work)
+ * @param {string|ObjectId} projectId - Project ID
+ * @param {string} path - Path of the conflicted file
  * @param {'local'|'remote'} choice - Which version to keep
  * @returns {Promise<Object>} Resolution result with 'success: true', 'choice', and 'path'
  * @throws {ConflictNotFoundError} If no active conflict exists for the given path
- * @throws {Error} If invalid choice parameter is provided
+ * @throws {Error} If the sync work itself fails (state is then NOT cleared)
  */
-async function resolve(projectId, path, choice) {
+function conflictMatches(conflict, projectId, path) {
+  if (!conflict || conflict.path !== path) return false
+  if (conflict.projectId) {
+    return conflict.projectId.toString() === projectId.toString()
+  }
+  return true
+}
+
+async function resolve(userId, projectId, path, choice) {
   if (choice !== 'local' && choice !== 'remote') {
     throw new Error(`Invalid choice: ${choice}. Must be 'local' or 'remote'`)
   }
 
-  const conflictState = await SyncStateManager.getProjectState(projectId)
+  const [projectState, credentials] = await Promise.all([
+    SyncStateManager.getProjectState(projectId),
+    userId ? WebdavCredentials.get(userId) : Promise.resolve(null),
+  ])
 
-  // Check if conflict still exists
-  if (!conflictState || !conflictState.lastConflict || conflictState.lastConflict.path !== path) {
+  const conflictExists =
+    conflictMatches(projectState?.lastConflict, projectId, path) ||
+    conflictMatches(credentials?.lastConflict, projectId, path)
+  if (!conflictExists) {
     throw new ConflictNotFoundError(`Conflict not found for: ${path}`, { projectId, path })
   }
 
   try {
-    if (choice === 'local') {
-      // Keep Overleaf's version - no remote change needed
-      await SyncStateManager.updateProjectState(projectId, {
+    // Real content work (propagates on failure — state must NOT be cleared):
+    // 'local' → keep Overleaf's version (push local to remote)
+    // 'remote' → keep WebDAV's version (pull remote into the project)
+    await WebdavSync.resolveConflict(
+      userId,
+      projectId,
+      path,
+      choice === 'local' ? 'keep-local' : 'keep-remote'
+    )
+
+    // C2: clear the conflict state with CORRECT, separate Mongo operators.
+    await SyncStateManager.updateProjectState(projectId, {
+      $set: {
         mergeStatus: 'clean',
         lastSyncAt: new Date(),
-        $unset: { 
-          lastConflict: 1,
-          conflictingPaths: 1 
-        },
-      })
+        resolvedChoice: choice,
+      },
+      $unset: {
+        lastConflict: 1,
+        conflictingPaths: 1,
+      },
+    })
 
-      logger.info({ projectId, path, choice }, 'Conflict resolved: keeping local version')
-    } else {
-      // Keep WebDAV's version - the conflict state is cleared, next sync will pick up changes
-      await SyncStateManager.updateProjectState(projectId, {
-        mergeStatus: 'clean',
-        lastSyncAt: new Date(),
-        $unset: { 
-          lastConflict: 1,
-          conflictingPaths: 1 
-        },
-      })
-
-      logger.info({ projectId, path, choice }, 'Conflict resolved: remote version will be synced')
-    }
-
+    logger.info({ userId, projectId, path, choice }, 'Conflict resolved (content pushed/pulled + state cleared)')
     return { success: true, choice, path }
   } catch (err) {
     throw OError.tag(err, `Failed to resolve conflict for ${path}`, { projectId, choice })

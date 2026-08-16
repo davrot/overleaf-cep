@@ -57,7 +57,11 @@ async function createProjectState(projectId, data) {
  * Update a project's sync state document.
  *
  * @param {string|ObjectId} projectId - The Overleaf project ID
- * @param {Object} data - Data to merge into the document (uses $set in MongoDB)
+ * @param {Object} data - Either a plain field object (wrapped in $set, as
+ *   before), or a full MongoDB update object whose top level contains
+ *   $set / $unset / $push operators — passed through unchanged (C2: the old
+ *   code force-wrapped everything in $set, so an embedded "$unset" key was
+ *   stored as a literal field and conflicts could never be cleared).
  * @returns {Promise<Object>} MongoDB update result with matched/modified count
  * 
  * @example
@@ -66,11 +70,25 @@ async function createProjectState(projectId, data) {
  *   lastSyncAt: new Date(),
  *   lastSyncError: null
  * })
+ *
+ * @example
+ * // Full update with separate operators (C2 conflict clear)
+ * await SyncStateManager.updateProjectState(projectId, {
+ *   $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
+ *   $unset: { lastConflict: 1 }
+ * })
  */
 async function updateProjectState(projectId, data) {
+  const isRawUpdate =
+    data !== null &&
+    typeof data === 'object' &&
+    (Object.prototype.hasOwnProperty.call(data, '$set') ||
+     Object.prototype.hasOwnProperty.call(data, '$unset') ||
+     Object.prototype.hasOwnProperty.call(data, '$push'))
+  const update = isRawUpdate ? data : { $set: data }
   return await WebdavSyncProjectStates.updateOne(
     { projectId },
-    { $set: data }
+    update
   )
 }
 

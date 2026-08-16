@@ -203,7 +203,12 @@ module.exports = {
 
   // Services configuration (for microservices)
   // -----------------
-
+  // H.5 NOTE: these blocks are NOT merged with the duplicate `datamanipulator`/
+  // `webdavinterface` entries inside `apis` below (different namespaces).
+  // No code reads Settings.datamanipulator / Settings.apis.datamanipulator
+  // today — the web process reads process.env.DATAMANIPULATOR_API_URL /
+  // WEBDAVINTERFACE_API_URL directly (WebDAVServiceClient). Kept for future
+  // consumers; both resolve from the same env vars.
   datamanipulator: {
     api_url: process.env.DATAMANIPULATOR_API_URL || 'http://localhost:4001',
   },
