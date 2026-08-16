@@ -58,6 +58,11 @@ export function joinDisplayPath(rootPath, statePath) {
   return `${rootClean}/${stateClean}`
 }
 
+export function resolveDisplayRoot(activePath, legacyPath, fallback = 'Apps/Overleaf Dev') {
+  const configured = activePath || legacyPath
+  return configured && configured !== '/' ? configured : fallback
+}
+
 function normalizeDropboxPath(path) {
   if (path === '/Overleaf/Dropbox' || !path) return DEFAULT_DROPBOX_PATH
   try {
@@ -779,25 +784,45 @@ export default {
             state.path = normalizeDropboxPath(state.path)
             // Project files live under <state.path>/<project name> (same join
             // rule as push/pull/import) — expose that full path for display.
-            try {
-              const project = await ProjectGetter.promises.getProject(projectId, { name: true })
-              if (project?.name) state.projectPath = joinDropboxPath(state.path, project.name)
-            } catch {
-              // project name unavailable -> clients fall back to state.path
-            }
-            // BUG1: the display path the user needs is the FULL Dropbox path
-            // (<owner's configured root>/<project folder>, e.g.
-            // "Apps/Overleaf Dev/A5 test"), which needs the OWNER's
-            // credentials doc (the viewer may be a collaborator).
+            // BUG1 (round 2): the display path must be the FULL Dropbox path
+            // e.g. "Apps/Overleaf Dev/A5 test". The owner's active credentials
+            // doc often has no `path` (OAuth link didn't store one); the legacy
+            // collection may. The app sandbox folder ("Apps/<App name>") is not
+            // visible via the API, so fall back to the fork's app-folder name.
             try {
               const owner = state.ownerId || userId
-              const credentials = await DropboxUserCredentials.findOne(
+              let project = null
+              try {
+                project = await ProjectGetter.promises.getProject(projectId, { name: true })
+              } catch {
+                project = null // display-only — fall back to state.path
+              }
+              const projName = project?.name
+              const activeDoc = await DropboxUserCredentials.findOne(
                 { userId: owner },
                 { path: 1 }
-              ).lean()
-              state.fullPath = joinDisplayPath(credentials?.path, state.path)
+              ).lean().catch(() => null)
+              let legacyDoc = null
+              try {
+                legacyDoc = await DropboxUserCredentials.collection.db
+                  .collection('dropboxusercredentials')
+                  .findOne({ userId: owner }, { projection: { _id: 0, path: 1 } })
+              } catch {
+                legacyDoc = null
+              }
+              const rootPath = resolveDisplayRoot(activeDoc?.path, legacyDoc?.path)
+              const displayTarget =
+                state.path && state.path !== '/'
+                  ? state.path
+                  : projName
+                    ? joinDropboxPath(state.path, projName)
+                    : null
+              state.projectPath = projName
+                ? joinDropboxPath(state.path, projName)
+                : state.path
+              state.fullPath = joinDisplayPath(rootPath, displayTarget)
             } catch {
-              // display-only field — modal falls back to projectPath/path
+              // display-only fields — modal falls back to projectPath/path
             }
           }
           res.json(state || { connected: false })

@@ -285,9 +285,23 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     // server-side new etag is NOT available here, so we cannot store a fresh
     // etag after put. The H3 no-phantom guard in pollUser (below) prevents
     // the stale-etag re-download churn this used to cause.
-    await putProjectFile(client, resourcePath, localContent, filePath, {
-      etag: force ? undefined : remoteEntry?.etag || undefined,
-    })
+    try {
+      await putProjectFile(client, resourcePath, localContent, filePath, {
+        etag: force ? undefined : remoteEntry?.etag || undefined,
+      })
+    } catch (error) {
+      // 412 = Nextcloud rejected the If-Match (remote rotated between listing
+      // and write). Treat it like the gate conflict above (same response/state
+      // contract) and keep pushing the remaining files — an atomic push
+      // failure would strand every other file (live incident 2026-08-16).
+      if (error?.status === 412 || /precondition/i.test(error?.message || '')) {
+        if (!conflicts.includes(filePath)) conflicts.push(filePath)
+        conflictEtags[filePath] = remoteEntry?.etag ?? null
+        logger.warn({ err: error, path: resourcePath }, 'WebDAV push: 412 precondition — recorded as conflict, continuing')
+        continue
+      }
+      throw error
+    }
     nextState[filePath] = {
       ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
       localHash,
@@ -311,9 +325,20 @@ async function syncProject(userId, projectId, { force = false } = {}) {
         continue
       }
     }
-    await putProjectFile(client, resourcePath, localContent, filePath, {
-      etag: force ? undefined : remoteEntry?.etag || undefined,
-    })
+    try {
+      await putProjectFile(client, resourcePath, localContent, filePath, {
+        etag: force ? undefined : remoteEntry?.etag || undefined,
+      })
+    } catch (error) {
+      // 412 → conflict, continue (same rationale as the docs loop above).
+      if (error?.status === 412 || /precondition/i.test(error?.message || '')) {
+        if (!conflicts.includes(filePath)) conflicts.push(filePath)
+        conflictEtags[filePath] = remoteEntry?.etag ?? null
+        logger.warn({ err: error, path: resourcePath }, 'WebDAV push: 412 precondition — recorded as conflict, continuing')
+        continue
+      }
+      throw error
+    }
     nextState[filePath] = {
       ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
       localHash,
@@ -430,31 +455,19 @@ async function resolveConflict(userId, projectId, filePath, resolution) {
       'webdav'
     )
   } else {
-    // H4: conditional keep-local — pass the remote etag captured at conflict
-    // detection (if any) as an If-Match precondition. If the remote file
-    // rotated between detection and resolution the server rejects with 412
-    // instead of the local write silently clobbering a third edit.
-    const conflictEtag =
-      credentials.lastConflict && credentials.lastConflict.path === localFilePath
-        ? credentials.lastConflict.remoteEtag
-        : null
+    // Keep-local = the user explicitly chose the local version after seeing
+    // the conflict — forced overwrite (no If-Match). The detection-time etag
+    // is stale by definition here (that staleness IS the conflict); passing
+    // it would 412 forever and make the conflict unresolvable.
     await DocumentUpdaterHandler.promises.flushProjectToMongo(projectId)
     const [docs, files] = await Promise.all([
       ProjectEntityHandler.promises.getAllDocs(projectId),
       ProjectEntityHandler.promises.getAllFiles(projectId),
     ])
     if (docs[localFilePath]) {
-      await client.put(
-        resourcePath,
-        docs[localFilePath].lines.join('\n'),
-        { etag: conflictEtag || undefined }
-      )
+      await client.put(resourcePath, docs[localFilePath].lines.join('\n'), {})
     } else if (files[localFilePath]) {
-      await client.put(
-        resourcePath,
-        await getFileBody(project, files[localFilePath]),
-        { etag: conflictEtag || undefined }
-      )
+      await client.put(resourcePath, await getFileBody(project, files[localFilePath]), {})
     } else {
       throw new Error(`local WebDAV conflict path not found: ${localFilePath}`)
     }

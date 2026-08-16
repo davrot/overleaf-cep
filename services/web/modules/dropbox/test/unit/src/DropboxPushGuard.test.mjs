@@ -34,7 +34,7 @@ vi.mock('../../../app/models/dropboxSyncProjectStates.mjs', () => ({
 }))
 vi.mock('@overleaf/settings', () => ({ default: {} }))
 
-const { joinDisplayPath, planRemoteDeletions } = await import(
+const { joinDisplayPath, planRemoteDeletions, resolveDisplayRoot } = await import(
   '../../../app/src/DropboxRouter.mjs'
 )
 
@@ -148,5 +148,20 @@ describe('joinDisplayPath (BUG1: full Dropbox path for the modal)', () => {
   it('handles empty state paths without crashing', () => {
     expect(joinDisplayPath('Apps/Overleaf Dev', '')).toBe('')
     expect(joinDisplayPath('Apps/Overleaf Dev', '/')).toBe('')
+  })
+})
+
+describe('resolveDisplayRoot (app-folder fallback, BUG1 round 2)', () => {
+  it('prefers the active-doc path', () => {
+    expect(resolveDisplayRoot('My Root', 'Legacy', 'Apps/Overleaf Dev')).toBe('My Root')
+  })
+
+  it('falls back to the legacy-doc path when the active doc has none', () => {
+    expect(resolveDisplayRoot(undefined, 'Apps/Overleaf Dev', 'FB')).toBe('Apps/Overleaf Dev')
+  })
+
+  it('treats "/" as unset and uses the app-folder fallback', () => {
+    expect(resolveDisplayRoot('/', null, 'Apps/Overleaf Dev')).toBe('Apps/Overleaf Dev')
+    expect(resolveDisplayRoot(undefined, undefined, 'Apps/Overleaf Dev')).toBe('Apps/Overleaf Dev')
   })
 })

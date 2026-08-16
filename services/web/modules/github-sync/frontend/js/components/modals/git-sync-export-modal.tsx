@@ -143,7 +143,7 @@ const GitSyncExportModal = ({
         )}
 
         <OLForm onSubmit={createRepo}>
-          {candidates.length > 1 && (
+          {candidates.length >= 1 && (
             <OLRow>
               <OLCol xs={12}>
                 <OLFormGroup>
