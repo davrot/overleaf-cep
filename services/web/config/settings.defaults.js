@@ -1081,10 +1081,25 @@ module.exports = {
       ),
     ],
     contactUsModal: [],
-    sourceEditorExtensions: [],
+    sourceEditorExtensions: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/extensions/llm-inline-completion'
+      ),
+    ],
     sourceEditorVisualExtensions: [],
-    sourceEditorComponents: [],
-    pdfLogEntryHeaderActionComponents: [],
+    sourceEditorComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/components/llm-source-editor-component'
+      ),
+    ],
+    pdfLogEntryHeaderActionComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/components/pdf-log-entry-ask-ai-button'
+      ),
+    ],
     pdfLogEntryComponents: [],
     pdfLogEntriesComponents: [],
     pdfPreviewPromotions: [],
@@ -1244,7 +1259,12 @@ module.exports = {
         '../modules/reference-picker/frontend/reference-index/advanced-reference-index.ts'
       ),
     ],
-    railEntries: [],
+    railEntries: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/components/llm-rail-pane'
+      ),
+    ],
     railPopovers: [],
     railActions: [],
     railModals: [],
@@ -1269,6 +1289,7 @@ module.exports = {
     'webdav',
     'dropbox',
     'zotero',
+    'llm',
   ],
   viewIncludes: {},
 

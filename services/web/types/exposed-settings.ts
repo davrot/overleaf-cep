@@ -56,4 +56,5 @@ export type ExposedSettings = {
   zoteroEnabled: boolean
   webdavEnabled: boolean
   enablePandocConversions: boolean
+  llmAllowUserSettings?: boolean
 }
