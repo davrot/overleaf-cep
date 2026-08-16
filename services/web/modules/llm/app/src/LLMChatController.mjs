@@ -225,7 +225,13 @@ async function chat(req, res) {
         ? personalModelName
         : model || ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || '').split(',')[0].trim())
 
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey })
+    // overleaf-lab: honor the admin's explicit provider type for the SHARED
+    // backend only; personal backends are detected from their own URL/key.
+    const sharedApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
+    const chatApiType =
+        llmApiUrl && llmApiUrl === sharedApiUrl ? adminLlmSettings.llmApiType : undefined
+
+    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType: chatApiType })
 
     try {
         // Prepend the admin-configured system prompt (if any) plus an always-on
@@ -402,7 +408,13 @@ async function completion(req, res) {
         return res.status(503).json({ success: false, error: 'LLM service is not configured' })
     }
 
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey })
+    // overleaf-lab: honor the admin's explicit provider type for the SHARED
+    // backend only; personal backends are detected from their own URL/key.
+    const sharedApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
+    const completionApiType =
+        llmApiUrl && llmApiUrl === sharedApiUrl ? adminLlmSettings.llmApiType : undefined
+
+    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType: completionApiType })
     try {
         const systemPrompt = `/no_think\nYou are a text completion engine. Output ONLY the missing text, in the same language as the surrounding text. No thinking, no explanation, no markdown, no code fences, no tags. Just the raw continuation characters.`
         const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:\n\n${leftContext}[CURSOR]${rightContext}`

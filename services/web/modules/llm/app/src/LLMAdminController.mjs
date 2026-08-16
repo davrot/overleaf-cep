@@ -77,7 +77,10 @@ async function buildDisplaySettings() {
       process.env.LLM_API_TYPE ||
       detectApiType({
         llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
-        llmApiKey: settings.llmApiKey || process.env.LLM_API_KEY,
+        llmApiKey:
+          settings.llmApiKey
+            ? decryptSecret(settings.llmApiKey)
+            : process.env.LLM_API_KEY,
       }),
     hasLlmApiKey: !!(settings.llmApiKey || process.env.LLM_API_KEY),
     allowedModels: jsonHasModels ? settings.allowedModels : envModels,
@@ -380,7 +383,7 @@ export async function getAdminLLMSettings() {
       process.env.LLM_API_TYPE ||
       detectApiType({
         llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
-        llmApiKey: settings.llmApiKey || process.env.LLM_API_KEY,
+        llmApiKey: jsonKey || process.env.LLM_API_KEY,
       }),
     llmApiKey: jsonKey || process.env.LLM_API_KEY || null,
     allowedModels: jsonHasModels ? settings.allowedModels : envModelList(),
