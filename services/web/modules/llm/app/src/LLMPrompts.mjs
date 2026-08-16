@@ -50,7 +50,7 @@ Use "ok" when clearly satisfied, "partial" when partially satisfied or only part
 // template embeds the selected text where the `{{selection}}` placeholder appears;
 // the frontend substitutes it before sending. Keys map to the toolbar modes:
 // 1=paraphrase, 2=academic, 3=concise, 4=punchy, 5=split, 6=join, 7=summarize,
-// 8=explain, 9=title, 10=abstract.
+// 8=explain, 9=title, 10=abstract, 11=mathFix.
 export const DEFAULT_ASK_AI_ACTION_PROMPTS = {
     paraphrase: `Paraphrase the following LaTeX text. Keep every LaTeX command, math, and citation key intact. Output only the paraphrased text, with no preamble, no explanation, and no code fences.\n\n{{selection}}`,
     academic: `Rewrite the following LaTeX text in fluent, formal academic English. Preserve every LaTeX command, math, and citation key. Output only the rewritten text, with no preamble and no code fences.\n\n{{selection}}`,
@@ -60,6 +60,7 @@ export const DEFAULT_ASK_AI_ACTION_PROMPTS = {
     join: `Join the following LaTeX paragraphs into a single cohesive paragraph, preserving every LaTeX command, math, and citation. Output only the resulting paragraph, nothing else.\n\n{{selection}}`,
     summarize: `Summarize the following LaTeX text concisely. Output only the summary as plain LaTeX, with no preamble and no code fences.\n\n{{selection}}`,
     explain: `Explain the following LaTeX text clearly and concisely for the author:\n\n{{selection}}`,
+    mathFix: `Fix ONLY the LaTeX/math syntax problems in the following selection (mismatched braces or delimiters, invalid operators, wrong or missing math environments). Preserve the meaning and wording exactly. Output only the corrected LaTeX, with no preamble, no explanation, and no code fences.\n\n{{selection}}`,
     title: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n{{selection}}`,
     abstract: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n{{selection}}`,
 }

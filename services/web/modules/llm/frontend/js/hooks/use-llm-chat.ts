@@ -98,7 +98,7 @@ export const useLLMChat = () => {
     useEffect(() => {
         async function fetchModels() {
             if (!projectId) {
-                console.warn('[LLMChat] No project ID available, skipping model fetch')
+                // overleaf-lab: nothing to do outside a project; models list stays empty.
                 return
             }
             try {
@@ -134,7 +134,9 @@ export const useLLMChat = () => {
                 setSelectedModel(restored)
                 setModelsLoaded(true)
             } catch (err) {
-                console.error('[LLMChat] Failed to fetch models:', err)
+                // overleaf-lab: surface the failure through the UI state below instead
+                // of a raw console call (ESLint no-console).
+                void err
                 setModels([])
                 setSelectedModel('')
                 setModelsError(true)
@@ -203,7 +205,7 @@ export const useLLMChat = () => {
                 if (err.name === 'AbortError') {
                     const abortMsg: Message = {
                         role: 'assistant',
-                        content: '⚠️ Request stopped by user.',
+                        content: 'Request stopped by user.',
                     }
                     setMessages([...newMessages, abortMsg])
                 } else {
@@ -213,7 +215,7 @@ export const useLLMChat = () => {
 
                     const errorMsg: Message = {
                         role: 'assistant',
-                        content: `❌ Error: ${errorMessage}\n\nPlease check the console for details.`,
+                        content: `Error: ${errorMessage}\n\nPlease check the console for details.`,
                     }
                     setMessages([...newMessages, errorMsg])
                 }

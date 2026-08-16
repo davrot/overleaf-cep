@@ -67,6 +67,14 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/completion')
 
+        // overleaf-lab: PR item 13 — whole-document generators (title/abstract/keywords)
+        webRouter.post(
+            '/project/:Project_id/llm/generate',
+            AuthorizationMiddleware.ensureUserCanReadProject,
+            LLMChatController.generateDocument
+        )
+        logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/generate')
+
         // overleaf-lab: document compliance review endpoints (project-scoped)
         webRouter.get(
             '/project/:Project_id/llm/compliance/rubrics',
@@ -104,6 +112,13 @@ export default {
                 LLMSettingsController.llmSettingsPage
             )
             logger.debug({}, '[LLM] Route registered: GET /user/llm-settings')
+
+            webRouter.get(
+                '/user/llm-settings/json',
+                AuthenticationController.requireLogin(),
+                LLMSettingsController.getLLMSettingsJson
+            )
+            logger.debug({}, '[LLM] Route registered: GET /user/llm-settings/json')
         } else {
             logger.debug(
                 { allowUserSettings: Settings.llm?.allowUserSettings },
@@ -163,11 +178,11 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /admin/llm/settings/check')
 
-        webRouter.get(
+        webRouter.post(
             '/admin/llm/models',
             AuthorizationMiddleware.ensureUserIsSiteAdmin,
             LLMAdminController.scanAdminModels
         )
-        logger.debug({}, '[LLM] Route registered: GET /admin/llm/models')
+        logger.debug({}, '[LLM] Route registered: POST /admin/llm/models')
     },
 }

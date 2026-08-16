@@ -1,4 +1,5 @@
 import BaseProvider from './BaseProvider.mjs'
+import OError from '@overleaf/o-error'
 
 // Helper function to remove <think> tags (for DeepSeek, Qwen and similar models)
 // Handles both closed <think>...</think> and unclosed <think>... at end of string
@@ -26,23 +27,31 @@ export default class AnthropicProvider extends BaseProvider {
     return this.fetch('/v1/models')
   }
 
-  async checkConnection(model) {
-    return this.chat({
-      model: model || 'claude-sonnet-5',
-      messages: [
-        {
-          role: 'user',
-          content: 'Test connection',
-        },
-      ],
-      max_tokens: 1,
-    })
+  async checkConnection(model, timeoutMs) {
+    if (!model) {
+      throw new OError('No LLM model configured for the connection test', { status: 400 })
+    }
+
+    return this.chat(
+      {
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: 'Test connection',
+          },
+        ],
+        max_tokens: 1,
+      },
+      timeoutMs
+    )
   }
 
-  async chat(body) {
+  async chat(body, timeoutMs) {
     const data = await this.fetch('/v1/messages', {
       method: 'POST',
       body: JSON.stringify(this.buildRequest(body)),
+      timeoutMs,
     })
 
     return {
@@ -62,13 +71,36 @@ export default class AnthropicProvider extends BaseProvider {
     }
   }
 
-  async complete(body) {
+  async complete(body, timeoutMs) {
     const data = await this.fetch('/v1/messages', {
       method: 'POST',
       body: JSON.stringify(this.buildRequest(body)),
+      timeoutMs,
     })
 
     return this.extractText(data)
+  }
+
+  // overleaf-lab: full response in the shared detailed shape. Anthropic has no
+  // OpenAI-style response_format (structured output API) nor timings; the
+  // reviewer's lenient JSON extraction (fences/parse-with-retry) carries that role
+  // instead, and the prompt already constrains the JSON shape.
+  async chatDetailed(body, opts = {}) {
+    const { signal } = opts
+    const cleanBody = { ...body }
+    delete cleanBody.response_format
+
+    const data = await this.fetch('/v1/messages', {
+      method: 'POST',
+      body: JSON.stringify(this.buildRequest(cleanBody)),
+      signal,
+    })
+
+    return {
+      content: this.extractText(data),
+      finishReason: data?.stop_reason || null,
+      raw: data,
+    }
   }
 
   buildRequest(body) {

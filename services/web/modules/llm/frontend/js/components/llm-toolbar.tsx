@@ -28,10 +28,12 @@ type ParaphraseKind =
     | 'paraphrase'
     | 'style'
     | 'splitjoin'
+    | 'mathfix'
     | 'summarize'
     | 'explain'
     | 'title'
     | 'abstract'
+    | 'keywords'
     | 'chat'
 
 const kindTitleMap: Record<ParaphraseKind, string> = {
@@ -40,8 +42,10 @@ const kindTitleMap: Record<ParaphraseKind, string> = {
     splitjoin: 'Split / Join',
     summarize: 'Summarize',
     explain: 'Explain',
+    mathfix: 'Fix formula syntax',
     title: 'Title Generator',
     abstract: 'Abstract Generator',
+    keywords: 'Keyword Generator',
     chat: 'AI Response',
 }
 
@@ -88,7 +92,7 @@ const Spinner = () => (
     />
 )
 
-const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
+const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) => {
     // overleaf-lab: the floating "Ask AI" selection toolbar is part of the chat
     // feature, so it obeys the super-admin chat flag. Called unconditionally to
     // respect the rules of hooks; the returned JSX is gated further down.
@@ -128,19 +132,26 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
         const projectId = getMeta('ol-project_id')
         const csrfToken = getMeta('ol-csrfToken')
 
+        // overleaf-lab: PR item 13 — title/abstract are document-level generators:
+        // feed the whole current file (the toolbar's editor doc) instead of the
+        // selection, keeping the selection as a fallback when the doc is empty.
+        const wholeFileText = viewRef.current?.state?.doc?.toString?.() || ''
+        const basisText =
+            (mode === 9 || mode === 10) && wholeFileText ? wholeFileText : selectionText
+
         // Build a prompt based on the mode
         const modePrompts: Record<number, string> = {
             0: ask, // free-form chat
-            1: `Paraphrase the following LaTeX text. Keep every LaTeX command, math, and citation key intact. Output only the paraphrased text, with no preamble, no explanation, and no code fences.\n\n${selectionText}`,
-            2: `Rewrite the following LaTeX text in fluent, formal academic English. Preserve every LaTeX command, math, and citation key. Output only the rewritten text, with no preamble and no code fences.\n\n${selectionText}`,
-            3: `Rewrite the following LaTeX text more concisely, preserving its meaning and every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${selectionText}`,
-            4: `Rewrite the following LaTeX text in a punchier, more engaging style while keeping it accurate. Preserve every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${selectionText}`,
-            5: `Split the following LaTeX paragraph into several shorter, well-structured paragraphs. Keep the wording and all LaTeX; only add paragraph breaks. Output only the resulting LaTeX, nothing else.\n\n${selectionText}`,
-            6: `Join the following LaTeX paragraphs into a single cohesive paragraph, preserving every LaTeX command, math, and citation. Output only the resulting paragraph, nothing else.\n\n${selectionText}`,
-            7: `Summarize the following LaTeX text concisely. Output only the summary as plain LaTeX, with no preamble and no code fences.\n\n${selectionText}`,
-            8: `Explain the following LaTeX text clearly and concisely for the author:\n\n${selectionText}`,
-            9: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n${selectionText}`,
-            10: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n${selectionText}`,
+            1: `Paraphrase the following LaTeX text. Keep every LaTeX command, math, and citation key intact. Output only the paraphrased text, with no preamble, no explanation, and no code fences.\n\n${basisText}`,
+            2: `Rewrite the following LaTeX text in fluent, formal academic English. Preserve every LaTeX command, math, and citation key. Output only the rewritten text, with no preamble and no code fences.\n\n${basisText}`,
+            3: `Rewrite the following LaTeX text more concisely, preserving its meaning and every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${basisText}`,
+            4: `Rewrite the following LaTeX text in a punchier, more engaging style while keeping it accurate. Preserve every LaTeX command, math, and citation. Output only the rewritten text, nothing else.\n\n${basisText}`,
+            5: `Split the following LaTeX paragraph into several shorter, well-structured paragraphs. Keep the wording and all LaTeX; only add paragraph breaks. Output only the resulting LaTeX, nothing else.\n\n${basisText}`,
+            6: `Join the following LaTeX paragraphs into a single cohesive paragraph, preserving every LaTeX command, math, and citation. Output only the resulting paragraph, nothing else.\n\n${basisText}`,
+            7: `Summarize the following LaTeX text concisely. Output only the summary as plain LaTeX, with no preamble and no code fences.\n\n${basisText}`,
+            8: `Explain the following LaTeX text clearly and concisely for the author:\n\n${basisText}`,
+            9: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n${basisText}`,
+            10: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n${basisText}`,
         }
 
         // overleaf-lab: numeric transform modes map to admin action keys. Mode 0
@@ -156,6 +167,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
             8: 'explain',
             9: 'title',
             10: 'abstract',
+            11: 'mathFix',
         }
 
         // overleaf-lab: hardcoded system prompt kept verbatim as the fallback
@@ -184,13 +196,20 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                 : undefined
             if (typeof template === 'string' && template.trim() !== '') {
                 userContent = template.includes('{{selection}}')
-                    ? template.split('{{selection}}').join(selectionText)
-                    : `${template}\n\n${selectionText}`
+                    ? template.split('{{selection}}').join(basisText)
+                    : `${template}\n\n${basisText}`
             } else {
                 userContent = modePrompts[mode] || ask
             }
         } else {
-            userContent = modePrompts[mode] || ask
+            // overleaf-lab: PR item 10 — when the user asks while a passage is
+            // selected, anchor the request to that passage (with its line range
+            // when resolvable) so the reply can refer back to it, Overleaf-style.
+            if (selectionText) {
+                userContent = `<selected-text${selectionRef ? ` lines="${selectionRef}"` : ''}>\n${selectionText}\n</selected-text>\n\n${ask}`
+            } else {
+                userContent = modePrompts[mode] || ask
+            }
         }
 
         const messages = [
@@ -230,7 +249,6 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
             }
             throw new Error('Unexpected response format')
         } catch (err: any) {
-            console.error('[LLM Toolbar] API error', err)
             return `Error: ${err?.message || 'Request failed'}`
         }
     }
@@ -480,17 +498,86 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
         paraphrase: 1,
         style: 2,
         splitjoin: 5,
+        mathfix: 11,
         summarize: 7,
         explain: 8,
         title: 9,
         abstract: 10,
+        keywords: 0, // overleaf-lab: whole-document generator (see startGenerate)
         chat: 0,
+    }
+
+    // overleaf-lab: PR item 13 — whole-document generators (title / abstract /
+    // keywords). These do NOT use the selection: the backend reads the full
+    // project source (POST /project/:id/llm/generate) and returns the finished
+    // text, which renders in the same result panel with copy/edit and Insert.
+    const startGenerate = async (
+        k: 'title' | 'abstract' | 'keywords'
+    ) => {
+        const projectId = getMeta('ol-project_id')
+        const csrfToken = getMeta('ol-csrfToken')
+        setKind(k)
+        setPanelMode('paraphrase')
+        setLoading(true)
+        setEditMode(false)
+        setShowDiff(false)
+        setResult('')
+        try {
+            const resp = await fetch(`/project/${projectId}/llm/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ type: k }),
+            })
+            let data: {
+                ok?: boolean
+                output?: string
+                error?: string
+                detail?: string
+            } = {}
+            try {
+                data = await resp.json()
+            } catch {
+                data = {}
+            }
+            if (resp.ok && data.ok) {
+                setResult(String(data.output || ''))
+            } else {
+                setResult(
+                    `Generation failed: ${data.detail || data.error || `HTTP ${resp.status}`}`
+                )
+            }
+        } catch (err: any) {
+            setResult(`Generation failed: ${err?.message || 'Request failed'}`)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const contentMaxHeight = Math.max(
         140,
         Math.round(window.innerHeight * 0.5)
     )
+
+    // overleaf-lab: PR item 10 — human-readable reference to the current selection
+    // (line range when resolvable). Shown as a chip above the "Ask AI" input and
+    // embedded as <selected-text lines="..."> in the outgoing request.
+    let selectionRef = ''
+    if (selectionText && selectionRange && viewRef.current) {
+        try {
+            const from = viewRef.current.state.doc.lineAt(selectionRange.from)
+            const to = viewRef.current.state.doc.lineAt(selectionRange.to)
+            selectionRef = `${from.number}\u2013${to.number}`
+        } catch {
+            selectionRef = ''
+        }
+    }
+    const selectionChip = selectionText
+        ? `Selection: ${selectionText.length} chars${selectionRef ? `, lines ${selectionRef}` : ''}`
+        : ''
 
     // overleaf-lab: once the flags load, if chat is disabled for this project the
     // toolbar must never surface its anchor/menu/panels. Render the same inert
@@ -569,6 +656,21 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div className="llm-input-card">
                             <div className="llm-badge">AI</div>
+                            {selectionChip ? (
+                                <div
+                                    style={{
+                                        width: "100%",
+                                        fontSize: 11,
+                                        color: "#8fa2bd",
+                                        background: "rgba(255,255,255,0.04)",
+                                        borderRadius: 6,
+                                        padding: "4px 8px",
+                                        boxSizing: "border-box",
+                                    }}
+                                >
+                                    {selectionChip}
+                                </div>
+                            ) : null}
                             <textarea
                                 ref={inputRef}
                                 className="llm-input"
@@ -609,8 +711,16 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(1, 'paraphrase')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
                             >
-                                ✏️ Paraphrase
+                                Paraphrase
                             </div>
 
                             <div
@@ -618,7 +728,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                                 onMouseEnter={() => setSubmenu('style')}
                                 onMouseLeave={() => setSubmenu(null)}
                             >
-                                <div className="llm-item">🎨 Change style</div>
+                                <div className="llm-item">Change style</div>
                                 {submenu === 'style' && (
                                     <div
                                         style={{
@@ -632,18 +742,42 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                                         <div
                                             className="llm-item"
                                             onClick={() => startFetch(2, 'style')}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={e => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault()
+                                            e.currentTarget.click()
+                                            }
+                                            }}
                                         >
                                             Scientific
                                         </div>
                                         <div
                                             className="llm-item"
                                             onClick={() => startFetch(3, 'style')}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={e => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault()
+                                            e.currentTarget.click()
+                                            }
+                                            }}
                                         >
                                             Concise
                                         </div>
                                         <div
                                             className="llm-item"
                                             onClick={() => startFetch(4, 'style')}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={e => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault()
+                                            e.currentTarget.click()
+                                            }
+                                            }}
                                         >
                                             Punchy
                                         </div>
@@ -652,48 +786,74 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                             </div>
 
                             <div
-                                style={{ position: 'relative' }}
-                                onMouseEnter={() => setSubmenu('splitjoin')}
-                                onMouseLeave={() => setSubmenu(null)}
-                            >
-                                <div className="llm-item">🔀 Split/Join</div>
-                                {submenu === 'splitjoin' && (
-                                    <div
-                                        style={{
-                                            position: 'absolute',
-                                            left: '104%',
-                                            top: 0,
-                                            minWidth: 120,
-                                        }}
-                                        className="llm-menu"
-                                    >
-                                        <div
-                                            className="llm-item"
-                                            onClick={() => startFetch(5, 'splitjoin')}
-                                        >
-                                            Split
-                                        </div>
-                                        <div
-                                            className="llm-item"
-                                            onClick={() => startFetch(6, 'splitjoin')}
-                                        >
-                                            Join
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div
                                 className="llm-item"
                                 onClick={() => startFetch(7, 'summarize')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
                             >
-                                📝 Summarize
+                                Summarize
                             </div>
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(8, 'explain')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
                             >
-                                ℹ️ Explain
+                                Explain
+                            </div>
+                            <div
+                                className="llm-item"
+                                onClick={() => startFetch(11, 'mathfix')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
+                            >
+                                Fix formula syntax
+                            </div>
+                            <div
+                                className="llm-item"
+                                onClick={() => startFetch(9, 'title')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
+                            >
+                                Generate title (full document)
+                            </div>
+                            <div
+                                className="llm-item"
+                                onClick={() => startFetch(10, 'abstract')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
+                            >
+                                Generate abstract (full document)
                             </div>
 
                             <div
@@ -706,19 +866,49 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                             <div
                                 style={{ fontSize: 12, color: '#98a3af', padding: '6px 8px' }}
                             >
-                                Generators
+                                Generate (whole document)
                             </div>
                             <div
                                 className="llm-item"
-                                onClick={() => startFetch(9, 'title')}
+                                onClick={() => startGenerate('title')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
                             >
-                                📄 Title Generator
+                                Title
                             </div>
                             <div
                                 className="llm-item"
-                                onClick={() => startFetch(10, 'abstract')}
+                                onClick={() => startGenerate('abstract')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
                             >
-                                📋 Abstract Generator
+                                Abstract
+                            </div>
+                            <div
+                                className="llm-item"
+                                onClick={() => startGenerate('keywords')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
+                            >
+                                Keywords
                             </div>
                         </div>
                     </div>
@@ -739,6 +929,21 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div className="llm-input-card">
                             <div className="llm-badge">AI</div>
+                            {selectionChip ? (
+                                <div
+                                    style={{
+                                        width: "100%",
+                                        fontSize: 11,
+                                        color: "#8fa2bd",
+                                        background: "rgba(255,255,255,0.04)",
+                                        borderRadius: 6,
+                                        padding: "4px 8px",
+                                        boxSizing: "border-box",
+                                    }}
+                                >
+                                    {selectionChip}
+                                </div>
+                            ) : null}
                             <textarea
                                 ref={inputRef}
                                 className="llm-input"
@@ -870,9 +1075,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                                     className="llm-btn"
                                     onClick={() => setEditMode(s => !s)}
                                 >
-                                    ✏️ {editMode ? 'Done' : 'Edit'}
+                                    {editMode ? 'Done' : 'Edit'}
                                 </button>
-                                {kind !== 'title' && kind !== 'abstract' && (
+                                {kind !== 'title' && kind !== 'abstract' && kind !== 'keywords' && (
                                     <button
                                         className="llm-btn"
                                         onClick={() => setShowDiff(s => !s)}
@@ -952,7 +1157,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
                                         Cancel
                                     </button>
 
-                                    {kind === 'title' || kind === 'abstract' ? (
+                                    {kind === 'title' || kind === 'abstract' || kind === 'keywords' ? (
                                         <button
                                             className="llm-btn llm-primary"
                                             onClick={() => insertCodeAfterSelection(result)}
@@ -972,7 +1177,15 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, {}>((_, ref) => {
 
                                     <button
                                         className="llm-btn llm-primary"
-                                        onClick={() => startFetch(kindToMode[kind], kind)}
+                                        onClick={() =>
+                                            kind === 'title' ||
+                                            kind === 'abstract' ||
+                                            kind === 'keywords'
+                                                ? startGenerate(
+                                                      kind as 'title' | 'abstract' | 'keywords'
+                                                  )
+                                                : startFetch(kindToMode[kind], kind)
+                                        }
                                         disabled={loading}
                                     >
                                         Regenerate

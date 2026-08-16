@@ -1,13 +1,17 @@
 import logger from '@overleaf/logger'
-import fetch from 'node-fetch'
-import { AbortController } from 'abort-controller'
-import { fileURLToPath } from 'url'
+import { fileURLToPath } from 'node:url'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: at-rest encryption of user API keys
 import { getLLMFeatureFlags } from './LLMAdminController.mjs' // overleaf-lab: per-feature enable flags
+import { createLLMProvider, detectApiType } from './LLMProviderFactory.mjs' // overleaf-lab: provider-agnostic check/scan
+import OError from '@overleaf/o-error'
 
+// overleaf-lab: the personal LLM settings page. Kept as its own route: each
+// module frontend is a separate webpack entry point (modules/*/frontend), and
+// importing module React code into the core bundle risks dual React instances,
+// so the Account Settings page links here instead of embedding the component.
 const llmSettingsPugPath = fileURLToPath(
     new URL('../../app/views/llm-settings.pug', import.meta.url)
 )
@@ -17,8 +21,9 @@ async function llmSettingsPage(req, res) {
 
     logger.debug({ userId, pugPath: llmSettingsPugPath }, '[LLM] llmSettingsPage: rendering')
 
-    // overleaf-lab: when both chat and inline completion are disabled by the admin,
-    // the personal-settings page has nothing to configure, so send the user home.
+    // overleaf-lab: when both chat and inline completion are disabled by the
+    // admin, the personal-settings page has nothing to configure, so send the
+    // user home.
     const flags = await getLLMFeatureFlags()
     if (!flags.chatEnabled && !flags.completionEnabled) {
         return res.redirect('/')
@@ -39,7 +44,7 @@ async function llmSettingsPage(req, res) {
         modelName: user?.llmModelName || '',
         apiUrl: user?.llmApiUrl || '',
         hasApiKey: !!(user?.llmApiKey),
-        completionModel: user?.llmCompletionModel || '', // overleaf-lab: per-user inline-completion model
+        completionModel: user?.llmCompletionModel || '',
     }
 
     logger.debug(
@@ -49,10 +54,50 @@ async function llmSettingsPage(req, res) {
 
     res.render(llmSettingsPugPath, {
         user: { llmSettings },
-        // overleaf-lab: expose the enable flags so the page can hide the disabled section.
         featureFlags: { chatEnabled: flags.chatEnabled, completionEnabled: flags.completionEnabled },
     })
 }
+
+// overleaf-lab: current stored LLM settings (mirrors what the old standalone
+// page rendered into its metas). The key value itself is never returned, only
+// its presence.
+async function getLLMSettingsJson(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+
+    const flags = await getLLMFeatureFlags()
+    if (!flags.chatEnabled && !flags.completionEnabled) {
+        return res.status(404).json({ error: 'feature_disabled' })
+    }
+
+    let user = {}
+    try {
+        user = await User.findById(
+            userId,
+            'useOwnLLMSettings llmModelName llmApiUrl llmApiKey llmCompletionModel'
+        )
+    } catch (err) {
+        logger.warn({ userId, err }, '[LLM] Error loading user for settings json')
+    }
+
+    res.json({
+        useOwnSettings: user?.useOwnLLMSettings || false,
+        modelName: user?.llmModelName || '',
+        apiUrl: user?.llmApiUrl || '',
+        hasApiKey: !!(user?.llmApiKey),
+        completionModel: user?.llmCompletionModel || '',
+    })
+}
+
+// overleaf-lab: hard cap for interactive provider calls so a wedged backend
+// cannot hang the settings UI. The provider's own fetch timeout applies below.
+function withTimeout(promise, ms, label) {
+    let timer
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms)
+    })
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 
 async function checkLLMConnection(req, res) {
     const { apiUrl, apiKey: providedApiKey, modelName } = req.body
@@ -78,78 +123,68 @@ async function checkLLMConnection(req, res) {
     }
 
     // overleaf-lab: the key is optional (a local llama.cpp server has no auth);
-    // only the URL and model name are required.
-    if (!apiUrl || !modelName) {
+    // only the URL is required (item 7: connection check = model-list fetch).
+    if (!apiUrl) {
         return res.status(400).json({ error: 'Missing required parameters' })
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => {
-        controller.abort()
-    }, 30000)
+    // overleaf-lab: PR decision (item 7) — testing the connection IS a successful
+    // model-list fetch (reachability + auth + served models in one round trip).
+    // Optionally the requested model must be in the list, which catches typos and
+    // stopped models. The returned model list lets the UI refresh in the same call.
+    // provider-agnostic (F4): the provider owns endpoint path and auth header.
+    const apiType = detectApiType({ llmApiUrl: apiUrl, llmApiKey: apiKey })
+    const provider = createLLMProvider({
+        llmApiUrl: apiUrl,
+        llmApiKey: apiKey,
+        llmApiType: apiType,
+    })
+    const startTime = Date.now()
 
     try {
-        const llmApiUrl = `${apiUrl}/chat/completions`
+        const data = await withTimeout(provider.listModels(), 60000, 'Model list fetch')
+        const ids = Array.isArray(data?.data)
+            ? data.data.map(entry => String(entry.id))
+            : []
 
-        const requestBody = {
-            model: modelName,
-            messages: [{ role: 'user', content: 'Test connection' }],
-            max_tokens: 10,
-            temperature: 0.7,
-        }
-
-        const startTime = Date.now()
-
-        const headers = { 'Content-Type': 'application/json' }
-        if (typeof apiKey === 'string' && apiKey.length > 0) {
-            headers.Authorization = `Bearer ${apiKey}`
-        }
-
-        const response = await fetch(llmApiUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-        })
-
-        clearTimeout(timeout)
         const duration = Date.now() - startTime
 
-        logger.debug(
-            { userId, apiUrl, modelName, status: response.status, duration: `${duration}ms` },
-            '[LLM] checkLLMConnection: LLM API responded'
-        )
-
-        if (!response.ok) {
-            const errorText = await response.text()
-            return res.status(400).json({
+        if (modelName && !ids.includes(modelName)) {
+            logger.warn(
+                { userId, apiUrl, apiType, modelName, ids: ids.length },
+                '[LLM] checkLLMConnection: model not in backend list'
+            )
+            return res.status(404).json({
                 success: false,
-                error: 'LLM connection failed',
-                details: errorText,
-                status: response.status,
+                error: `Model "${modelName}" is not available on this backend`,
+                details: `Available: ${ids.length} model(s)`,
+                models: ids,
+                status: 404,
             })
         }
+
+        logger.debug(
+            { userId, apiUrl, apiType, duration: `${duration}ms`, modelCount: ids.length },
+            '[LLM] checkLLMConnection: LLM API responded'
+        )
 
         res.json({
             success: true,
             message: 'LLM connection successful',
             duration: `${duration}ms`,
+            models: ids,
         })
     } catch (error) {
-        clearTimeout(timeout)
+        const info = OError.getFullInfo(error)
+        const errStatus = info?.status || 500
 
-        if (error.name === 'AbortError') {
-            return res.status(504).json({
-                success: false,
-                error: 'Connection timeout',
-                details: 'The LLM API did not respond within 30 seconds',
-            })
-        }
+        logger.warn({ userId, apiUrl, apiType, err: error }, '[LLM] checkLLMConnection: failed')
 
-        res.status(500).json({
+        return res.status(errStatus).json({
             success: false,
             error: 'Failed to test LLM connection',
-            details: error.message,
+            details: info?.error?.message || error.message,
+            status: errStatus,
         })
     }
 }
@@ -194,57 +229,40 @@ async function scanUserModels(req, res) {
         })
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    // overleaf-lab: provider-agnostic (F4) — the provider owns the endpoint
+    // path and auth header, so Anthropic (/v1/models) and OpenAI (/models)
+    // both work.
+    const apiType = detectApiType({ llmApiUrl: apiUrl, llmApiKey: apiKey })
+    const provider = createLLMProvider({
+        llmApiUrl: apiUrl,
+        llmApiKey: apiKey,
+        llmApiType: apiType,
+    })
 
     try {
-        const headers = {}
-        if (typeof apiKey === 'string' && apiKey.length > 0) {
-            headers.Authorization = `Bearer ${apiKey}`
-        }
-        const response = await fetch(`${apiUrl}/models`, {
-            method: 'GET',
-            headers,
-            signal: controller.signal,
-        })
-
-        clearTimeout(timeout)
-
-        if (!response.ok) {
-            const body = await response.text()
-            return res.status(400).json({
-                success: false,
-                error: 'Failed to fetch models',
-                status: response.status,
-                details: body,
-            })
-        }
-
-        const data = await response.json()
+        const data = await provider.listModels()
         const ids = Array.isArray(data?.data)
             ? data.data.map(entry => String(entry.id)).sort()
             : []
 
         res.json({ success: true, models: ids })
     } catch (error) {
-        clearTimeout(timeout)
+        const info = OError.getFullInfo(error)
+        const errStatus = info?.status || 500
 
-        if (error.name === 'AbortError') {
-            return res.status(504).json({
-                success: false,
-                error: 'Connection timeout',
-                details: 'The LLM API did not respond within 30 seconds',
-            })
-        }
-
-        logger.error({ userId, err: error }, '[LLM] User model scan failed')
-        res.status(500).json({ success: false, error: 'Model scan failed' })
+        logger.error({ userId, apiUrl, apiType, err: error }, '[LLM] User model scan failed')
+        res.status(errStatus).json({
+            success: false,
+            error: 'Model scan failed',
+            details: info?.error?.message || error.message,
+            status: errStatus,
+        })
     }
 }
 
 async function saveLLMSettings(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const { useOwnLLMSettings, llmApiKey, llmModelName, llmApiUrl, llmCompletionModel } = req.body
+    const { useOwnLLMSettings, llmApiKey, llmModelName, llmApiUrl, llmCompletionModel, clearLlmApiKey } = req.body
 
     logger.debug(
         {
@@ -279,8 +297,11 @@ async function saveLLMSettings(req, res) {
             llmCompletionModel: (useOwnLLMSettings && llmCompletionModel) ? llmCompletionModel : '',
         }
 
-        // Only update API key if a new one is provided
-        if (llmApiKey && llmApiKey.trim() !== '') {
+        // overleaf-lab: explicit "remove stored key" wins; otherwise only a
+        // non-empty key replaces the stored one (an omitted key is left as-is).
+        if (clearLlmApiKey) {
+            updateData.llmApiKey = ''
+        } else if (llmApiKey && llmApiKey.trim() !== '') {
             updateData.llmApiKey = encryptSecret(llmApiKey) // overleaf-lab: encrypt user key at rest
         }
 
@@ -307,6 +328,7 @@ async function saveLLMSettings(req, res) {
 
 export default {
     llmSettingsPage: expressify(llmSettingsPage),
+    getLLMSettingsJson: expressify(getLLMSettingsJson),
     checkLLMConnection: expressify(checkLLMConnection),
     scanUserModels: expressify(scanUserModels),
     saveLLMSettings: expressify(saveLLMSettings),
