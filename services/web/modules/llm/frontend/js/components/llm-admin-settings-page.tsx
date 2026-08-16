@@ -313,7 +313,6 @@ export default function LLMAdminSettingsPage() {
     }
 
     const allModels = Array.from(new Set([...knownModels, ...availableModels, ...allowedModels]))
-//    const allModels = availableModels
 
     return (
         <div className="container llm-settings">

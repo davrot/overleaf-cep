@@ -152,6 +152,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             8: `Explain the following LaTeX text clearly and concisely for the author:\n\n${basisText}`,
             9: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n${basisText}`,
             10: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n${basisText}`,
+            11: `Fix ONLY the LaTeX/math syntax problems in the following selection (mismatched braces or delimiters, invalid operators, wrong or missing math environments). Preserve the meaning and wording exactly. Output only the corrected LaTeX, with no preamble, no explanation, and no code fences.\n\n${basisText}`,
         }
 
         // overleaf-lab: numeric transform modes map to admin action keys. Mode 0
@@ -285,7 +286,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             const safeCodeHtml = escapeHtml(code)
             if (isLatex) {
                 const b64 = base64EncodeUnicode(code)
-                return `<div class="llm-latex-block" style="position:relative;"><button class="llm-copy-latex" data-code="${b64}" title="Copy LaTeX" style="position:absolute;right:8px;top:8px;border-radius:6px;padding:4px 6px;border:none;background:rgba(255,255,255,0.03);color:#e6eef8;cursor:pointer">📋</button><pre style="margin:0;"><code class="language-${escapeHtml(lang)}">${safeCodeHtml}</code></pre></div>`
+                return `<div class="llm-latex-block" style="position:relative;"><button class="llm-copy-latex" data-code="${b64}" title="Copy LaTeX" style="position:absolute;right:8px;top:8px;border-radius:6px;padding:4px 6px;border:none;background:rgba(255,255,255,0.03);color:#e6eef8;cursor:pointer">Copy</button><pre style="margin:0;"><code class="language-${escapeHtml(lang)}">${safeCodeHtml}</code></pre></div>`
             }
             return `<pre><code class="language-${escapeHtml(lang)}">${safeCodeHtml}</code></pre>`
         }
@@ -317,14 +318,14 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                     try {
                         await navigator.clipboard.writeText(code)
                         const prev = btn.innerText
-                        btn.innerText = '✓'
+                        btn.innerText = 'OK'
                         setTimeout(() => {
                             btn.innerText = prev
                         }, 900)
                     } catch {
-                        btn.innerText = '✕'
+                        btn.innerText = '!'
                         setTimeout(() => {
-                            btn.innerText = '📋'
+                            btn.innerText = 'Copy'
                         }, 900)
                     }
                 })()
@@ -1069,7 +1070,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                     className="llm-btn"
                                     onClick={() => copyToClipboard(result)}
                                 >
-                                    📋 Copy
+                                    Copy
                                 </button>
                                 <button
                                     className="llm-btn"

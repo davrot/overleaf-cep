@@ -106,6 +106,10 @@ export default class AnthropicProvider extends BaseProvider {
   buildRequest(body) {
     const { messages = [], ...rest } = body
 
+    // overleaf-lab: response_format is OpenAI-specific — never forward it to the
+    // Anthropic API (unknown fields risk a 400 or silent misparse).
+    delete rest.response_format
+
     const system = messages
       .filter(m => m.role === 'system')
       .map(m => m.content)
