@@ -28,7 +28,12 @@ import { WebdavSyncProjectStates } from '../models/webdavSyncProjectStates.mjs'
  * })
  */
 async function getProjectState(projectId, projection = {}) {
-  return await WebdavSyncProjectStates.findOne({ projectId }, projection).lean()
+  // W-STR: state docs historically store projectId as a STRING (all live docs
+  // are strings); always normalize so calls with ObjectId or string match.
+  return await WebdavSyncProjectStates.findOne(
+    { projectId: String(projectId) },
+    projection
+  ).lean()
 }
 
 /**
@@ -47,8 +52,8 @@ async function getProjectState(projectId, projection = {}) {
  */
 async function createProjectState(projectId, data) {
   return await WebdavSyncProjectStates.findOneAndUpdate(
-    { projectId },
-    { $set: data, $setOnInsert: { projectId } },
+    { projectId: String(projectId) },
+    { $set: data, $setOnInsert: { projectId: String(projectId) } },
     { upsert: true, new: true }
   ).lean()
 }
@@ -87,7 +92,7 @@ async function updateProjectState(projectId, data) {
      Object.prototype.hasOwnProperty.call(data, '$push'))
   const update = isRawUpdate ? data : { $set: data }
   return await WebdavSyncProjectStates.updateOne(
-    { projectId },
+    { projectId: String(projectId) },
     update
   )
 }
@@ -99,7 +104,7 @@ async function updateProjectState(projectId, data) {
  * @returns {Promise<Object>} MongoDB delete result with deleted count
  */
 async function removeProjectState(projectId) {
-  return await WebdavSyncProjectStates.deleteMany({ projectId })
+  return await WebdavSyncProjectStates.deleteMany({ projectId: String(projectId) })
 }
 
 export default {

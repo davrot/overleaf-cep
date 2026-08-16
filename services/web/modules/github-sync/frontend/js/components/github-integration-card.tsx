@@ -49,7 +49,7 @@ const GitHubSyncCard = () => {
       case 'gitlab': return t('sync_with_gitlab')
       case 'gitea': return t('sync_with_gitea')
       case 'forgejo': return t('sync_with_forgejo')
-      default: return t('github')
+      default: return t('git_provider')
     }
   }
 
@@ -85,7 +85,6 @@ const GitHubSyncCard = () => {
         handleHide={handleHide}
         projectId={projectId}
         projectName={name}
-        serverType={serverType}
       />
     </>
   )

@@ -372,6 +372,12 @@ function WebdavSyncModal({ show, handleHide, projectId, initialProjectName }: {
                                     {working ? t('loading') : t('webdav_export_to_webdav')}
                                 </OLButton>
                             </div>
+                            <p className="small text-muted">
+                                {t('webdav_import_note')}
+                            </p>
+                            <p className="small text-muted mb-2">
+                                {t('webdav_export_note')}
+                            </p>
 
                             {/* Unlink button */}
                             <OLButton

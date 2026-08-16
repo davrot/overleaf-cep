@@ -684,6 +684,7 @@ export default {
           return res.json({
             connected: true,
             path,
+            displayRoot: credentials.displayRoot || null,
             // U3: per-project entries with the full project-level path.
             projects: projects.map(p => ({
               projectId: p.projectId,
@@ -768,7 +769,32 @@ export default {
       }
     )
 
-    // Get project's Dropbox sync state
+    // Set the display-only Dropbox app folder name (user settings; display
+    // path of linked projects = displayRoot + "/" + project name)
+    webRouter.post(
+      '/user/dropbox/display-root',
+      AuthenticationController.requireLogin(),
+      async (req, res) => {
+        const userId = req.user?._id || req.user?.id
+        if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+        const root =
+          typeof req.body?.displayRoot === 'string'
+            ? req.body.displayRoot.trim()
+            : ''
+        try {
+          await DropboxUserCredentials.findOneAndUpdate(
+            { userId },
+            root ? { $set: { displayRoot: root } } : { $unset: { displayRoot: 1 } }
+          )
+          res.json({ success: true, displayRoot: root || null })
+        } catch (err) {
+          logger.error({ err, userId }, 'Failed to save Dropbox display root')
+          res.status(500).json({ error: err.message })
+        }
+      }
+    )
+
+    // Get project’s Dropbox sync state
     webRouter.get(
       '/project/:project_id/dropbox/state',
       async (req, res) => {
@@ -800,7 +826,7 @@ export default {
               const projName = project?.name
               const activeDoc = await DropboxUserCredentials.findOne(
                 { userId: owner },
-                { path: 1 }
+                { path: 1, displayRoot: 1 }
               ).lean().catch(() => null)
               let legacyDoc = null
               try {
@@ -810,7 +836,16 @@ export default {
               } catch {
                 legacyDoc = null
               }
-              const rootPath = resolveDisplayRoot(activeDoc?.path, legacyDoc?.path)
+              // Root preference: an explicitly configured app folder
+              // (displayRoot, set in user settings) wins over the stored
+              // connection path; both are absent for OAuth-linked sandbox
+              // roots (path "/"), so the fork’s app-folder name remains the
+              // final fallback.
+              const rootPath = resolveDisplayRoot(
+                activeDoc?.displayRoot ||
+                  (activeDoc?.path && activeDoc.path !== '/' ? activeDoc.path : null),
+                legacyDoc?.path
+              )
               const displayTarget =
                 state.path && state.path !== '/'
                   ? state.path

@@ -8,6 +8,11 @@ export const DropboxUserCredentialsSchema = new Schema(
     // Encrypted credentials - contains access_token
     accessToken: { type: String, required: true },
     path: { type: String, default: '/' },
+    // Display-only: the Dropbox app folder exactly as it appears in the
+    // user’s Dropbox account (e.g. "Apps/Overleaf Dev"). The app folder IS
+    // the API sandbox root (path "/"), whose name the API never exposes;
+    // this field feeds the display path only — never the sync root.
+    displayRoot: { type: String },
   },
   { minimize: false }
 )

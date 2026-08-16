@@ -218,19 +218,23 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     existingRemote.files.map(entry => [entry.path, entry])
   )
 
-  // --- Guarded deletion (ARC-06: never delete on the basis of a listing
-  // that is not the previously-synced set, and never when the remote identity
-  // changed since the last sync) ---
+  // --- Un-mirror the remote (project-level export, user decision 2026-08-17) ---
+  // Export = the local project wins: afterwards the remote folder is a full
+  // mirror of the local project tree, so every remote entry that is not
+  // present locally is deleted. Sync-excluded entries (hidden, LaTeX
+  // transients) are never touched. The listing below comes from collectEntries
+  // above — a failed listing already aborted the sync, so deletions never run
+  // against a partial view of the remote.
+  // Key format note: the local doc/file keys and entity folder paths carry a
+  // leading slash ("/main.tex"), while this push lane's projectRoot ends
+  // with a slash, so slice() yields slash-less relatives — normalize both
+  // remote looksups to the leading-slash form used by localPaths.
   let deletedRemote = 0
   for (const entry of existingRemote.files) {
-    const relativePath = entry.path.slice(projectRoot.length) || '/'
-    // D2/RF.5: excluded remote entries are never deletable (not part of a
-    // real sync baseline; may be user data that must never be touched).
+    const rawRelative = entry.path.slice(projectRoot.length) || '/'
+    const relativePath = rawRelative.startsWith('/') ? rawRelative : `/${rawRelative}`
     if (isSyncExcluded(relativePath)) continue
     if (localPaths.has(relativePath)) continue
-    const prev = previousState[relativePath]
-    if (!prev) continue // not part of a previous sync — do not delete
-    if (!sameIdentity(prev, entry)) continue // remote changed — do not delete
     try {
       await client.removeRetry(entry.path)
       deletedRemote += 1
@@ -238,17 +242,15 @@ async function syncProject(userId, projectId, { force = false } = {}) {
       logger.warn({ err: error, path: entry.path }, 'WebDAV push: skip remote deletion')
     }
   }
+  // Directories come AFTER their (possibly deleted) children, deepest first.
   for (const directory of existingRemote.directories.sort(
     (left, right) => right.path.length - left.path.length
   )) {
-    const relativePath = directory.path.slice(projectRoot.length) || '/'
-    // D2/RF.5: excluded remote directories are never deletable.
+    const rawRelative = directory.path.slice(projectRoot.length) || '/'
+    const relativePath = rawRelative.startsWith('/') ? rawRelative : `/${rawRelative}`
     if (isSyncExcluded(relativePath)) continue
-    const prev = previousState[relativePath]
-    if (!prev) continue // never synced — do not delete
     const localDirectory = entities.folders.some(folder => folder.path === relativePath)
     if (localDirectory) continue
-    if (prev.etag && directory.etag && directory.etag !== prev.etag) continue // remote changed
     try {
       await client.removeRetry(directory.path)
     } catch (error) {
@@ -256,13 +258,13 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     }
   }
 
-  // --- Push local files with conflict gate (ARC-05 decision table) ---
-  // A local file must NOT overwrite a remote file that changed since the last
-  // sync unless the local side is the only side that changed (or force=true).
-  const conflicts = []
-  // H4/B2.4: remote etags at conflict-detection time, used later by
-  // resolveConflict keep-local as an If-Match precondition (clobber guard).
-  const conflictEtags = {}
+  // --- Push local files (project-level export) ---
+  // User decision (2026-08-16): like Dropbox, sync is project-level one-way.
+  // Export = the local project wins: every local file is uploaded as an
+  // UNCONDITIONAL overwrite (no If-Match — conditional puts 412 on the user's
+  // Nextcloud and were the source of the per-file conflict churn) and every
+  // remote-only entry below, so afterwards the remote folder is a full
+  // mirror of the local project. No per-file conflict state is produced.
   const nextState = { ...previousState }
   for (const [filePath, doc] of Object.entries(docs)) {
     // D2/RF.5: never push sync-excluded entries (hidden, LaTeX transients).
@@ -272,36 +274,8 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     const localHash = sha256(localContent)
     const remoteEntry = existingRemoteByPath.get(resourcePath)
     const prev = previousState[filePath]
-    if (remoteEntry && !force && prev) {
-      const localChanged = prev.localHash == null ? true : prev.localHash !== localHash
-      const remoteChanged = !sameIdentity(prev, remoteEntry)
-      if (localChanged && remoteChanged) {
-        conflicts.push(filePath)
-        conflictEtags[filePath] = remoteEntry?.etag ?? null
-        continue // both sides changed — block + notify, never auto-overwrite
-      }
-    }
-    // H3: the webdavinterface POST /file response carries only { status } — the
-    // server-side new etag is NOT available here, so we cannot store a fresh
-    // etag after put. The H3 no-phantom guard in pollUser (below) prevents
-    // the stale-etag re-download churn this used to cause.
-    try {
-      await putProjectFile(client, resourcePath, localContent, filePath, {
-        etag: force ? undefined : remoteEntry?.etag || undefined,
-      })
-    } catch (error) {
-      // 412 = Nextcloud rejected the If-Match (remote rotated between listing
-      // and write). Treat it like the gate conflict above (same response/state
-      // contract) and keep pushing the remaining files — an atomic push
-      // failure would strand every other file (live incident 2026-08-16).
-      if (error?.status === 412 || /precondition/i.test(error?.message || '')) {
-        if (!conflicts.includes(filePath)) conflicts.push(filePath)
-        conflictEtags[filePath] = remoteEntry?.etag ?? null
-        logger.warn({ err: error, path: resourcePath }, 'WebDAV push: 412 precondition — recorded as conflict, continuing')
-        continue
-      }
-      throw error
-    }
+    // Project-level export: unconditional overwrite, always.
+    await putProjectFile(client, resourcePath, localContent, filePath, {})
     nextState[filePath] = {
       ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
       localHash,
@@ -316,29 +290,8 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     const localHash = sha256(localContent)
     const remoteEntry = existingRemoteByPath.get(resourcePath)
     const prev = previousState[filePath]
-    if (remoteEntry && !force && prev) {
-      const localChanged = prev.localHash == null ? true : prev.localHash !== localHash
-      const remoteChanged = !sameIdentity(prev, remoteEntry)
-      if (localChanged && remoteChanged) {
-        conflicts.push(filePath)
-        conflictEtags[filePath] = remoteEntry?.etag ?? null
-        continue
-      }
-    }
-    try {
-      await putProjectFile(client, resourcePath, localContent, filePath, {
-        etag: force ? undefined : remoteEntry?.etag || undefined,
-      })
-    } catch (error) {
-      // 412 → conflict, continue (same rationale as the docs loop above).
-      if (error?.status === 412 || /precondition/i.test(error?.message || '')) {
-        if (!conflicts.includes(filePath)) conflicts.push(filePath)
-        conflictEtags[filePath] = remoteEntry?.etag ?? null
-        logger.warn({ err: error, path: resourcePath }, 'WebDAV push: 412 precondition — recorded as conflict, continuing')
-        continue
-      }
-      throw error
-    }
+    // Project-level export: unconditional overwrite, always.
+    await putProjectFile(client, resourcePath, localContent, filePath, {})
     nextState[filePath] = {
       ...(remoteEntry ? { etag: remoteEntry.etag ?? null, modifiedAt: remoteEntry.modifiedAt ?? null, size: remoteEntry.size ?? 0 } : {}),
       localHash,
@@ -351,56 +304,20 @@ async function syncProject(userId, projectId, { force = false } = {}) {
     if (!localPaths.has(key)) delete nextState[key]
   }
 
-  if (conflicts.length) {
-    const [firstConflict] = conflicts
-    await WebdavCredentials.updateSyncStatus(userId, {
-      lastSyncAt: new Date().toISOString(),
-      lastSyncError: `${conflicts.length} file(s) changed on both sides (first: ${firstConflict})`,
-      lastConflict: {
-        path: firstConflict,
-        allPaths: conflicts,
-        projectId: projectId.toString(),
-        detectedAt: new Date().toISOString(),
-        // H4/B2.4: remote etag at detection — resolveConflict keep-local uses
-        // it as If-Match so a third edit cannot be silently clobbered.
-        remoteEtag: conflictEtags[firstConflict] ?? null,
-      },
-    })
-    // RF.2: mirror the conflict onto the project STATE doc so the sync modal
-    // (mergeStatus === 'conflict' + lastConflict.path) can offer resolution.
-    await SyncStateManager.updateProjectState(projectId, {
-      $set: {
-        mergeStatus: 'conflict',
-        lastSyncAt: new Date(),
-        lastConflict: {
-          path: firstConflict,
-          allPaths: conflicts,
-          projectId: projectId.toString(),
-          detectedAt: new Date().toISOString(),
-          remoteEtag: conflictEtags[firstConflict] ?? null,
-        },
-      },
-    })
-    await notifyWebdav(userId, 'conflict', {
-      projectName: project.name,
-      projectId: projectId.toString(),
-      path: firstConflict,
-    })
-  } else {
-    await WebdavCredentials.updateSyncStatus(userId, {
-      lastSyncAt: new Date().toISOString(),
-      lastSyncError: null,
-      lastConflict: null,
-    })
-    // RF.2: clean sync clears any previously recorded conflict on the state
-    // doc ($set/$unset as separate operators; no-op if the doc has none).
-    await SyncStateManager.updateProjectState(projectId, {
-      $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
-      $unset: { lastConflict: 1 },
-    })
-    if (hadSyncIssue) {
-      await notifyWebdav(userId, 'recovered', { projectName: project.name, projectId })
-    }
+  // Project-level export produces no per-file conflicts: always record a
+  // clean sync and clear any previously recorded conflict ($set/$unset as
+  // separate operators; no-op if the doc has none).
+  await WebdavCredentials.updateSyncStatus(userId, {
+    lastSyncAt: new Date().toISOString(),
+    lastSyncError: null,
+    lastConflict: null,
+  })
+  await SyncStateManager.updateProjectState(projectId, {
+    $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
+    $unset: { lastConflict: 1 },
+  })
+  if (hadSyncIssue) {
+    await notifyWebdav(userId, 'recovered', { projectName: project.name, projectId })
   }
   await WebdavCredentials.updateRemoteState(userId, project.name, nextState)
   await WebdavCredentials.markProjectSynced(userId, project.name)
@@ -415,7 +332,6 @@ async function syncProject(userId, projectId, { force = false } = {}) {
       remoteFileCount: existingRemote.files.length,
       remoteDirectoryCount: existingRemote.directories.length,
       deletedRemote,
-      conflictCount: conflicts.length,
       durationMs: Date.now() - startedAt,
     },
     'WebDAV project sync completed'
@@ -695,6 +611,8 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
   const rootPath = credentials.rootPath || Settings.webdav.rootPath
   let changedFileCount = 0
   let conflictCount = 0
+  let deletedLocalCount = 0
+  let createdLocalFolderCount = 0
   logger.info({ userId, rootPath, onlyProjectName }, 'WebDAV poll started')
   const rootEntries = await client.list(rootPath)
   const remoteProjects = rootEntries
@@ -760,30 +678,43 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
 
     const previousState = credentials.remoteState?.[projectName] || {}
     const nextState = { ...previousState }
-    const conflicts = []
-    // RF.2: etags captured at conflict-detection time (mirror of the push lane
-    // so the state-doc lastConflict carries the same shape).
-    const conflictEtags = {}
+    // Note (2026-08-16, project-level sync): the pull lane no longer reads
+    // local content for per-file conflict detection — Import applies every
+    // changed/new remote entry unconditionally (remote folder wins).
 
-    // Local content is needed to detect "local also changed" conflicts (ARC-05).
-    let localDocs = {}
-    let localFiles = {}
-    let projectDoc = null
+    // Local entity presence at import time: needed so a remote file that is
+    // unchanged since the last sync but was DELETED locally afterwards still
+    // gets re-applied (remote wins — after Import both trees must be
+    // identical). For the rare multi-project name collision, legacy behavior
+    // (no local-presence check) is kept.
+    let localPresentPaths = null
     if (projects.length === 1) {
-      const [d, f] = await Promise.all([
+      const [importLocalDocs, importLocalFiles] = await Promise.all([
         ProjectEntityHandler.promises.getAllDocs(projects[0]._id),
         ProjectEntityHandler.promises.getAllFiles(projects[0]._id),
       ])
-      localDocs = d
-      localFiles = f
-      projectDoc = await ProjectGetter.promises.getProject(projects[0]._id, {
-        name: 1,
-        overleaf: 1,
-      })
+      localPresentPaths = new Set(
+        [...Object.keys(importLocalDocs), ...Object.keys(importLocalFiles)].map(
+          p => (p.startsWith('/') ? p : `/${p}`)
+        )
+      )
     }
+    // Remote directories (folder presence), so a local empty folder that the
+    // remote tree also has is NOT deleted (identical trees after Import).
+    const remoteRelativeDirs = new Set()
+    // Remote FILES collected by THIS walk. (Do NOT derive the delete set from
+    // nextState: previousState carries ghost entries for paths that were
+    // removed remotely since the last sync — those would wrongly protect
+    // local-only files from mirror deletion.)
+    const remoteRelativeFiles = new Set()
 
     await walk(client, projectRoot, async entry => {
       const relativePath = entry.path.slice(projectRoot.length) || '/'
+      if (entry.isDirectory) {
+        remoteRelativeDirs.add(relativePath.startsWith('/') ? relativePath : `/${relativePath}`)
+      } else {
+        remoteRelativeFiles.add(relativePath.startsWith('/') ? relativePath : `/${relativePath}`)
+      }
       // D2/RF.5: never process sync-excluded remote entries (hidden, LaTeX
       // transients) — they are neither applied, baselined, nor reported.
       if (isSyncExcluded(relativePath)) return
@@ -793,54 +724,32 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
         size: entry.size,
       }
       const prev = previousState[relativePath]
+      const localStillPresent = localPresentPaths
+        ? localPresentPaths.has(relativePath)
+        : true
 
-      if (prev && sameIdentity(prev, remoteState)) {
-        // Remote unchanged since last sync — keep what we had.
+      if (prev && sameIdentity(prev, remoteState) && localStillPresent) {
+        // Remote unchanged since last sync AND still present locally — keep
+        // what we had. (If it was deleted locally since the last sync, fall
+        // through and re-apply: remote wins.)
         nextState[relativePath] = prev
         return
       }
 
-      const localDoc = localDocs[relativePath]
-      const localFile = localFiles[relativePath]
-      const localExists = Boolean(localDoc || localFile)
-
-      if (localExists) {
-        const localContent = localDoc
-          ? localDoc.lines.join('\n')
-          : await getFileBody(projectDoc, localFile)
-        const localHashNow = sha256(localContent)
-        const localHashAtLastSync = prev?.localHash
-        // Both sides changed (or legacy state with unknown local hash) → CONFLICT:
-        // block, notify, never auto-overwrite local edits.
-        if (localHashAtLastSync == null || localHashNow !== localHashAtLastSync) {
-          if (localHashAtLastSync != null && localHashNow !== localHashAtLastSync) {
-            conflicts.push(relativePath)
-            conflictEtags[relativePath] = entry.etag ?? null
-            logger.warn(
-              { userId, projectName, relativePath },
-              'WebDAV pull: both sides changed — conflict, remote NOT applied'
-            )
-          } else {
-            // Legacy state (no stored local hash) — cannot prove local
-            // unmodified. Conservative: treat as conflict, do not auto-overwrite.
-            conflicts.push(relativePath)
-            conflictEtags[relativePath] = entry.etag ?? null
-            logger.warn(
-              { userId, projectName, relativePath },
-              'WebDAV pull: unknown local state (no previous localHash) — treated as conflict'
-            )
-          }
-          return
-        }
-        // Remote-only change → apply safely.
-      }
+      // Project-level import (user decision 2026-08-17): Import = the remote
+      // folder wins. Any remote entry that changed, is new, or was deleted
+      // locally since the last sync is applied unconditionally; local files
+      // the remote tree does not contain are deleted afterwards, so after
+      // Import the local project and the remote folder are identical.
 
       const body = await client.get(entry.path)
       // H3: no-phantom-update guard — if the remote body is byte-identical to
       // what we last synced locally, the "remote changed" flag is a stale-etag
       // artifact (the post-put etag was never recorded). Refresh the identity
-      // record and SKIP the apply: no project update, no history churn.
-      if (prev?.localHash && prev.localHash === sha256(body)) {
+      // record and SKIP the apply: no project update, no history churn —
+      // EXCEPT when the local entity was deleted since the last sync, then
+      // the remote file must be re-applied (remote wins).
+      if (prev?.localHash && prev.localHash === sha256(body) && localStillPresent) {
         nextState[relativePath] = {
           ...remoteState,
           localHash: prev.localHash,
@@ -850,9 +759,11 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
       }
       changedFileCount++
       if (projects.length === 1) {
+        // String projectId required: TpdsUpdateHandler does string comparisons
+        // against project._id.toString() — ObjectId args silently no-op.
         await TpdsUpdateHandler.promises.newUpdate(
           userId,
-          projects[0]._id,
+          String(projects[0]._id),
           projectName,
           relativePath,
           Readable.from([Buffer.from(body)]),
@@ -884,49 +795,95 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
           nextState[normalizedEntityPath].type = 'file'
         }
       }
-      // Deletion reconciliation is intentionally NOT part of pull: a missing
-      // remote file never auto-deletes the local Overleaf file (ARC-06).
+      // --- Un-mirror local (project-level import, user decision 2026-08-17) ---
+      // Import = the remote folder wins: afterwards the local project is a
+      // full mirror of the remote tree, so local docs/files (and folders) the
+      // remote tree does not contain are deleted. Sync-excluded entries
+      // (hidden, LaTeX transients) are never touched; a folder is only
+      // removed if it no longer holds any surviving local entry. This runs
+      // only because the full remote walk above completed — a failed walk
+      // (network error, missing remote folder) aborts before any local
+      // deletion.
+      // Remote file set = what THIS walk actually saw (see remoteRelativeFiles
+      // above).
+      const remoteRelativePaths = new Set(remoteRelativeFiles)
+      const localPaths = [
+        ...entities.docs.map(entity => (entity.path.startsWith('/') ? entity.path : `/${entity.path}`)),
+        ...entities.files.map(entity => (entity.path.startsWith('/') ? entity.path : `/${entity.path}`)),
+      ]
+      const toDelete = localPaths.filter(
+        p => !remoteRelativePaths.has(p) && !isSyncExcluded(p)
+      )
+      let deletedLocal = 0
+      for (const localPath of toDelete) {
+        try {
+          await TpdsUpdateHandler.promises.deleteUpdate(
+            userId,
+            String(project._id),
+            project.name,
+            localPath,
+            'webdav'
+          )
+          deletedLocal += 1
+        } catch (error) {
+          logger.warn({ err: error, path: localPath }, 'WebDAV import: failed to delete local-only entry')
+        }
+      }
+      const survivingLocalPaths = localPaths.filter(p => !toDelete.includes(p))
+      // Local folders: deepest first, only when absent remotely and not
+      // still containing a surviving local entry (e.g. sync-excluded files).
+      for (const folder of [...entities.folders].sort(
+        (a, b) => b.path.length - a.path.length
+      )) {
+        const folderPath = folder.path.startsWith('/') ? folder.path : `/${folder.path}`
+        if (folderPath === '/') continue
+        if (remoteRelativePaths.has(folderPath) || remoteRelativeDirs.has(folderPath)) continue
+        if (isSyncExcluded(folderPath)) continue
+        if (survivingLocalPaths.some(p => p.startsWith(`${folderPath}/`))) continue
+        try {
+          await TpdsUpdateHandler.promises.deleteUpdate(
+            userId,
+            String(project._id),
+            project.name,
+            folderPath,
+            'webdav'
+          )
+          deletedLocal += 1
+        } catch (error) {
+          logger.warn({ err: error, path: folderPath }, 'WebDAV import: failed to delete local-only folder')
+        }
+      }
+      // Create local folders for remote directories the local project lacks
+      // (full tree parity after Import; shallowest first so parents exist).
+      let createdLocalFolders = 0
+      const localFolderPaths = new Set(
+        entities.folders.map(folder =>
+          folder.path.startsWith('/') ? folder.path : `/${folder.path}`)
+      )
+      for (const dir of [...remoteRelativeDirs].sort((a, b) => a.length - b.length)) {
+        if (dir === '/') continue
+        if (localFolderPaths.has(dir)) continue
+        if (isSyncExcluded(dir)) continue
+        try {
+          await TpdsUpdateHandler.promises.createFolder(
+            userId,
+            String(project._id),
+            project.name,
+            dir
+          )
+          createdLocalFolders += 1
+        } catch (error) {
+          logger.warn({ err: error, path: dir }, 'WebDAV import: failed to create local folder')
+        }
+      }
+      createdLocalFolderCount += createdLocalFolders
+      deletedLocalCount += deletedLocal
     }
 
-    if (conflicts.length) {
-      conflictCount += conflicts.length
-      const firstConflict = conflicts[0]
-      await WebdavCredentials.updateSyncStatus(userId, {
-        lastSyncError: `${conflicts.length} file(s) changed on both sides (first: ${firstConflict})`,
-        lastConflict: {
-          path: firstConflict,
-          allPaths: conflicts,
-          projectId: projects[0]?._id.toString(),
-          detectedAt: new Date().toISOString(),
-        },
-      })
-      // RF.2: mirror the conflict onto the project STATE doc — the sync modal
-      // renders the conflict view (and the resolve buttons) from
-      // mergeStatus === 'conflict' + lastConflict on that doc. Credentials-side
-      // bookkeeping above is kept (resolve() consults both locations).
-      if (projects[0]?._id) {
-        await SyncStateManager.updateProjectState(projects[0]._id, {
-          $set: {
-            mergeStatus: 'conflict',
-            lastSyncAt: new Date(),
-            lastConflict: {
-              path: firstConflict,
-              allPaths: conflicts,
-              projectId: projects[0]._id.toString(),
-              detectedAt: new Date().toISOString(),
-              remoteEtag: conflictEtags[firstConflict] ?? null,
-            },
-          },
-        })
-      }
-      await notifyWebdav(userId, 'conflict', {
-        projectName,
-        projectId: projects[0]?._id.toString(),
-        path: firstConflict,
-      })
-    } else if (projects.length === 1) {
-      // RF.2: a conflict-free poll clears a previously recorded conflict on
-      // the state doc (separate operators; updateOne is a no-op if no doc).
+    // Project-level import produces no per-file conflicts: a successful poll
+    // always records a clean sync and clears any previously recorded conflict
+    // (separate operators; updateOne is a no-op if no doc exists).
+    if (projects.length === 1) {
       await SyncStateManager.updateProjectState(projects[0]._id, {
         $set: { mergeStatus: 'clean', lastSyncAt: new Date() },
         $unset: { lastConflict: 1 },
@@ -959,6 +916,8 @@ async function pollUser(userId, { onlyProjectName = null } = {}) {
       rootPath,
       remoteProjectCount: remoteProjects.length,
       changedFileCount,
+      deletedLocalCount,
+      createdLocalFolderCount,
       conflictCount,
       durationMs: Date.now() - startedAt,
     },
