@@ -28,6 +28,79 @@ const sha256 = data => createHash('sha256').update(data).digest('hex')
 // C1: normalize a project-relative key (strip leading slashes) for lookups.
 const normKey = p => String(p || '').replace(/^\/+/, '')
 
+// Mirror-sync decision helpers (pure, exported for unit tests). Both lanes
+// produce the SAME final state: after Export the remote folder contains
+// exactly the local (non-excluded) set; after Import the project contains
+// exactly the remote (non-excluded) set.
+
+/**
+ * Remote keys that must be DELETED on Export: present remotely, absent from
+ * the local set, and not sync-excluded. Keys are compared slash-insensitive.
+ * @param {string[]} remoteKeys remote file keys (any slash style)
+ * @param {string[]} localKeys local entity keys (any slash style)
+ * @param {(key: string) => boolean} isExcluded
+ * @returns {string[]} sorted slash-less keys to delete
+ */
+export function remoteOnlyPaths(remoteKeys, localKeys, isExcluded = () => false) {
+  const local = new Set((localKeys || []).map(normKey))
+  return [...new Set(remoteKeys || [])]
+    .map(normKey)
+    .filter(k => k && !local.has(k) && !isExcluded(k))
+    .sort()
+}
+
+/**
+ * Local keys that must be DELETED on Import: absent from the remote set, with
+ * no remote file anywhere underneath them (so a directory containing kept
+ * files is never removed), and not sync-excluded. The project root ("/") is
+ * never a target — deleteUpdate("/") soft-deletes the whole project.
+ * @param {string[]} localKeys local entity keys (any slash style)
+ * @param {string[]} remoteFileKeys remote FILE keys (any slash style)
+ * @param {(key: string) => boolean} isExcluded
+ * @returns {string[]} sorted slash-less keys to delete
+ */
+export function localOnlyPaths(localKeys, remoteFileKeys, isExcluded = () => false) {
+  const remote = (remoteFileKeys || []).map(normKey)
+  const hasRemoteUnder = p => remote.some(k => k.startsWith(`${p}/`))
+  return [...new Set(localKeys || [])]
+    .map(normKey)
+    .filter(k => {
+      if (!k || k === '/') return false
+      if (remote.includes(k)) return false
+      if (hasRemoteUnder(k)) return false
+      return !isExcluded(k)
+    })
+    .sort()
+}
+
+/**
+ * Import apply decision (remote folder wins): apply the remote file unless
+ * all of these hold — the local entity is still present, the remote rev is
+ * unchanged since the last sync, and the local content is unchanged since
+ * that sync (churn guard only). A locally-deleted file is therefore
+ * re-applied, and a remotely-changed file always wins.
+ * @param {object} p
+ * @param {boolean} p.localPresent local entity exists right now
+ * @param {string|null} p.previousRev stored remote rev baseline
+ * @param {string|null} p.currentRev current remote rev
+ * @param {string|null} p.storedHash stored local-content hash baseline
+ * @param {string|null} p.currentHash current local content hash
+ * @returns {boolean}
+ */
+export function shouldApplyRemoteFile({ localPresent, previousRev, currentRev, storedHash, currentHash }) {
+  if (!localPresent) return true
+  if (
+    previousRev &&
+    currentRev &&
+    previousRev === currentRev &&
+    storedHash &&
+    currentHash === storedHash
+  ) {
+    return false
+  }
+  return true
+}
+
 /**
  * BUG1 (user-reported: modal showed "/A5 test" but the files live in
  * "Apps/Overleaf Dev/A5 test"): combine the owner's configured root folder
@@ -108,13 +181,7 @@ async function ensureDropboxDirectory(client, directoryPath) {
   }
 }
 
-async function uploadProjectToDropbox({
-  client,
-  projectId,
-  rootPath,
-  previousRemoteFiles = null,
-  remoteRemoteFiles = null,
-}) {
+async function uploadProjectToDropbox({ client, projectId, rootPath }) {
   const project = await ProjectGetter.promises.getProject(projectId, { name: true })
   if (!project) throw new Error('Project not found')
 
@@ -134,39 +201,25 @@ async function uploadProjectToDropbox({
     Object.entries(files).filter(([p]) => !isSyncExcluded(p))
   )
 
-  // DBX-08: conflict gate — never push a local version over a remote file whose
-  // rev changed since the last sync (both sides edited → conflict, recorded,
-  // remote NOT clobbered; user resolves via conflict/resolve).
-  const isConflictedLocalPush = filePath => {
-    const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
-    const prevRev = previousRemoteFiles?.[normalized]?.rev
-    const currentRev = remoteRemoteFiles?.[normalized]?.rev
-    return Boolean(prevRev && currentRev && prevRev !== currentRev)
-  }
+  // Mirror export: the local (non-excluded) file set is the source of truth —
+  // every local file is (re)written to Dropbox unconditionally.
+  // Entity keys carry a leading slash; remoteFiles keys (getDropboxRemoteFiles / relativeDropboxPath) do too — keep the canonical single-slash form.
+  const canonicalKey = p => `/` + normKey(p)
 
   let uploadedFiles = 0
-  const conflicts = []
-  // C1: sha256 of each file's content AS PUSHED, so the state can later tell
-  // "local unchanged since last sync" from "local edited".
+  // C1: sha256 of each file's content AS PUSHED — becomes the stored
+  // localHash baseline for the pull-side "unchanged?" skip.
   const localHashes = {}
   for (const [filePath, doc] of Object.entries(localDocs)) {
-    if (isConflictedLocalPush(filePath)) {
-      conflicts.push(filePath)
-      continue
-    }
     const text = doc.lines.join('\n')
     const remotePath = joinDropboxPath(projectPath, filePath)
     await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
     await client.upload(remotePath, Buffer.from(text).toString('base64'))
-    localHashes[`/${filePath}`] = sha256(text)
+    localHashes[canonicalKey(filePath)] = sha256(text)
     uploadedFiles += 1
   }
 
   for (const [filePath, file] of Object.entries(localFilesList)) {
-    if (isConflictedLocalPush(filePath)) {
-      conflicts.push(filePath)
-      continue
-    }
     const { stream } = await HistoryManager.promises.requestBlobWithProjectId(
       projectId,
       file.hash
@@ -175,11 +228,19 @@ async function uploadProjectToDropbox({
     const remotePath = joinDropboxPath(projectPath, filePath)
     await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
     await client.upload(remotePath, content.toString('base64'))
-    localHashes[`/${filePath}`] = sha256(content)
+    localHashes[canonicalKey(filePath)] = sha256(content)
     uploadedFiles += 1
   }
 
-  return { projectPath, projectName: project.name, uploadedFiles, conflicts, localHashes }
+  return {
+    projectPath,
+    projectName: project.name,
+    uploadedFiles,
+    localHashes,
+    // Local entity set (non-excluded), for the push route's remote-only
+    // deletion: after this call the remote folder must contain exactly these.
+    localPaths: [...Object.keys(localDocs), ...Object.keys(localFilesList)],
+  }
 }
 
 function isTextFile(filePath) {
@@ -235,61 +296,6 @@ function toRemoteFilesArray(remoteFiles = {}) {
   }))
 }
 
-/**
- * BUG2 (CRITICAL, user-reported: push skipped ALL remote deletions with
- * "remote identity changed" even though nothing changed on Dropbox):
- * pure planner for guarded deletions. A remote file that was part of a
- * previous sync (stored entry with a rev baseline) and is absent locally is
- * eligible for remote deletion ONLY when the current remote listing shows
- * the SAME rev. Any other case — remote rev changed, unknown/missing rev,
- * or absent from the current listing — goes to `skipped` so the caller
- * records a conflict instead of deleting data the user (or someone else)
- * modified on Dropbox.
- * @param {Array} storedEntries array of {path, rev, ...} from state.remoteFiles
- * @param {Set<string>} localFilePaths currently-existing local files, slash-less
- * @param {Object} currentRemoteMap slashed-normalized current remote listing
- *   (keys slash-less; values {rev, size, modifiedAt})
- * @returns {{ deletions: {path: string}[], skipped: {path: string, remoteRev: string | null}[] }}
- */
-export function planRemoteDeletions(storedEntries, localFilePaths, currentRemoteMap) {
-  const deletions = []
-  const skipped = []
-  for (const entry of storedEntries || []) {
-    const rel = entry?.path ? normKey(entry.path) : ''
-    if (!rel) continue
-    if (localFilePaths && localFilePaths.has(rel)) continue // still exists locally
-    const currentRev = currentRemoteMap?.[rel]?.rev
-    // RF.4 key-shape notes preserved: stored entry paths and listing keys are
-    // carried with a leading slash; both sides are normalized here, and the
-    // caller MUST pass a listing taken against the PROJECT folder (relative
-    // keys) — a root-folder listing would shift every key by the project name
-    // and this guard would skip every deletion (the original live bug).
-    if (!entry?.rev || !currentRev || currentRev !== entry.rev) {
-      skipped.push({ path: rel, remoteRev: currentRev || null })
-    } else {
-      deletions.push({ path: rel })
-    }
-  }
-  return { deletions, skipped }
-}
-
-// H16: update (or create) the remoteFiles entry for a project-relative path,
-// matching either key style (with/without leading slash).
-function updateRemoteFileEntry(state, relKey, patch) {
-  if (!Array.isArray(state.remoteFiles)) state.remoteFiles = []
-  let entry = state.remoteFiles.find(
-    f => f && normKey(f.path) === normKey(relKey)
-  )
-  if (!entry) {
-    entry = { path: `/${relKey}` }
-    state.remoteFiles.push(entry)
-  }
-  for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) entry[key] = value
-  }
-  return entry
-}
-
 async function importProjectFromDropbox({
   client,
   projectId,
@@ -303,6 +309,7 @@ async function importProjectFromDropbox({
 
   let projectPath = joinDropboxPath(rootPath, project.name)
   let listing
+  let remoteFolderMissing = false
   try {
     listing = await client.list(projectPath, { recursive: true })
   } catch (err) {
@@ -314,10 +321,16 @@ async function importProjectFromDropbox({
         listing = await client.list(projectPath, { recursive: true })
       } catch (legacyError) {
         if (!isDropboxNotFound(legacyError)) throw legacyError
-        projectPath = joinDropboxPath(rootPath, project.name)
+        // Folder missing on BOTH the configured root and the legacy root:
+        // the remote project folder does not exist. Propagate a not-found
+        // error so the caller (pull route) aborts WITHOUT touching local
+        // content — an empty listing would otherwise be read as "the remote
+        // folder is empty" and the mirror deletion would wipe the project.
+        remoteFolderMissing = true
         listing = { entries: [] }
       }
     } else {
+      remoteFolderMissing = true
       listing = { entries: [] }
     }
   }
@@ -331,22 +344,31 @@ async function importProjectFromDropbox({
         rev: entry.rev,
         size: entry.size,
         modifiedAt: entry.client_modified || entry.server_modified,
-        // Carry the previous local-hash forward for unchanged files so the
-        // "local edited?" gate keeps working across pulls (C1).
-        localHash: previousRemoteFiles?.[relativeDropboxPath(projectPath, entry)]?.localHash,
+        localHash: previousRemoteFiles?.[relativeDropboxPath(projectPath, entry)]?.localHash || null,
       },
     ])
   )
 
-  // C1: local-change gate — we need the CURRENT project content to compare
-  // against the hashes we stored when that content last entered the project.
-  // Text files: sha256 of lines joined (the exact bytes push/pull use);
-  // binary files: the filestore hash, which is the sha256 of the blob
-  // (content-addressed store).
-  const [localDocs, localFilesMap] = await Promise.all([
+  // Mirror import: the REMOTE folder is the source of truth.
+  //  - every remote file is (re-)applied, unless the remote rev is unchanged
+  //    since last sync AND the local content is unchanged AND the local entity
+  //    still exists (skip only that case, to avoid needless revision churn);
+  //    a locally-deleted file is therefore re-applied (remote wins);
+  //  - local entries that are not part of the remote set are deleted below.
+  const [localDocsRaw, localFilesRaw] = await Promise.all([
     ProjectEntityHandler.promises.getAllDocs(projectId),
     ProjectEntityHandler.promises.getAllFiles(projectId),
   ])
+  // Entity keys carry a leading slash; normalize so lookups are
+  // format-independent (the old code compared slash-less keys against
+  // slash-carrying maps and silently never matched).
+  const localDocs = Object.fromEntries(
+    Object.entries(localDocsRaw || {}).map(([k, v]) => [normKey(k), v])
+  )
+  const localFilesMap = Object.fromEntries(
+    Object.entries(localFilesRaw || {}).map(([k, v]) => [normKey(k), v])
+  )
+  const localKeys = new Set([...Object.keys(localDocs), ...Object.keys(localFilesMap)])
   const currentLocalHash = relKey => {
     if (localDocs && relKey in localDocs) {
       return sha256((localDocs[relKey]?.lines || []).join('\n'))
@@ -359,44 +381,28 @@ async function importProjectFromDropbox({
 
   let importedFiles = 0
   let skippedUnchanged = 0
-  let skippedConflicts = 0
-  const conflicts = []
   const temporaryFiles = []
 
   try {
     for (const entry of entries) {
       const remotePath = entry.relative_path || entry.path_display
       const relativePath = relativeDropboxPath(projectPath, entry)
+      const relKey = normKey(relativePath)
+      const previous =
+        previousRemoteFiles?.[relativePath] || previousRemoteFiles?.[relKey] || null
 
-      // ARC-09: skip files whose rev is unchanged since the last sync —
-      // re-upserting every file on every pull destroyed local revisions and
-      // caused needless history churn.
-      const previous = previousRemoteFiles?.[relativePath]
-      if (previous?.rev && entry.rev && previous.rev === entry.rev) {
+      // Churn guard only: remote unchanged since last sync AND local
+      // unchanged AND local entity still present → skip. Everything else
+      // APPLIES (remote wins): changed remote, locally-deleted, no baseline.
+      if (!shouldApplyRemoteFile({
+        localPresent: localKeys.has(relKey),
+        previousRev: previous?.rev || null,
+        currentRev: entry.rev || null,
+        storedHash: previous?.localHash || null,
+        currentHash: localKeys.has(relKey) ? currentLocalHash(relKey) : null,
+      })) {
         skippedUnchanged += 1
         continue
-      }
-
-      // C1 (user's #1 data-safety issue): the remote file CHANGED (rev
-      // differs). Before applying it, check whether the LOCAL file was edited
-      // since it last came from Dropbox. If local is unchanged (or absent) the
-      // remote change is the only change → safe to apply. If local was edited
-      // too → BOTH sides changed → do NOT apply; record a conflict instead.
-      const relKey = normKey(relativePath)
-      const storedLocalHash = previous?.localHash || null
-      if (storedLocalHash) {
-        const currentHash = currentLocalHash(relKey)
-        if (currentHash !== null && currentHash !== storedLocalHash) {
-          conflicts.push({
-            path: relKey,
-            remoteRev: entry.rev,
-            localHash: currentHash,
-            remoteHash: null,
-            at: new Date(),
-          })
-          skippedConflicts += 1
-          continue
-        }
       }
 
       const result = await client.download(`/${remotePath}`)
@@ -446,7 +452,35 @@ async function importProjectFromDropbox({
     await Promise.all(temporaryFiles.map(file => fs.rm(file, { force: true })))
   }
 
-  return { projectPath, importedFiles, skippedUnchanged, skippedConflicts, conflicts, remoteFiles }
+  // Mirror deletion: local-only entries (not present in the remote set, and
+  // with no remote file anywhere underneath them) are removed. Excluded
+  // entries are never touched; the project root ("/") is never a target —
+  // deleteUpdate(path = "/") soft-deletes the whole project. Never runs when
+  // the remote folder itself is missing (remoteFolderMissing).
+  const remoteRelKeys = entries.map(entry => normKey(relativeDropboxPath(projectPath, entry)))
+  let deletedLocal = 0
+  if (!remoteFolderMissing) {
+    for (const key of localOnlyPaths([...localKeys], remoteRelKeys, isSyncExcluded)) {
+      const p = `/${key}`
+      try {
+        await TpdsUpdateHandler.promises.deleteUpdate(
+          userId,
+          String(project._id),
+          project.name,
+          p,
+          'dropbox'
+        )
+        deletedLocal += 1
+      } catch (error) {
+        logger.warn(
+          { err: error, path: p },
+          'Dropbox import: failed to delete local-only entry'
+        )
+      }
+    }
+  }
+
+  return { projectPath, importedFiles, skippedUnchanged, deletedLocal, remoteFiles, remoteFolderMissing }
 }
 
 async function importNewProjectFromDropbox({
@@ -464,50 +498,12 @@ async function importNewProjectFromDropbox({
   const entries = allEntries.filter(
     entry => !isSyncExcluded(relativeDropboxPath(projectPath, entry))
   )
-  let localDocs = null
-  let localFilesMap = null
-  if (projectId) {
-    const [docs, files] = await Promise.all([
-      ProjectEntityHandler.promises.getAllDocs(projectId),
-      ProjectEntityHandler.promises.getAllFiles(projectId),
-    ])
-    localDocs = docs
-    localFilesMap = files
-  }
-  const currentLocalHash = relKey => {
-    if (!localDocs && !localFilesMap) return null
-    if (localDocs && relKey in localDocs) {
-      return sha256((localDocs[relKey]?.lines || []).join('\n'))
-    }
-    if (localFilesMap && relKey in localFilesMap) {
-      return localFilesMap[relKey]?.hash || null
-    }
-    return null
-  }
-  const conflicts = []
-  let skippedConflicts = 0
   let importedFiles = 0
   for (const entry of entries) {
     const relativePath = relativeDropboxPath(projectPath, entry)
     const remotePath = entry.relative_path || entry.path_display
-    if (projectId) {
-      // C1 gate: never import a changed remote file over a locally edited one.
-      const relKey = normKey(relativePath)
-      const currentHash = currentLocalHash(relKey)
-      if (currentHash !== null) {
-        // There is local content; without a stored baseline (first import into
-        // an existing project) treat as conflict rather than clobber.
-        conflicts.push({
-          path: relKey,
-          remoteRev: entry.rev,
-          localHash: currentHash,
-          remoteHash: null,
-          at: new Date(),
-        })
-        skippedConflicts += 1
-        continue
-      }
-    }
+    // Mirror semantics (remote folder wins): import the remote content into
+    // the existing project; no per-file conflict state is generated anymore.
     const result = await client.download(`/${remotePath}`)
     if (!result?.content_base64) {
       throw new Error(`Dropbox returned no content for ${remotePath}`)
@@ -550,7 +546,7 @@ async function importNewProjectFromDropbox({
     }
     importedFiles += 1
   }
-  return { importedFiles, conflicts, skippedConflicts }
+  return { importedFiles }
 }
 
 async function getDropboxRemoteFiles(client, projectPath) {
@@ -684,7 +680,6 @@ export default {
           return res.json({
             connected: true,
             path,
-            displayRoot: credentials.displayRoot || null,
             // U3: per-project entries with the full project-level path.
             projects: projects.map(p => ({
               projectId: p.projectId,
@@ -769,31 +764,6 @@ export default {
       }
     )
 
-    // Set the display-only Dropbox app folder name (user settings; display
-    // path of linked projects = displayRoot + "/" + project name)
-    webRouter.post(
-      '/user/dropbox/display-root',
-      AuthenticationController.requireLogin(),
-      async (req, res) => {
-        const userId = req.user?._id || req.user?.id
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' })
-        const root =
-          typeof req.body?.displayRoot === 'string'
-            ? req.body.displayRoot.trim()
-            : ''
-        try {
-          await DropboxUserCredentials.findOneAndUpdate(
-            { userId },
-            root ? { $set: { displayRoot: root } } : { $unset: { displayRoot: 1 } }
-          )
-          res.json({ success: true, displayRoot: root || null })
-        } catch (err) {
-          logger.error({ err, userId }, 'Failed to save Dropbox display root')
-          res.status(500).json({ error: err.message })
-        }
-      }
-    )
-
     // Get project’s Dropbox sync state
     webRouter.get(
       '/project/:project_id/dropbox/state',
@@ -806,15 +776,14 @@ export default {
         try {
           const state = await DropboxSyncProjectStates.findOne({ projectId })
           if (state) {
-            // DBX-14: normalize in memory only (no write-on-read)
-            state.path = normalizeDropboxPath(state.path)
-            // Project files live under <state.path>/<project name> (same join
-            // rule as push/pull/import) — expose that full path for display.
-            // BUG1 (round 2): the display path must be the FULL Dropbox path
-            // e.g. "Apps/Overleaf Dev/A5 test". The owner's active credentials
-            // doc often has no `path` (OAuth link didn't store one); the legacy
-            // collection may. The app sandbox folder ("Apps/<App name>") is not
-            // visible via the API, so fall back to the fork's app-folder name.
+            // DBX-14: normalize in memory only (no write-on-read). Respond
+            // with a PLAIN object: res.json on a mongoose document serializes
+            // via toObject(), which drops non-schema properties — that is why
+            // previously computed `fullPath` never reached the modal and it
+            // kept falling back to the stored projectPath ("/A5 test").
+            const stateObj = state.toObject()
+            stateObj.path = normalizeDropboxPath(state.path)
+            let fullPath = null
             try {
               const owner = state.ownerId || userId
               let project = null
@@ -826,7 +795,7 @@ export default {
               const projName = project?.name
               const activeDoc = await DropboxUserCredentials.findOne(
                 { userId: owner },
-                { path: 1, displayRoot: 1 }
+                { path: 1 }
               ).lean().catch(() => null)
               let legacyDoc = null
               try {
@@ -836,31 +805,29 @@ export default {
               } catch {
                 legacyDoc = null
               }
-              // Root preference: an explicitly configured app folder
-              // (displayRoot, set in user settings) wins over the stored
-              // connection path; both are absent for OAuth-linked sandbox
-              // roots (path "/"), so the fork’s app-folder name remains the
-              // final fallback.
+              // The app sandbox folder ("Apps/<app name>") is not exposed by
+              // the Dropbox API, so the fork's app-folder name is the display
+              // fallback when neither credentials doc carries a real path.
               const rootPath = resolveDisplayRoot(
-                activeDoc?.displayRoot ||
-                  (activeDoc?.path && activeDoc.path !== '/' ? activeDoc.path : null),
+                activeDoc?.path && activeDoc.path !== '/' ? activeDoc.path : null,
                 legacyDoc?.path
               )
-              const displayTarget =
-                state.path && state.path !== '/'
-                  ? state.path
-                  : projName
-                    ? joinDropboxPath(state.path, projName)
-                    : null
-              state.projectPath = projName
-                ? joinDropboxPath(state.path, projName)
-                : state.path
-              state.fullPath = joinDisplayPath(rootPath, displayTarget)
+              if (projName) {
+                const displayTarget =
+                  stateObj.path && stateObj.path !== '/'
+                    ? stateObj.path
+                    : joinDropboxPath(stateObj.path, projName)
+                stateObj.projectPath = joinDropboxPath(stateObj.path, projName)
+                fullPath = joinDisplayPath(rootPath, displayTarget)
+              }
             } catch {
-              // display-only fields — modal falls back to projectPath/path
+              // display-only enrichment — respond with the stored state below
             }
+            stateObj.fullPath = fullPath
+            res.json(stateObj)
+          } else {
+            res.json({ connected: false })
           }
-          res.json(state || { connected: false })
         } catch (err) {
           logger.error(
             { err, projectId },
@@ -925,17 +892,45 @@ export default {
           )
 
           try {
+            // Mirror export: snapshot the remote folder BEFORE the upload so
+            // remote-only files can be removed afterwards (link = local
+            // project becomes the Dropbox folder, same as Export).
+            let remoteBeforeLink = {}
+            try {
+              const linkProject = await ProjectGetter.promises.getProject(projectId, { name: true })
+              remoteBeforeLink = await getDropboxRemoteFiles(
+                client,
+                joinDropboxPath(dropboxPath, linkProject.name)
+              )
+            } catch (err) {
+              if (!isDropboxNotFound(err)) throw err
+            }
             const syncResult = await uploadProjectToDropbox({
               client,
               projectId,
               rootPath: dropboxPath,
             })
+            const toDeleteOnLink = remoteOnlyPaths(
+              Object.keys(remoteBeforeLink),
+              syncResult.localPaths,
+              isSyncExcluded
+            )
+            for (const p of toDeleteOnLink) {
+              try {
+                await client.delete(joinDropboxPath(syncResult.projectPath, p))
+              } catch (err) {
+                if (!isDropboxNotFound(err)) {
+                  logger.warn({ err, projectId, filePath: p }, 'failed to delete remote-only file during link')
+                }
+              }
+            }
             const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
-            // C1: persist the sha256 of each file as pushed (keyed with a
-            // leading slash, same key style as getDropboxRemoteFiles).
+            // C1: persist the sha256 of each file as pushed (canonical
+            // single-slash keys, same style as getDropboxRemoteFiles keys).
             for (const [hashPath, hashValue] of Object.entries(syncResult.localHashes || {})) {
-              if (remoteFiles[hashPath]) {
-                remoteFiles[hashPath] = { ...remoteFiles[hashPath], localHash: hashValue }
+              const k = `/` + normKey(hashPath)
+              if (remoteFiles[k]) {
+                remoteFiles[k] = { ...remoteFiles[k], localHash: hashValue }
               }
             }
             state.lastSyncAt = new Date()
@@ -1046,54 +1041,52 @@ export default {
             if (!isDropboxNotFound(err)) throw err
             // ARC-06: a missing remote folder is NOT confirmation that the
             // Overleaf project should be deleted (it may be a wrong path,
-            // a revoked token or an incomplete listing). Unlink the state,
-            // report the issue, and let the user decide.
+            // a revoked token or an incomplete listing). Report, and let the
+            // user decide. No local content is touched.
             await state.updateOne({
-              connected: false,
-              remoteFiles: [],
               lastSyncAt: new Date(),
-              lastSyncError: 'Remote project folder not found (pull aborted; project NOT deleted)',
+              lastSyncError: 'Remote project folder not found (import aborted; project NOT modified)',
             })
             return res.json({
               success: false,
-              message: 'Remote project folder not found. The project was NOT deleted; check the Dropbox path or re-link.',
+              message: 'Remote project folder not found. The project was NOT modified; check the Dropbox path or re-link.',
               remoteMissing: true,
             })
           }
 
-          // Note: reconciliation of deletions is intentionally skipped for pull operations.
-          // Pull should only ADD/UPDATE files from Dropbox, not delete local files.
-          // Deletion reconciliation happens in push operations instead.
-          // C1: record pull-side conflicts (both sides changed → remote NOT
-          // applied to those files).
-          const pullConflicts = importResult.conflicts || []
+          // ARC-06 (flag path): the helper reports a missing folder WITHOUT
+          // throwing when both roots 404. Abort BEFORE any state update — an
+          // empty remote listing must never be read as "remote is empty".
+          if (importResult.remoteFolderMissing) {
+            await state.updateOne({
+              lastSyncAt: new Date(),
+              lastSyncError: 'Remote project folder not found (import aborted; project NOT modified)',
+            })
+            return res.json({
+              success: false,
+              message: 'Remote project folder not found. The project was NOT modified; check the Dropbox path or re-link.',
+              remoteMissing: true,
+            })
+          }
+
+          // Mirror import (remote folder wins): applied the remote set and
+          // deleted local-only entries (skipped when the remote folder was
+          // missing — see above). A clean mirror run owns the conflict-free
+          // state going forward (legacy conflict entries from old syncs are
+          // cleared).
           await state.updateOne({
             remoteFiles: toRemoteFilesArray(importResult.remoteFiles),
             lastSyncAt: new Date(),
-            mergeStatus: pullConflicts.length ? 'conflict' : 'clean',
-            lastConflict: pullConflicts.length
-              ? {
-                  path: pullConflicts[0].path,
-                  localVersion: pullConflicts[0].localHash || 'local HEAD',
-                  localHash: pullConflicts[0].localHash || null,
-                  remoteRev: pullConflicts[0].remoteRev || null,
-                  timestamp: new Date(),
-                }
-              : null,
-            conflicts: pullConflicts,
-            lastSyncError: pullConflicts.length
-              ? `${pullConflicts.length} file(s) changed on both sides (first: ${pullConflicts[0].path}); remote version NOT imported`
-              : null,
+            mergeStatus: 'clean',
+            lastConflict: null,
+            lastSyncError: null,
+            conflicts: [],
           })
 
           res.json({
             success: true,
-            message: pullConflicts.length
-              ? `Pull completed with ${pullConflicts.length} conflict(s) (conflicting files NOT imported)`
-              : 'Pull completed',
-            conflictCount: pullConflicts.length,
-            conflicts: pullConflicts,
-            skippedFiles: importResult.skippedConflicts || 0,
+            message: 'Import completed (Dropbox folder is now mirrored into the project)',
+            skippedUnchanged: importResult.skippedUnchanged || 0,
             ...importResult,
           })
           })
@@ -1147,16 +1140,13 @@ export default {
           // DBX-14: don't write on read — just use the normalized local copy
           // (state docs are normalized at creation time)
           state.path = dropboxPath
-          // Snapshot remote state BEFORE push (for guarded deletion + conflict
-          // gate).
-          // BUG2 fix: the snapshot MUST be taken against the PROJECT folder
-          // (<root>/<project name>), because state.remoteFiles, the C1 gate
-          // and the deletion guard all use PROJECT-RELATIVE keys. The old
-          // code listed the ROOT directory, so every key was shifted by the
-          // project name ('A5 test/main.tex'), every guard lookup missed,
-          // and push reported "remote identity changed" for every file
-          // (skipping all deletions) while simultaneously disabling the
-          // remote-changed push gate.
+          // Snapshot the remote folder BEFORE pushing. Mirror semantics:
+          // after a successful export the remote folder must contain exactly
+          // the local (non-excluded) file set, so this listing drives the
+          // remote-only deletion. The snapshot MUST be taken against the
+          // PROJECT folder (<root>/<project name>) so keys are project-
+          // relative (a root listing would shift every key by the project
+          // name and defeat the set comparison).
           const project = await ProjectGetter.promises.getProject(projectId, { name: true })
           if (!project) throw new Error('Project not found')
           const prePushProjectPath = joinDropboxPath(dropboxPath, project.name)
@@ -1165,138 +1155,80 @@ export default {
             remoteBeforePush = await getDropboxRemoteFiles(client, prePushProjectPath)
           } catch (err) {
             // Remote folder missing (deleted since last sync, or never
-            // created yet): nothing to reconcile against. Treat as empty —
-            // safe direction: the guard below deletes nothing and records
-            // conflicts instead. Uploads below still create the folder.
+            // created yet): snapshot as empty — nothing is deleted, and the
+            // uploads below recreate the folder. A hard listing failure
+            // aborts the push (no partial mirror state).
             if (!isDropboxNotFound(err)) throw err
             logger.warn(
               { projectId, projectPath: prePushProjectPath },
               'push: pre-push remote project folder not found; snapshotting as empty'
             )
           }
-          const previousRemoteMap = normalizeDropboxPathMap(
-            Object.fromEntries(
-              toRemoteFilesArray(state.remoteFiles)
-                .filter(f => f && f.path)
-                .map(f => [f.path, f])
-            )
-          )
-          const remoteRemoteMap = normalizeDropboxPathMap(remoteBeforePush)
+          const remoteRelBeforePush = normalizeDropboxPathMap(remoteBeforePush)
 
           const syncResult = await uploadProjectToDropbox({
             client,
             projectId,
             rootPath: dropboxPath,
-            previousRemoteFiles: previousRemoteMap,
-            remoteRemoteFiles: remoteRemoteMap,
           })
-          const remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
-          // C1: persist the sha256 of each file as pushed (the baseline the
-          // pull-side "local edited?" gate compares against).
-          for (const [hashPath, hashValue] of Object.entries(syncResult.localHashes || {})) {
-            if (remoteFiles[hashPath]) {
-              remoteFiles[hashPath] = { ...remoteFiles[hashPath], localHash: hashValue }
-            }
-          }
 
-          // Guarded deletion reconciliation (safety rule: a partial/changed remote
-          // listing must never drive blind deletions). Only delete a remote file when ALL hold:
-          //   1. it was part of a PREVIOUS sync (state.remoteFiles),
-          //   2. it no longer exists locally,
-          //   3. its remote identity (rev) is unchanged since that previous sync.
-          // If the remote changed (or identity is unknown), skip deletion and record conflict.
-          const localEntities = await ProjectEntityHandler.promises.getAllEntities(projectId)
-          // RF.4: entity paths carry a leading slash ('/main.tex'); the
-          // reconciliation loop compares against slash-less relative keys,
-          // so normalize the local set to the same key style (the old
-          // mixed-style `has()` check never matched and defeated this guard).
-          const localFilePaths = new Set([
-            ...Object.keys(localEntities.docs || {}),
-            ...Object.keys(localEntities.files || {}),
-          ].map(p => (p && p.startsWith('/') ? p.slice(1) : p)))
-
+          // Mirror deletion (local project wins): remove remote files that are
+          // not part of the local set. Excluded remote entries are never
+          // touched; the project folder itself never is (file listing only).
+          const toDeleteRemote = remoteOnlyPaths(
+            Object.keys(remoteRelBeforePush),
+            syncResult.localPaths,
+            isSyncExcluded
+          )
           let deletedFromRemote = 0
-          const skippedDeletions = []
-          const skippedDeletionConflicts = []
-          const previousEntries = toRemoteFilesArray(state.remoteFiles).filter(f => f && f.path)
-          // BUG2: pure planner — delete ONLY when the current remote rev
-          // equals the stored baseline; everything else is recorded as a
-          // conflict instead of being deleted.
-          const deletionPlan = planRemoteDeletions(previousEntries, localFilePaths, remoteRemoteMap)
-          for (const plan of deletionPlan.deletions) {
-            const remotePath = joinDropboxPath(syncResult.projectPath, plan.path)
+          for (const rel of toDeleteRemote) {
+            const remotePath = joinDropboxPath(syncResult.projectPath, rel)
             try {
               await client.delete(remotePath)
               deletedFromRemote += 1
-              logger.debug({ projectId, filePath: plan.path }, 'deleted from Dropbox during push')
+              logger.debug({ projectId, filePath: rel }, 'deleted remote-only file during push')
             } catch (err) {
               if (!isDropboxNotFound(err)) {
-                logger.warn({ err, projectId, filePath: plan.path }, 'failed to delete file from Dropbox during push')
+                logger.warn({ err, projectId, filePath: rel }, 'failed to delete remote-only file during push')
               }
             }
           }
-          for (const plan of deletionPlan.skipped) {
-            skippedDeletions.push(plan.path)
-            // Record the skipped deletion as a resolvable conflict: entry.rev
-            // is updated when the user resolves (keep-local unblocks the
-            // deletion on the next push; keep-remote re-imports the file).
-            skippedDeletionConflicts.push({
-              path: plan.path,
-              remoteRev: plan.remoteRev || null,
-              localHash: null,
-              remoteHash: null,
-              at: new Date(),
-            })
+
+          // Final remote snapshot for the state baseline (revs after sync).
+          let remoteFiles = remoteRelBeforePush
+          try {
+            remoteFiles = await getDropboxRemoteFiles(client, syncResult.projectPath)
+          } catch {
+            // Uploads/deletions already succeeded; keep the pre-push
+            // snapshot (drift is cosmetic — the next sync re-lists).
           }
-          if (skippedDeletions.length) {
-            logger.warn({ projectId, skippedDeletions }, 'push: skipped remote deletions; remote identity changed since last sync (conflicts recorded)')
+          // C1: persist the sha256 of the content as pushed — the baseline
+          // for the pull-side "both sides unchanged" skip. localHashes keys
+          // are canonical single-slash form; remoteFiles keys (from
+          // getDropboxRemoteFiles) are too.
+          for (const [hashPath, hashValue] of Object.entries(syncResult.localHashes || {})) {
+            const k = `/` + normKey(hashPath)
+            if (remoteFiles[k]) {
+              remoteFiles[k] = { ...remoteFiles[k], localHash: hashValue }
+            }
           }
 
-          const pushConflicts = syncResult.conflicts || []
-          // The push result OWNS the conflicts array going forward: content
-          // conflicts + guarded-deletion skips together; clean runs clear it.
-          const allConflicts = [...pushConflicts, ...skippedDeletionConflicts]
-          if (allConflicts.length) {
-            const firstConflict = allConflicts[0]
-            const firstRel = normKey(firstConflict.path)
-            await state.updateOne({
-              remoteFiles: toRemoteFilesArray(remoteFiles),
-              lastSyncAt: new Date(),
-              mergeStatus: 'conflict',
-              lastConflict: {
-                path: firstConflict.path,
-                localVersion: 'local HEAD',
-                localHash: null,
-                remoteRev: firstConflict.remoteRev || remoteRemoteMap[firstRel]?.rev || null,
-                timestamp: new Date(),
-              },
-              lastSyncError: `${allConflicts.length} conflict(s) (first: ${firstConflict.path}); changed files NOT pushed/NOT deleted`,
-              conflicts: allConflicts,
-            })
-          } else {
-            await state.updateOne({
-              remoteFiles: toRemoteFilesArray(remoteFiles),
-              lastSyncAt: new Date(),
-              mergeStatus: 'clean',
-              lastConflict: null,
-              lastSyncError: null,
-              conflicts: [],
-            })
-          }
+          // A clean mirror run owns the conflict-free state going forward
+          // (legacy conflict entries from old syncs are cleared).
+          await state.updateOne({
+            remoteFiles: toRemoteFilesArray(remoteFiles),
+            lastSyncAt: new Date(),
+            mergeStatus: 'clean',
+            lastConflict: null,
+            lastSyncError: null,
+            conflicts: [],
+          })
 
           res.json({
-            ...syncResult,
             success: true,
-            // Explicit keys AFTER the spread: syncResult.conflicts only covers
-            // upload-side conflicts; the response must report ALL recorded
-            // conflicts (upload + guarded-deletion skips).
-            message: allConflicts.length
-              ? `Push completed with ${allConflicts.length} conflict(s) (conflicting files NOT pushed/NOT deleted)`
-              : 'Push completed',
+            uploadedFiles: syncResult.uploadedFiles,
             deletedFiles: deletedFromRemote,
-            skippedDeletions,
-            conflictCount: allConflicts.length,
-            conflicts: allConflicts,
+            message: 'Export completed (project content is now mirrored to the Dropbox folder)',
           })
           })
         } catch (err) {
@@ -1359,211 +1291,6 @@ export default {
           })
         } catch (err) {
           logger.error({ err, projectId }, 'Failed to list Dropbox files')
-          res.status(500).json({ error: err.message })
-        }
-      }
-    )
-
-    // Resolve a sync conflict
-    webRouter.post(
-      '/project/:project_id/dropbox/conflict/resolve',
-      ensureUserCanWriteProjectContent,
-      async (req, res) => {
-        const userId = req.user?._id || req.user?.id
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' })
-
-        const projectId = req.params.project_id
-        const { choice, filePath } = req.body || {}
-
-        if (!['keep-local', 'keep-remote'].includes(choice)) {
-          return res.status(400).json({
-            error: 'choice must be "keep-local" or "keep-remote"',
-          })
-        }
-
-        try {
-          return await withProjectSyncLock(projectId, async () => {
-          const state = await DropboxSyncProjectStates.findOne({
-            projectId,
-          })
-          if (!state || !state.connected) {
-            return res.status(409).json({ error: 'Project not linked to Dropbox' })
-          }
-
-          const credentials = await DropboxUserCredentials.findOne({ userId })
-          if (!credentials) {
-            return res.status(409).json({ error: 'Dropbox credentials not found' })
-          }
-          let accessToken
-          try {
-            accessToken = decryptToken(credentials.accessToken)
-          } catch (err) {
-            logger.error({ err, userId }, 'Failed to decrypt Dropbox token')
-            return res.status(500).json({ error: 'Token decryption failed' })
-          }
-
-          // keep-local: the local Overleaf content already wins. H16 (and C1
-          // consistency): record the LOCAL content hash as the new baseline and
-          // the remote rev as "seen", so the ARC-09 gate treats it as synced
-          // and the NEXT PUSH carries the local version out to Dropbox. Then
-          // remove this path from the recorded conflicts (keep others).
-          if (choice === 'keep-local') {
-            const targetPath = filePath || state.lastConflict?.path || (state.conflicts || [])[0]?.path
-            if (targetPath) {
-              const relKey = normKey(targetPath)
-              let localHash = null
-              try {
-                if (isTextFile(relKey)) {
-                  const docs = await ProjectEntityHandler.promises.getAllDocs(projectId)
-                  if (docs && relKey in docs) {
-                    localHash = sha256((docs[relKey].lines || []).join('\n'))
-                  }
-                } else {
-                  const files = await ProjectEntityHandler.promises.getAllFiles(projectId)
-                  localHash = files?.[relKey]?.hash || null
-                }
-              } catch {
-                localHash = null
-              }
-              const conflictEntry = (state.conflicts || []).find(c => normKey(c.path) === relKey)
-              const remoteRev = conflictEntry?.remoteRev || state.lastConflict?.remoteRev || null
-              updateRemoteFileEntry(state, relKey, {
-                localHash: localHash ?? undefined,
-                rev: remoteRev ?? undefined,
-              })
-            }
-            const remainingConflicts = ((state.conflicts || [])).filter(
-              c => !targetPath || normKey(c.path) !== normKey(targetPath)
-            )
-            await state.updateOne({
-              mergeStatus: 'clean',
-              lastConflict: null,
-              lastSyncError: null,
-              lastSyncAt: new Date(),
-              conflicts: remainingConflicts,
-              remoteFiles: toRemoteFilesArray(state.remoteFiles),
-            })
-            logger.info({ projectId, filePath }, 'conflict resolved: keep-local')
-            return res.json({
-              success: true,
-              message: 'Conflict resolved - keeping local version',
-              conflicts: remainingConflicts,
-              note: 'The local version wins; push to publish it to Dropbox.',
-            })
-          }
-
-          // keep-remote: force-apply the Dropbox version for the named file
-          // (bypassing the C1 gate by construction: this route IS the
-          // resolution), then H16 bookkeeping — refresh the rev, store the sha256
-          // of what we wrote as the new localHash baseline, and drop the path
-          // from the recorded conflicts.
-          const client = new DropboxClient({ accessToken })
-          const dropboxPath = normalizeDropboxPath(state.path)
-          const targetPath = filePath || state.lastConflict?.path || (state.conflicts || [])[0]?.path
-
-          let appliedPath = null
-          let appliedHash = null
-          let latestRev = null
-          let remoteFilesAfter = null
-          if (filePath) {
-            const projectDoc = await ProjectGetter.promises.getProject(projectId, { name: true })
-            const cleanFilePath = filePath.startsWith('/') ? filePath.slice(1) : filePath
-            const remoteFullPath = joinDropboxPath(
-              dropboxPath,
-              projectDoc?.name || '',
-              cleanFilePath
-            )
-            let result
-            try {
-              result = await client.download(remoteFullPath)
-            } catch (err) {
-              if (!isDropboxNotFound(err)) throw err
-              return res.status(404).json({ error: `Remote file not found: ${filePath}` })
-            }
-            const content = Buffer.from(result?.content_base64 || '', 'base64')
-            appliedHash = isTextFile(cleanFilePath) ? sha256(content.toString('utf8')) : sha256(content)
-            if (isTextFile(cleanFilePath)) {
-              await EditorController.promises.upsertDocWithPath(
-                projectId,
-                cleanFilePath,
-                content.toString('utf8').split('\n'),
-                'dropbox',
-                userId
-              )
-            } else {
-              const temporaryFile = path.join(
-                os.tmpdir(),
-                `overleaf-dropbox-resolve-${Date.now()}`
-              )
-              await fs.writeFile(temporaryFile, content)
-              await EditorController.promises.upsertFileWithPath(
-                projectId,
-                cleanFilePath,
-                temporaryFile,
-                null,
-                'dropbox',
-                userId
-              )
-              await fs.rm(temporaryFile, { force: true })
-            }
-            appliedPath = cleanFilePath
-            // H16: refresh the entry (rev from the latest remote listing of
-            // the PROJECT folder + localHash of what we just wrote).
-            const projectFolder = joinDropboxPath(dropboxPath, projectDoc?.name || '')
-            let latestMap = null
-            try {
-              latestMap = await getDropboxRemoteFiles(client, projectFolder)
-            } catch {
-              latestMap = null
-            }
-            latestRev =
-              latestMap?.[cleanFilePath]?.rev || latestMap?.[`/${cleanFilePath}`]?.rev || null
-          } else {
-            const importResult = await importProjectFromDropbox({
-              client,
-              projectId,
-              userId,
-              rootPath: dropboxPath,
-              legacyRootPath: LEGACY_DROPBOX_PATH,
-              previousRemoteFiles: {},
-            })
-            remoteFilesAfter = importResult.remoteFiles
-            if (targetPath) {
-              const relKey = normKey(targetPath)
-              latestRev = importResult.remoteFiles?.[`/${relKey}`]?.rev || importResult.remoteFiles?.[relKey]?.rev || null
-              appliedHash = importResult.remoteFiles?.[`/${relKey}`]?.localHash || importResult.remoteFiles?.[relKey]?.localHash || null
-            }
-          }
-
-          if (targetPath) {
-            updateRemoteFileEntry(state, normKey(targetPath), {
-              localHash: appliedHash ?? undefined,
-              rev: latestRev ?? undefined,
-            })
-          }
-
-          const remainingConflicts = ((state.conflicts || [])).filter(
-            c => !targetPath || normKey(c.path) !== normKey(targetPath)
-          )
-
-          await state.updateOne({
-            mergeStatus: 'clean',
-            lastConflict: null,
-            lastSyncError: null,
-            lastSyncAt: new Date(),
-            conflicts: remainingConflicts,
-            remoteFiles: toRemoteFilesArray(remoteFilesAfter || state.remoteFiles),
-          })
-
-          logger.info({ projectId, filePath, choice }, 'conflict resolved: keep-remote')
-          res.json({
-            success: true,
-            message: `Conflict resolved - keeping Dropbox version${appliedPath ? ` (file: ${appliedPath})` : ' (whole project)'}`,
-            conflicts: remainingConflicts,
-          })
-          })
-        } catch (err) {
-          logger.error({ err, projectId }, 'Failed to resolve Dropbox conflict')
           res.status(500).json({ error: err.message })
         }
       }

@@ -7,16 +7,14 @@ import { debugConsole } from '@/utils/debugging'
 const DropboxWidget = () => {
   const { t } = useTranslation()
   const [connected, setConnected] = useState(false)
-  const [appFolder, setAppFolder] = useState('')
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string>()
 
   useEffect(() => {
     getJSON('/user/dropbox/status')
-      .then((status: { connected: boolean; displayRoot?: string | null }) => {
+      .then((status: { connected: boolean }) => {
         setConnected(status.connected)
-        if (status.displayRoot) setAppFolder(status.displayRoot)
       })
       .catch((err: any) => {
         debugConsole.error(err?.message || err)
@@ -24,20 +22,6 @@ const DropboxWidget = () => {
       })
       .finally(() => setLoading(false))
   }, [t])
-
-  const saveAppFolder = async () => {
-    setWorking(true)
-    setError(undefined)
-    try {
-      await postJSON('/user/dropbox/display-root', {
-        body: { displayRoot: appFolder },
-      })
-    } catch (err: any) {
-      setError(err?.data?.error || err?.message || t('generic_something_went_wrong'))
-    } finally {
-      setWorking(false)
-    }
-  }
 
   const connect = async () => {
     setWorking(true)
@@ -68,20 +52,6 @@ const DropboxWidget = () => {
         {connected ? (
           <>
             <p className="small">Connected to Dropbox.</p>
-            <label className="form-label" htmlFor="dropbox-app-folder">
-              {t('dropbox_app_folder_label')}
-            </label>
-            <p className="small form-text">{t('dropbox_app_folder_description')}</p>
-            <input
-              id="dropbox-app-folder"
-              className="form-control mb-2"
-              value={appFolder}
-              onChange={event => setAppFolder(event.target.value)}
-              placeholder="Apps/Overleaf Dev"
-            />
-            <OLButton variant="secondary" onClick={saveAppFolder} disabled={working} className="mb-2">
-              {working ? t('loading') : t('save')}
-            </OLButton>
             <OLButton variant="danger-ghost" onClick={disconnect} disabled={working}>
               Disconnect
             </OLButton>

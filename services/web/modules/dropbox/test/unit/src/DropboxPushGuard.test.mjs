@@ -34,95 +34,131 @@ vi.mock('../../../app/models/dropboxSyncProjectStates.mjs', () => ({
 }))
 vi.mock('@overleaf/settings', () => ({ default: {} }))
 
-const { joinDisplayPath, planRemoteDeletions, resolveDisplayRoot } = await import(
-  '../../../app/src/DropboxRouter.mjs'
-)
+const {
+  joinDisplayPath,
+  localOnlyPaths,
+  remoteOnlyPaths,
+  resolveDisplayRoot,
+  shouldApplyRemoteFile,
+} = await import('../../../app/src/DropboxRouter.mjs')
 
-describe('planRemoteDeletions (BUG2: guarded remote deletion)', () => {
-  const storedEntries = [
-    { path: '/main.tex', rev: '01658c9439774350000000373b78f03' },
-    { path: '/sample.bib', rev: '01658c9439774350000000373b78f04' },
-    { path: '/Bla/Screenshot_2026-08-04.png', rev: '01658c943b131170000000373b78f05' },
-    // legacy entry without a rev baseline — must never be blindly deleted
-    { path: '/legacy.txt' },
-  ]
+describe('remoteOnlyPaths (mirror export: local project wins)', () => {
+  const isExcluded = k => k === '.DS_Store' || k.split('/').some(p => p.startsWith('.'))
 
-  it('(a) remote unchanged since last sync -> deletion proceeds', () => {
-    const localFilePaths = new Set() // everything previously stored was deleted locally
-    // current remote listing (PROJECT-relative, slash keys as produced by
-    // getDropboxRemoteFiles) — same revs as the stored baseline:
-    const currentRemoteMap = {
-      'main.tex': { rev: '01658c9439774350000000373b78f03' },
-      'sample.bib': { rev: '01658c9439774350000000373b78f04' },
-      'Bla/Screenshot_2026-08-04.png': { rev: '01658c943b131170000000373b78f05' },
-      'legacy.txt': { rev: '01658c94deadbeef000000000000001' },
-    }
-    const plan = planRemoteDeletions(storedEntries, localFilePaths, currentRemoteMap)
-    expect(plan.deletions.map(d => d.path).sort()).toEqual([
-      'Bla/Screenshot_2026-08-04.png',
-      'main.tex',
-      'sample.bib',
-    ])
-    // the only skip must be the entry WITHOUT a stored baseline (no rev to
-    // compare against) — never a healthy unchanged file:
-    expect(plan.skipped.map(s => s.path)).toEqual(['legacy.txt'])
+  it('deletes exactly the remote files absent from the local set', () => {
+    const remote = ['/main.tex', 'sample.bib', '/extra/remote-only.png', 'Bla/shot.png']
+    const local = ['main.tex', 'sample.bib', '/Bla/shot.png']
+    expect(remoteOnlyPaths(remote, local, isExcluded)).toEqual(['extra/remote-only.png'])
   })
 
-  it('(b) remote modified since last sync -> deletion skipped + conflict data recorded', () => {
-    const localFilePaths = new Set()
-    // user confirms on Dropbox: main.tex changed (new rev); rest unchanged
-    const currentRemoteMap = {
-      'main.tex': { rev: '01659c949999999990000000000000000' }, // CHANGED
-      'sample.bib': { rev: '01658c9439774350000000373b78f04' },
-    }
-    const plan = planRemoteDeletions(storedEntries, localFilePaths, currentRemoteMap)
-    // changed + vanished-from-listing + no-baseline are all skipped;
-    // unchanged still proceeds:
-    expect(plan.skipped.map(s => s.path).sort()).toEqual([
-      'Bla/Screenshot_2026-08-04.png', // vanished from listing -> not "unchanged"
-      'legacy.txt',
-      'main.tex',
-    ])
-    expect(plan.deletions.map(d => d.path)).toEqual(['sample.bib'])
-    // the conflict entry for the changed file carries the CURRENT remote rev
-    // (so keep-local resolution can unblock the deletion on the next push):
-    const main = plan.skipped.find(s => s.path === 'main.tex')
-    expect(main.remoteRev).toBe('01659c949999999990000000000000000')
+  it('never deletes sync-excluded remote entries', () => {
+    const remote = ['.hidden/file.txt', '.cache/build.aux', 'main.tex']
+    const local = ['main.tex']
+    expect(remoteOnlyPaths(remote, local, isExcluded)).toEqual([])
   })
 
-  it('files that still exist locally are never planned for deletion', () => {
-    const currentRemoteMap = { 'main.tex': { rev: '01658c9439774350000000373b78f03' } }
-    const localFilePaths = new Set(['main.tex'])
-    const plan = planRemoteDeletions(storedEntries, localFilePaths, currentRemoteMap)
-    expect(plan.deletions.map(d => d.path)).not.toContain('main.tex')
-    expect(plan.skipped.map(s => s.path)).not.toContain('main.tex')
-    // the other stored files are missing locally but ABSENT from the current
-    // listing (or have no baseline) — safe direction: skipped, not deleted:
-    expect(plan.deletions).toHaveLength(0)
-    expect(plan.skipped.map(s => s.path).sort()).toEqual([
-      'Bla/Screenshot_2026-08-04.png',
-      'legacy.txt',
-      'sample.bib',
-    ])
+  it('never deletes when the remote set is a subset (nothing to do)', () => {
+    expect(remoteOnlyPaths(['a/b.txt'], ['a/b.txt', 'other/c.txt'], isExcluded)).toEqual([])
   })
 
-  it('reproduces the live incident map shape (all files skipped) only when the listing is really wrong', () => {
-    // THE LIVE BUG: listing taken against the ROOT directory shifts every key
-    // by the project name. With the fixed planner that input must still
-    // skip everything (safe direction) — the route fix is to snapshot the
-    // project folder so this case no longer occurs:
-    const rootLevelMap = {
-      'A5 test/main.tex': { rev: '01658c9439774350000000373b78f03' },
-      'A5 test/sample.bib': { rev: '01658c9439774350000000373b78f04' },
-    }
-    const plan = planRemoteDeletions(storedEntries, new Set(), rootLevelMap)
-    expect(plan.deletions).toHaveLength(0)
-    expect(plan.skipped.map(s => s.path).sort()).toEqual([
-      'Bla/Screenshot_2026-08-04.png',
-      'legacy.txt',
-      'main.tex',
-      'sample.bib',
+  it('handles mixed slash styles on both sides', () => {
+    expect(remoteOnlyPaths(['/kept/f.txt', '/gone/g.txt'], ['kept/f.txt'], isExcluded)).toEqual([
+      'gone/g.txt',
     ])
+  })
+})
+
+describe('localOnlyPaths (mirror import: remote folder wins)', () => {
+  const isExcluded = k => k === '.DS_Store' || k.split('/').some(p => p.startsWith('.'))
+
+  it('deletes exactly the local entries absent from the remote set', () => {
+    const local = ['main.tex', 'local-only.txt', '/Bla/shot.png']
+    const remote = ['main.tex', 'Bla/shot.png', 'remote-only.txt']
+    expect(localOnlyPaths(local, remote, isExcluded)).toEqual(['local-only.txt'])
+  })
+
+  it('never deletes a directory that still contains kept files', () => {
+    const local = ['folder/keep.txt', 'folder/gone.txt', 'top.txt']
+    const remote = ['folder/keep.txt']
+    // folder/ has a remote file underneath -> kept; only its local-only child
+    // (and nothing else) may go. top.txt is local-only -> deleted.
+    expect(localOnlyPaths(local, remote, isExcluded)).toEqual(['folder/gone.txt', 'top.txt'])
+  })
+
+  it('deletes a directory only when no remote file lies underneath it', () => {
+    const local = ['empty-dir/obsolete.txt']
+    const remote = ['main.tex']
+    expect(localOnlyPaths(local, remote, isExcluded)).toEqual(['empty-dir/obsolete.txt'])
+  })
+
+  it('never targets the project root "/"', () => {
+    const local = ['/', 'a.txt']
+    const remote = ['main.tex']
+    expect(localOnlyPaths(local, remote, isExcluded)).not.toContain('')
+    expect(localOnlyPaths(local, remote, isExcluded)).not.toContain('/')
+    expect(localOnlyPaths(local, remote, isExcluded)).toEqual(['a.txt'])
+  })
+
+  it('never deletes sync-excluded local entries', () => {
+    const local = ['main.tex', '.DS_Store', '.hidden/x.png']
+    const remote = ['main.tex']
+    expect(localOnlyPaths(local, remote, isExcluded)).toEqual([])
+  })
+})
+
+describe('shouldApplyRemoteFile (import: remote wins, churn guard)', () => {
+  const base = {
+    previousRev: 'rev-1',
+    currentRev: 'rev-2',
+    storedHash: 'h-1',
+    currentHash: 'h-2',
+  }
+
+  it('applies when the local entity is gone (locally deleted -> remote wins)', () => {
+    expect(shouldApplyRemoteFile({ ...base, localPresent: false, currentHash: null })).toBe(true)
+  })
+
+  it('applies when the remote changed (rev differs) even if local is unchanged', () => {
+    expect(
+      shouldApplyRemoteFile({ ...base, localPresent: true, currentHash: 'h-1' })
+    ).toBe(true)
+  })
+
+  it('applies when the local content changed (both sides edited -> remote wins)', () => {
+    expect(
+      shouldApplyRemoteFile({
+        ...base,
+        localPresent: true,
+        previousRev: 'rev-1',
+        currentRev: 'rev-1',
+        storedHash: 'h-1',
+        currentHash: 'h-2',
+      })
+    ).toBe(true)
+  })
+
+  it('applies when there is no stored baseline yet (first import)', () => {
+    expect(
+      shouldApplyRemoteFile({
+        localPresent: true,
+        previousRev: null,
+        currentRev: 'rev-1',
+        storedHash: null,
+        currentHash: 'h-2',
+      })
+    ).toBe(true)
+  })
+
+  it('skips only when both sides are unchanged and the entity is present', () => {
+    expect(
+      shouldApplyRemoteFile({
+        localPresent: true,
+        previousRev: 'rev-1',
+        currentRev: 'rev-1',
+        storedHash: 'h-1',
+        currentHash: 'h-1',
+      })
+    ).toBe(false)
   })
 })
 

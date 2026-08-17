@@ -71,17 +71,16 @@ Or use the autostart script:
 | `POST` | `/project/:project_id/dropbox/pull` | Pull remote changes into Overleaf |
 | `POST` | `/project/:project_id/dropbox/push` | Push local changes to Dropbox |
 | `GET` | `/project/:project_id/dropbox/files` | List files in project's Dropbox folder |
-| `POST` | `/project/:project_id/dropbox/conflict/resolve` | Resolve a sync conflict |
 | `POST` | `/project/new/dropbox` | Create an Overleaf project from a remote Dropbox folder |
 
 ## Sync Behavior
 
 ### Manual Sync Operations
 
-- Click "Pull" to check for and download changes from Dropbox
-- Click "Push" to upload local Overleaf changes to Dropbox
-- Remote file deletion detection based on the previous Dropbox snapshot
-- Missing remote project folders are marked as deleted by the external source
+- Click "Pull" (Import) to mirror the Dropbox folder into the project: the Dropbox folder becomes the project content; files that exist only locally are deleted
+- Click "Push" (Export) to mirror the project to Dropbox: the project becomes the Dropbox folder; files that exist only on Dropbox are deleted
+- Deletions happen only after a full remote listing succeeds; a missing remote project folder aborts the import without touching local content
+- Sync-excluded entries (hidden files, LaTeX transients) are never created, applied or deleted on either side
 - New-project import downloads the selected remote folder through the TPDS import pipeline
 
 **Note**: The module uses manual triggers instead of automatic polling. Files are only synchronized when you explicitly click Pull or Push.
@@ -89,9 +88,9 @@ Or use the autostart script:
 ## File Sync Strategy
 
 1. **Revision snapshots** store Dropbox's `rev` property for each remote file
-2. **Change detection** compares the current listing with the last successful pull
-3. **Deletion detection** removes previously synced Overleaf entities missing from Dropbox
-4. **Conflict metadata** retains revision information for future conflict resolution
+2. **Change detection** skips applying a remote file only when its rev is unchanged, the local content is unchanged, and the local entity still exists
+3. **Mirror deletion** removes the one-sided entries after each operation: local-only on import, remote-only on export
+4. **No per-file conflict state** is generated; every completed mirror run clears legacy conflict entries
 
 ## Frontend Components
 

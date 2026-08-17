@@ -9,7 +9,6 @@ import {
   OLModalTitle,
 } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
-import OLNotification from '@/shared/components/ol/ol-notification'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
 
@@ -24,8 +23,6 @@ type ProjectDropboxStatus = DropboxUserStatus & {
   projectPath?: string
   lastSyncAt?: string | null
   mergeStatus?: string
-  conflicts?: { path?: string }[]
-  lastConflict?: { path?: string | null } | null
 }
 
 function formatDropboxPath(path: string) {
@@ -137,25 +134,6 @@ function DropboxSyncModal({
     }
   }
 
-  // Resolve a Dropbox sync conflict (keep-local publishes local on next push;
-  // keep-remote applies the remote file now). Backend picks the first
-  // unresolved conflict when filePath is omitted.
-  const handleResolveConflict = async (choice: 'keep-local' | 'keep-remote') => {
-    setWorking(true)
-    try {
-      await postJSON(`/project/${projectId}/dropbox/conflict/resolve`, {
-        body: { choice },
-      })
-      const data = await getJSON('/project/' + projectId + '/dropbox/state')
-      setStatus(data as ProjectDropboxStatus)
-    } catch (err: any) {
-      debugConsole.error(err?.message || err)
-      alert(err?.data?.message || err?.message || t('generic_something_went_wrong'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
   // Link project to Dropbox
   const handleLinkProject = async () => {
     setWorking(true)
@@ -217,12 +195,7 @@ function DropboxSyncModal({
           .then((data) => {
             const next = data as ProjectDropboxStatus
             setStatus(next)
-            // D.5: a pull that recorded conflicts is NOT a plain success
-            if (Array.isArray(next?.conflicts) && next.conflicts.length > 0) {
-              alert(t('dropbox_conflict_unresolved', { count: next.conflicts.length }))
-            } else {
-              alert(t('dropbox_pull_success', { fallback: 'Successfully imported from Dropbox' }))
-            }
+            alert(t('dropbox_pull_success', { fallback: 'Successfully imported from Dropbox' }))
           })
       })
       .catch((err: any) => {
@@ -373,30 +346,6 @@ function DropboxSyncModal({
                 </p>
               )}
 
-              {/* D.5: unresolved conflicts — both sides changed, pull was skipped */}
-              {Array.isArray(status?.conflicts) && status.conflicts.length > 0 && (
-                <div className="mb-3">
-                  <OLNotification type="warning" content={t('dropbox_conflict_title')} />
-                  <p className="small">
-                    {t('dropbox_conflict_unresolved', { count: status.conflicts.length })}
-                  </p>
-                  <p className="small mb-2">
-                    {(status.conflicts || [])
-                      .filter(c => c?.path)
-                      .map(c => c.path)
-                      .join(', ')}
-                  </p>
-                  <div className="d-flex gap-2">
-                    <OLButton variant="secondary" disabled={working} onClick={() => handleResolveConflict('keep-local')}>
-                      {t('dropbox_conflict_keep_local_button')}
-                    </OLButton>
-                    <OLButton variant="primary" disabled={working} onClick={() => handleResolveConflict('keep-remote')}>
-                      {t('dropbox_conflict_keep_remote_button')}
-                    </OLButton>
-                  </div>
-                </div>
-              )}
-
               <div className="d-flex gap-2 mt-3 mb-3">
                 <OLButton variant="secondary" onClick={handlePull} disabled={working}>
                   {working ? t('loading') : t('dropbox_import_from_dropbox')}
@@ -405,6 +354,9 @@ function DropboxSyncModal({
                   {working ? t('loading') : t('dropbox_export_to_dropbox')}
                 </OLButton>
               </div>
+
+              <p className="small text-muted">{t('dropbox_import_note')}</p>
+              <p className="small text-muted mb-2">{t('dropbox_export_note')}</p>
 
               {/* Unlink button */}
               <OLButton
