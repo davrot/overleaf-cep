@@ -38,12 +38,16 @@ export function isSyncExcluded(nameOrPath) {
 }
 
 export class DropboxClient {
-  constructor({ accessToken, apiUrl }) {
+  constructor({ accessToken, apiUrl, onTokenExpired }) {
     if (!accessToken || typeof accessToken !== 'string') {
       throw new Error('Missing or invalid OAuth access token')
     }
 
     this.accessToken = accessToken
+    // Optional async callback invoked when Dropbox rejects the token (401);
+    // it must return a NEW valid access token (or throw). Set by the router
+    // to rotate store via the stored refresh token.
+    this.onTokenExpired = typeof onTokenExpired === 'function' ? onTokenExpired : null
     this.apiUrl = apiUrl || process.env.DROPBOXINTERFACE_API_URL || 'http://localhost:4003'
   }
 
@@ -57,11 +61,41 @@ export class DropboxClient {
   async _request(path, options) {
     const maxAttempts = 3
     let lastError
+    let refreshed = false
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         return await this._requestOnce(path, options)
       } catch (error) {
         lastError = error
+        // Access token expired → ask the caller for a fresh token ONCE and
+        // retry the same request with it. A `reauthRequired` refresh error
+        // means the connection died entirely: surface a clear 409 instead
+        // of the raw 401 body.
+        if (
+          !refreshed &&
+          error?.status === 401 &&
+          this.onTokenExpired
+        ) {
+          try {
+            const freshToken = await this.onTokenExpired(this.accessToken)
+            if (freshToken && freshToken !== this.accessToken) {
+              this.accessToken = freshToken
+              refreshed = true
+              logger.info({ path }, 'Dropbox token refreshed; retrying request')
+              continue
+            }
+          } catch (refreshError) {
+            if (refreshError?.reauthRequired) {
+              throw Object.assign(
+                new Error(
+                  'Dropbox connection has expired — reconnect in Settings to sync.',
+                ),
+                { status: 409, reauthRequired: true }
+              )
+            }
+            // Other refresh failures: fall through to the original 401
+          }
+        }
         const status = error?.status
         const transient =
           status === 429 || status === 502 || status === 503 || status === 504
@@ -85,6 +119,15 @@ export class DropboxClient {
       const isHttps = parsedUrl.protocol === 'https:'
       const httpModule = isHttps ? https : http
 
+      // Always send the CURRENT token: callers snapshot options.body (including
+      // a stale access_token) before _request runs; if the token was refreshed
+      // mid-flight the stale body value must not win over the fresh one
+      // (dropboxinterface prefers body.access_token over the header).
+      const body =
+        options.body && this.accessToken
+          ? { ...options.body, access_token: this.accessToken }
+          : options.body
+
       const headers = { ...(options.headers || {}) }
       if (this.accessToken && !headers['X-Access-Token']) {
         headers['X-Access-Token'] = this.accessToken
@@ -95,7 +138,7 @@ export class DropboxClient {
       if (process.env.SHARED_SERVICE_TOKEN) {
         headers['x-service-token'] = process.env.SHARED_SERVICE_TOKEN
       }
-      if (options.body) {
+      if (body) {
         headers['Content-Type'] = 'application/json'
       }
 
@@ -146,8 +189,8 @@ export class DropboxClient {
         reject(error)
       })
 
-      if (options.body) {
-        req.write(JSON.stringify(options.body))
+      if (body) {
+        req.write(JSON.stringify(body))
       }
 
       req.end()

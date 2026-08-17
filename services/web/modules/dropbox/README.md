@@ -47,7 +47,9 @@ Or use the autostart script:
 1. Create a Dropbox app at [https://www.dropbox.com/developers/apps](https://www.dropbox.com/developers/apps).
 2. Set `DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET` in the Overleaf environment.
 3. Add `https://your-overleaf-host/user/dropbox/oauth/callback` to the Dropbox app's redirect URIs.
-4. Users can connect their Dropbox accounts from the settings widget. The server performs the OAuth code exchange and stores the access token encrypted; users do not paste an access token.
+4. Users can connect their Dropbox accounts from the settings widget. The server performs the OAuth code exchange and stores the access token **and the refresh token** encrypted; users do not paste an access token.
+
+> **Token lifetime:** Dropbox OAuth2 access tokens expire after a few hours. On connect the server requests `token_access_type=offline` so it also receives a refresh token, which it stores (encrypted). When a request is rejected as expired, the server transparently rotates the pair via `api.dropboxapi.com/oauth2/token`, persists both new tokens, and retries — so a linked connection keeps working across token expiries without user action. (Connections made before this behaviour only stored the access token and must be re-connected once to gain a refresh token.)
 
 ## API Endpoints
 

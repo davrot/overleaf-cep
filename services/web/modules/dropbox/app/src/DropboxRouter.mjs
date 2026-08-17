@@ -260,6 +260,104 @@ function isDropboxNotFound(error) {
  * for a project so concurrent operations cannot tear the state doc or
  * interleave remote list/replace sequences.
  */
+const dropboxRefreshLocks = new Map()
+
+/**
+ * Recover a valid Dropbox access token after an expiry 401.
+ *
+ * Dropbox OAuth2 access tokens are short-lived (hours); the OAuth callback
+ * (token_access_type=offline) also receives a refresh_token, which we store
+ * (encrypted). When the caller's token is rejected, rotate the pair via
+ * api.dropboxapi.com/oauth2/token, persist both new tokens, and return the
+ * new access token. Dropbox INVALIDATES the old refresh token on rotation,
+ * so refreshes are serialized per user and a concurrent refresh that already
+ * rotated the pair is detected (stored token != caller's token) and reused
+ * instead of replaying the stale refresh token.
+ *
+ * Throws with `reauthRequired: true` when no refresh token is stored (legacy
+ * connections) — the caller should tell the user to reconnect.
+ */
+export async function getFreshDropboxAccessToken(userId, oldToken) {
+  const appKey = process.env.DROPBOX_APP_KEY
+  const appSecret = process.env.DROPBOX_APP_SECRET
+
+  const key = String(userId)
+  const previous = dropboxRefreshLocks.get(key) || Promise.resolve()
+  let release
+  const current = new Promise(resolve => {
+    release = resolve
+  })
+  dropboxRefreshLocks.set(key, current)
+  try {
+    await previous.catch(() => {})
+    const doc = (await DropboxUserCredentials.findOne({ userId })) || null
+    if (!doc) throw new Error('Dropbox credentials not found')
+
+    let currentToken = null
+    try {
+      currentToken = doc.accessToken ? decryptToken(doc.accessToken) : null
+    } catch (decryptError) {
+      logger.warn(
+        { userId },
+        'Dropbox stored access token failed to decrypt; attempting refresh'
+      )
+      currentToken = null
+    }
+
+    // A concurrent refresh already rotated the store — reuse the new token
+    // WITHOUT replaying the (now invalid) refresh token.
+    if (currentToken && currentToken !== oldToken) return currentToken
+
+    if (!doc.refreshToken) {
+      throw Object.assign(
+        new Error('Dropbox connection expired and no refresh token is stored'),
+        { reauthRequired: true }
+      )
+    }
+    if (!appKey || !appSecret) {
+      throw Object.assign(
+        new Error('Dropbox app key/secret not configured'),
+        { reauthRequired: true }
+      )
+    }
+
+    const refreshToken = decryptToken(doc.refreshToken)
+    const tokenResponse = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${appKey}:${appSecret}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }),
+    })
+    const tokenData = await tokenResponse.json().catch(() => null)
+    if (!tokenResponse.ok || !tokenData?.access_token) {
+      throw new Error(
+        `Dropbox token refresh failed: ${tokenResponse.status} ${
+          tokenData?.error_summary || ''
+        }` .trim(),
+      )
+    }
+
+    const $set = { accessToken: encryptToken(tokenData.access_token) }
+    // Dropbox returns a rotated refresh token with each refresh; persist it
+    if (tokenData.refresh_token) {
+      $set.refreshToken = encryptToken(tokenData.refresh_token)
+    }
+    await DropboxUserCredentials.findOneAndUpdate({ userId }, { $set })
+    logger.info({ userId }, 'Dropbox access token refreshed')
+    return tokenData.access_token
+  } finally {
+    release()
+    if (dropboxRefreshLocks.get(key) === current) {
+      dropboxRefreshLocks.delete(key)
+    }
+  }
+}
+
 const projectSyncLocks = new Map()
 async function withProjectSyncLock(projectId, task) {
   const key = projectId.toString()
@@ -629,12 +727,19 @@ export default {
             throw new Error(`Dropbox token exchange failed: ${tokenResponse.status}`)
           }
           const tokenData = await tokenResponse.json()
+          const $set = {
+            accessToken: encryptToken(tokenData.access_token),
+            path: DEFAULT_DROPBOX_PATH,
+          }
+          // The authorize request uses token_access_type=offline specifically
+          // so Dropbox issues a refresh token; without it every connection
+          // would silently die after the access-token lifetime (hours).
+          if (tokenData.refresh_token) {
+            $set.refreshToken = encryptToken(tokenData.refresh_token)
+          }
           await DropboxUserCredentials.findOneAndUpdate(
             { userId: req.user._id },
-            {
-              accessToken: encryptToken(tokenData.access_token),
-              path: DEFAULT_DROPBOX_PATH,
-            },
+            { $set },
             { upsert: true, new: true }
           )
           res.redirect('/user/settings')
@@ -866,7 +971,10 @@ export default {
           }
 
           // Create client and verify connection
-          const client = new DropboxClient({ accessToken })
+          const client = new DropboxClient({
+            accessToken,
+            onTokenExpired: old => getFreshDropboxAccessToken(userId, old),
+          })
           await client.checkConnection()
 
           const dropboxPath = normalizeDropboxPath(credentials.path)
@@ -1020,7 +1128,10 @@ export default {
             return res.status(500).json({ error: 'Token decryption failed' })
           }
 
-          const client = new DropboxClient({ accessToken })
+          const client = new DropboxClient({
+            accessToken,
+            onTokenExpired: old => getFreshDropboxAccessToken(userId, old),
+          })
           const dropboxPath = normalizeDropboxPath(state.path)
           // DBX-14: don't write on read — just use the normalized local copy
           // (state docs are normalized at creation time)
@@ -1135,7 +1246,10 @@ export default {
             return res.status(500).json({ error: 'Token decryption failed' })
           }
 
-          const client = new DropboxClient({ accessToken })
+          const client = new DropboxClient({
+            accessToken,
+            onTokenExpired: old => getFreshDropboxAccessToken(userId, old),
+          })
           const dropboxPath = normalizeDropboxPath(state.path)
           // DBX-14: don't write on read — just use the normalized local copy
           // (state docs are normalized at creation time)
@@ -1274,7 +1388,10 @@ export default {
           }
 
           // List files using Dropbox client
-          const client = new DropboxClient({ accessToken })
+          const client = new DropboxClient({
+            accessToken,
+            onTokenExpired: old => getFreshDropboxAccessToken(userId, old),
+          })
           const dropboxPath = normalizeDropboxPath(state.path)
           // DBX-14: don't write on read — just use the normalized local copy
           // (state docs are normalized at creation time)
@@ -1310,6 +1427,7 @@ export default {
         }
         const client = new DropboxClient({
           accessToken: decryptToken(credentials.accessToken),
+          onTokenExpired: old => getFreshDropboxAccessToken(userId, old),
         })
         const result = await importNewProjectFromDropbox({
           client,
