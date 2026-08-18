@@ -40,20 +40,21 @@ async function doGitMergeWithoutLock(userId, projectId, message, claimConflictIs
     claimConflictIsResolved && mergeStatus !== 'conflict'
   ) return { mergeStatus, repoFullName, unmergedBranchName }
 
-  // E2.1 / D3 (P2-1): the REST merge engine speaks the GitHub v3 tree/blob/ref
-  // API. Gitea and Forgejo implement that compatible subset (their /api/v3
-  // routes), and setApiBaseForServer() already resolves `${origin}/api/v3` for
-  // them — so the engine is provider-agnostic once the base URL resolves.
-  // GitLab does NOT expose that API: keep it on the 501 path (its import/pull
-  // and export/push via the git-based githubinterface service still work).
+  // The merge engine speaks the GitHub v3 git-data REST API (git/ref, git/blobs,
+  // git/trees, git/commits, POST /merges). GitLab does not expose it. Gitea and
+  // Forgejo ship a GitHub-compatible /api/v3, but it LACKS the git-data
+  // endpoints — verified 2026-08 on gitea.com and v15.next.forgejo.org where
+  // git/ref, git/blobs, git/trees and merges all return 404 even for an
+  // existing repo with a valid PAT. So the engine only works against
+  // api.github.com; anything else gets a 501 with a clear message, while
+  // import (pull) and export (push) via the git-protocol githubinterface
+  // service keep working for every provider.
   const provider = syncProvider || 'github'
-  const mergeAllowedProviders = ['github', 'gitea', 'forgejo']
-  if (!mergeAllowedProviders.includes(provider)) {
+  if (provider !== 'github') {
+    const pretty = provider.charAt(0).toUpperCase() + provider.slice(1)
     throw Object.assign(
       new Error(
-        provider === 'gitlab'
-          ? 'Automatic merge is not supported for GitLab yet — import (pull) and export (push) work normally with GitLab.'
-          : `Git merge is not supported for provider '${provider}'; import and export work with all providers`
+        `Automatic merge is not supported for ${pretty} yet — import (pull) and export (push) work normally with ${pretty}.`
       ),
       { status: 501 }
     )

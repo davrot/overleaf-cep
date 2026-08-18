@@ -375,10 +375,12 @@ app.post('/commit', async (req, res) => {
       head = null
     }
     
-    // Create tree from staged changes
-    await git.writeTree({ fs, dir: workDir })
-    
-    // Create commit
+    // GHI-12: do NOT call git.writeTree here — in isomorphic-git v1, writeTree
+    // REQUIRES an explicit tree object (tree={entries}); the bare call crashed
+    // every /commit with MissingParameterError "'tree'", breaking git-sync
+    // export for ALL providers. git.commit instead builds the tree from the
+    // staged index (constructTree) when `tree` is omitted.
+    // Create commit from the staged index (tree derived internally)
     const commitSha = await git.commit({
       fs,
       dir: workDir,
@@ -825,16 +827,46 @@ app.post('/commits', async (req, res) => {
       } catch { /* best effort cleanup */ }
       await runGit(['clone', '--progress', '--branch', branch, repoUrl, dir], { username, password })
     }
+    // GHI-13: enumerate history with the git CLI (already used here for
+    // clone/push). isomorphic-git v1's log() was unusable for both cases:
+    //   - with a baseline it only supports `since` (a Date), not a SHA range,
+    //     so `git.log({ from, to })` threw and the catch reported "diverged"
+    //     even right after a clean export;
+    //   - without one it still requires an `fs` argument.
+    // A range that can't be resolved (baseline not an ancestor of HEAD:
+    // force-push, branch rewrite) means genuinely diverged.
+    // NOTE: %s (single-line subject) is used instead of %B so the output
+    // stays one line per commit — %B bodies would split into bogus entries.
+    const parseGitLog = (stdout) =>
+      stdout
+        .split('\n')
+        .filter(Boolean)
+        .map(line => {
+          const [sha, name, email, date, , message] = line.split('\u001f')
+          return {
+            id: sha,
+            author: { name: name || '', email: email || '', date: date || '' },
+            commit: { date: date || '', message: message || '' },
+          }
+        })
     let log = []
     if (since) {
       try {
-        log = await git.log({ dir, from: since, to: 'HEAD' })
+        const { stdout } = await runGit(
+          ['log', '--pretty=format:%H%x1f%an%x1f%ae%x1f%aI%x1f%P%x1f%s', `${since}..HEAD`],
+          { username, password, cwd: dir }
+        )
+        log = parseGitLog(stdout)
       } catch {
         // since-commit no longer in history (force push etc.) -> diverged
         return res.json({ commits: [], diverged: true })
       }
     } else {
-      log = await git.log({ dir })
+      const { stdout } = await runGit(
+        ['log', '--pretty=format:%H%x1f%an%x1f%ae%x1f%aI%x1f%P%x1f%s'],
+        { username, password, cwd: dir }
+      )
+      log = parseGitLog(stdout)
     }
     const commits = log.slice(0, limit).map(c => ({
       sha: c.id,
@@ -845,7 +877,12 @@ app.post('/commits', async (req, res) => {
         date: c.commit?.date || c.date || ''
       }
     }))
-    res.json({ commits, diverged: since ? commits.length > 0 : false })
+    // GHI-14: success path is NEVER diverged — the UI shows the force-push
+    // warning (github_repository_diverged) and the handler flips the project
+    // state to mergeStatus='diverged' (detached merge path) based on this flag,
+    // so it must be reserved for the catch case above (baseline not in
+    // history). "Commits since the baseline" is the normal mergeable case.
+    res.json({ commits, diverged: false })
   } catch (err) {
     logger.error({ err, repoUrl }, 'commits failed')
     res.status(err?.status || 500).json({ error: err.message || 'Failed to list commits' })
