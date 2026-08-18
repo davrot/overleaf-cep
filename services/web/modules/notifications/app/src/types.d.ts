@@ -24,11 +24,26 @@ export type NotificationPreferencesSchema = {
 }
 
 /**
- * Global (project-agnostic) notification preferences.
+ * Shape of the project GET response
+ * (`GET /notifications/preferences/project/:projectId`).
  *
- * Stored in the same `notificationsPreferences` collection with
- * `project_id: null`. Used as the fallback when a project-level
- * preference document does not exist.
+ * Note despite the name, this is the *combined* view consumed by
+ * `use-project-notification-preferences.ts`: the 12 project preference keys
+ * plus the global `muteAllNotifications` flag merged in by
+ * `NotificationsPreferencesHandler.getProjectPreferences`.
  */
-export type GlobalNotificationPreferencesSchema =
-  NotificationPreferencesSchema
+export type GlobalNotificationPreferencesSchema = {
+  muteAllNotifications: boolean
+  commentOnOwnProject: boolean
+  commentOnInvitedProject: boolean
+  repliesOnAuthoredThread: boolean
+  repliesOnParticipatingThread: boolean
+  commentResolvedOnAuthoredThread: boolean
+  commentResolvedOnParticipatingThread: boolean
+  commentReopenedOnAuthoredThread: boolean
+  commentReopenedOnParticipatingThread: boolean
+  trackedChangesOnOwnProject: boolean
+  trackedChangesOnInvitedProject: boolean
+  trackChangesAcceptedOnAuthoredChange: boolean
+  trackChangesRejectedOnAuthoredChange: boolean
+}

@@ -61,14 +61,28 @@ async function _ensureProjectMembership(userId, projectId) {
 async function getProjectPreferences(userId, projectId) {
   await _ensureProjectMembership(userId, projectId)
 
-  const preference = await db.notificationsPreferences.findOne({
-    user_id: new ObjectId(userId),
-    project_id: new ObjectId(projectId),
-  })
+  const [preference, globalPreference] = await Promise.all([
+    db.notificationsPreferences.findOne({
+      user_id: new ObjectId(userId),
+      project_id: new ObjectId(projectId),
+    }),
+    db.notificationsPreferences.findOne({
+      user_id: new ObjectId(userId),
+      project_id: null,
+    }),
+  ])
 
-  return preference
+  const preferences = preference
     ? normalizeProjectPreferences(preference)
     : normalizeProjectPreferences({})
+
+  // Contract: the frontend hook (use-project-notification-preferences.ts)
+  // reads `muteAllNotifications` from this response to render the
+  // "globally muted" state, so the global flag is merged in here.
+  preferences.muteAllNotifications =
+    normalizeGlobalPreferences(globalPreference).muteAllNotifications
+
+  return preferences
 }
 
 async function saveProjectPreferences(userId, projectId, preferences) {

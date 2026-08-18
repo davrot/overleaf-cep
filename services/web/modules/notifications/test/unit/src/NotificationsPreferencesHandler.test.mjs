@@ -80,8 +80,10 @@ describe('NotificationsPreferencesHandler', function () {
 
     const prefs = await ctx.Handler.promises.getProjectPreferences('user-1', 'p-1')
 
-    expect(Object.keys(prefs)).toHaveLength(12)
-    expect(Object.values(prefs).every(Boolean)).toBe(true)
+    // 12 project keys + the merged-in global muteAllNotifications flag
+    expect(Object.keys(prefs)).toHaveLength(13)
+    expect(prefs.muteAllNotifications).toBe(false)
+    expect(Object.values(prefs).every(Boolean)).toBe(false)
   })
 
   it('forwards stored preferences and normalizes missing keys to true', async function (ctx) {
@@ -94,6 +96,18 @@ describe('NotificationsPreferencesHandler', function () {
 
     expect(prefs.commentOnOwnProject).toBe(false)
     expect(prefs.trackedChangesOnOwnProject).toBe(true)
+  })
+
+  it('merges the global muteAllNotifications flag into the project view', async function (ctx) {
+    ctx.getProject.mockResolvedValue(makeProject('owner', 'user-1'))
+    ctx.notificationsPreferences.findOne
+      .mockResolvedValueOnce({ commentOnOwnProject: false })
+      .mockResolvedValueOnce({ muteAllNotifications: true })
+
+    const prefs = await ctx.Handler.promises.getProjectPreferences('user-1', 'p-1')
+
+    expect(prefs.muteAllNotifications).toBe(true)
+    expect(prefs.commentOnOwnProject).toBe(false)
   })
 
   it('throws not-found when project does not exist', async function (ctx) {
