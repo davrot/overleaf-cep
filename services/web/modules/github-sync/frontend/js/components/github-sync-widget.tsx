@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
-import { getJSON, deleteJSON } from '@/infrastructure/fetch-json'
+import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import useAsync from '@/shared/hooks/use-async'
 import { debugConsole } from '@/utils/debugging'
 import OLButton from '@/shared/components/ol/ol-button'
@@ -22,7 +22,11 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
     isLoading: isCheckingConn,
     runAsync: runAsyncConnCheck,
     data: status,
-  } = useAsync<{ connected?: boolean; providers?: GitServer[] }>()
+  } = useAsync<{
+    connected?: boolean
+    providers?: GitServer[]
+    oauth?: { linked?: boolean; username?: string }
+  }>()
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false)
@@ -34,12 +38,15 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
   } = useAsync<void>()
 
   const statusData = status || {}
-  const isConnected = !!statusData.connected || (statusData.providers?.length || 0) > 0
+  const isConnected =
+    !!statusData.connected ||
+    (statusData.providers || []).some(p => !p.source || p.source === 'pat') ||
+    !!statusData.oauth?.linked
 
-  // The linked GitHub account (OAuth or PAT), if any. While linked the widget
-  // offers "Unlink your GitHub account"; otherwise it offers the OAuth link.
-  const githubProvider =
-    (statusData.providers || []).find(p => p.provider === 'github') || null
+  // The widget's Unlink button manages the GitHub OAUTH account (the
+  // dedicated OAuth slot). PAT accounts are managed per row in the table
+  // below — the two never touch the same credential.
+  const oauthLinked = !!statusData.oauth?.linked
 
   const handleStatusCheck = useCallback(() => {
     runAsyncConnCheck(getJSON('/user/github-sync/status')).catch(err =>
@@ -58,10 +65,7 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
   }
 
   const unlinkGithub = () => {
-    if (!githubProvider) return
-    runAsyncUnlink(
-      deleteJSON(`/user/git-servers/${encodeURIComponent(githubProvider.id)}`),
-    )
+    runAsyncUnlink(postJSON('/user/github-sync/unlink'))
       .then(() => {
         setShowUnlinkConfirm(false)
         // Refresh the provider list so the button reverts to "Link"
@@ -97,7 +101,10 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
             </p>
           ) : null}
 
-          <GitServersList key={listKey} />
+          <GitServersList
+            key={listKey}
+            serversFilter={s => !s.source || s.source === 'pat'}
+          />
 
           {/* Buttons live inside the description column (not the grid's
               actions column) so they stay inside the widget box instead of
@@ -106,7 +113,7 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
               with GitHub OAuth credentials (clientID + clientSecret). */}
           <div className="d-flex flex-column gap-2 mt-2">
             {githubSyncEnabled &&
-              (githubProvider ? (
+              (oauthLinked ? (
                 <OLButton
                   variant="danger-ghost"
                   disabled={unlinking}

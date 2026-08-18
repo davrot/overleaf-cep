@@ -45,38 +45,36 @@ function defaultServerUrl(provider) {
  */
 async function resolveCreds(userId, provider, serverUrl, usernameHint) {
   const prov = provider || 'github'
+
+  const allServers = await TokenManager.getPublicServers(userId)
   let url = (serverUrl || '').replace(/\/$/, '')
-
-  const servers = await TokenManager.getPublicServers(userId)
   if (!url) {
-    const server = servers.find(s => s.provider === prov)
-    url = server ? server.url : defaultServerUrl(prov)
+    const first = allServers.find(s => s.provider === prov)
+    url = first ? first.url : defaultServerUrl(prov)
   }
-  const username = usernameHint ||
-    servers.find(s => s.provider === prov && s.url.replace(/\/$/, '') === url)?.username ||
-    ''
 
-  const { token, username: storedUsername } = await TokenManager.getUserPATCredentials(
-    userId,
-    prov,
-    url
-  )
-  return {
-    provider: prov,
-    serverUrl: url,
-    username: username || storedUsername,
-    token
-  }
+  // Username may be omitted when exactly one account is stored for
+  // (provider, url); with several, TokenManager raises a clear 400 instead
+  // of silently picking any account. For github.com the dedicated OAuth slot
+  // is the fallback account.
+  const wantUsername = (usernameHint || '').trim() || undefined
+  const creds = await TokenManager.getUserPATCredentials(userId, prov, url, wantUsername)
+  return { ...creds, provider: prov }
 }
 
 async function getGitConnState(userId) {
   try {
-    const providers = await TokenManager.getLinkedServers(userId)
-    return { connected: providers.length > 0, providers }
+    const providers = await TokenManager.getPublicServers(userId)
+    const oauth = await TokenManager.getOAuth(userId)
+    return {
+      connected: providers.length > 0 || oauth.linked,
+      providers,
+      oauth
+    }
   } catch (err) {
     if (err instanceof InvalidTokenError) {
       logger.debug({ err, userId }, 'no linked servers, treating as not connected')
-      return { connected: false, providers: [] }
+      return { connected: false, providers: [], oauth: { linked: false, username: '' } }
     }
     throw OError.tag(err, 'failed to get connection state', { userId })
   }
@@ -147,13 +145,13 @@ async function unlinkRepo(userId, projectId) {
   return null
 }
 
-async function listUserRepos(userId, provider, serverUrl) {
-  const creds = await resolveCreds(userId, provider, serverUrl)
+async function listUserRepos(userId, provider, serverUrl, username) {
+  const creds = await resolveCreds(userId, provider, serverUrl, username)
   return await gitClient.listRepos(creds.serverUrl, creds.username, creds.token)
 }
 
-async function getUserAndOrgs(userId, provider, serverUrl) {
-  const creds = await resolveCreds(userId, provider, serverUrl)
+async function getUserAndOrgs(userId, provider, serverUrl, username) {
+  const creds = await resolveCreds(userId, provider, serverUrl, username)
   return await gitClient.listUserAndOrgs(creds.serverUrl, creds.username, creds.token)
 }
 
@@ -208,8 +206,8 @@ async function getMergeOverview(userId, projectId) {
   }
 }
 
-async function importRepo(userId, projectName, repoFullName, defaultBranchName, provider, serverUrl) {
-  const creds = await resolveCreds(userId, provider, serverUrl)
+async function importRepo(userId, projectName, repoFullName, defaultBranchName, provider, serverUrl, username) {
+  const creds = await resolveCreds(userId, provider, serverUrl, username)
 
   // H15: the repo may be EMPTY (no refs) — resolving the branch head throws in
   // that case. Importing an empty repo is still valid: continue with a null
@@ -236,8 +234,19 @@ async function importRepo(userId, projectName, repoFullName, defaultBranchName, 
 
   try {
     // Clone the repo to a shared work-directory (githubinterface requires
-    // paths inside its work root).
-    await gitClient.clone(repoFullName, defaultBranchHead, fsPath, creds.serverUrl, creds.username, creds.token)
+    // paths inside its work root). Use the BRANCH NAME, not the head SHA:
+    // `git clone --branch=<sha>` is not supported by GitHub (the clone in
+    // githubinterface maps ref -> --branch), and the branch-name clone
+    // already lands on defaultBranchHead anyway. The SHA is kept as the
+    // import baseline for the divergence tracking.
+    await gitClient.clone(
+      repoFullName,
+      defaultBranchName || undefined,
+      fsPath,
+      creds.serverUrl,
+      creds.username,
+      creds.token
+    )
 
     // GS-05: createProjectFromZipArchiveWithName requires a ZIP file, so zip
     // the cloned working tree (excluding .git) before project creation.

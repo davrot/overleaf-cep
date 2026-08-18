@@ -10,6 +10,7 @@ export type GitServer = {
   provider: string
   url: string
   username: string
+  source?: 'pat' | 'oauth'
 }
 
 type GitServersListProps = {
@@ -17,6 +18,8 @@ type GitServersListProps = {
   showDelete?: boolean
   showLink?: boolean
   onLink?: (server: GitServer) => void
+  /** Optional row filter (e.g. PAT rows only). Defaults to showing all rows. */
+  serversFilter?: (server: GitServer) => boolean
 }
 
 type SortKey = 'provider' | 'url' | 'username'
@@ -31,6 +34,7 @@ const GitServersList = ({
   showDelete = true,
   showLink = false,
   onLink,
+  serversFilter,
 }: GitServersListProps) => {
   const { t } = useTranslation()
   const [list, setList] = useState<GitServer[]>([])
@@ -63,7 +67,13 @@ const GitServersList = ({
     setTestResults(prev => ({ ...prev, [server.id]: { testing: true } }))
     postJSON<{ ok?: boolean; message?: string }>(
       '/user/git-servers/test',
-      { body: { provider: server.provider, url: server.url } }
+      {
+        body: {
+          provider: server.provider,
+          url: server.url,
+          username: server.username || undefined,
+        },
+      }
     )
       .then(res => {
         setTestResults(prev => ({
@@ -106,19 +116,23 @@ const GitServersList = ({
   }
 
   const displayList = useMemo(() => {
-    if (!sort) return list
+    let rows = list
+    if (serversFilter) {
+      rows = rows.filter(serversFilter)
+    }
+    if (!sort) return rows
     const value = (s: GitServer) =>
       String(sort.key === 'username' ? s.username || '' : s[sort.key] || '').toLowerCase()
-    return [...list].sort(
+    return [...rows].sort(
       (a, b) => value(a).localeCompare(value(b), undefined, { sensitivity: 'base' }) * sort.dir
     )
-  }, [list, sort])
+  }, [list, sort, serversFilter])
 
   if (loading) {
     return <p className="small">{t('loading')}…</p>
   }
 
-  if (list.length === 0) {
+  if (displayList.length === 0) {
     return <p className="small text-muted">{t('no_git_providers_configured')}</p>
   }
 

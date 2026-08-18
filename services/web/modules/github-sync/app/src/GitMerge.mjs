@@ -30,7 +30,8 @@ async function doGitMergeWithoutLock(userId, projectId, message, claimConflictIs
     mergeStatus,
     unmergedBranchName,
     syncProvider,
-    syncServerUrl
+    syncServerUrl,
+    syncUsername
   } = projectSyncState
 
   // do nothing if conflict is not yet resolved and 'Sync' button is pushed
@@ -62,8 +63,9 @@ async function doGitMergeWithoutLock(userId, projectId, message, claimConflictIs
 
   const serverUrl = syncServerUrl || 'https://github.com'
   // E2 (critical): look the PAT up under the ACTUAL provider key — Gitea
-  // tokens are stored at tokens.gitea[serverUrl], not tokens.github[...].
-  const creds = await TokenManager.getUserPATCredentials(userId, provider, serverUrl)
+  // tokens are stored at tokens.gitea[serverUrl], not tokens.github[...];
+  // the account (username) selects the specific PAT when several are linked.
+  const creds = await TokenManager.getUserPATCredentials(userId, provider, serverUrl, syncUsername)
   const token = creds.token
 
   // point the REST client at the linked instance (github.com → api.github.com)

@@ -77,9 +77,11 @@ async function getProjectState(req, res) {
 
 async function getUserAndOrgs(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
-  const { provider, serverUrl } = req.query || {}
+  const { provider, serverUrl, username } = req.query || {}
   try {
-    const userAndOrgs = await GitHubSyncHandler.getUserAndOrgs(userId, provider, serverUrl)
+    const userAndOrgs = await GitHubSyncHandler.getUserAndOrgs(
+      userId, provider, serverUrl, username
+    )
     res.json(userAndOrgs)
   } catch (err) {
     // GS-13: propagate the typed status (400/401) instead of a generic 500
@@ -92,8 +94,10 @@ async function listUserRepos(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   try {
-    const { provider, serverUrl } = req.query || {}
-    const repos = await GitHubSyncHandler.listUserRepos(userId, provider, serverUrl)
+    const { provider, serverUrl, username } = req.query || {}
+    const repos = await GitHubSyncHandler.listUserRepos(
+      userId, provider, serverUrl, username
+    )
     res.json({ repos })
 
   } catch (err) {
@@ -127,11 +131,11 @@ async function getMergeOverview(req, res) {
 // Import a GitHub repository as a new project
 async function importRepo(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
-  const { name, fullName, defaultBranchName, provider, serverUrl } = req.body || {}
+  const { name, fullName, defaultBranchName, provider, serverUrl, username } = req.body || {}
 
   try {
     const projectId = await GitHubSyncHandler.importRepo(
-      userId, name, fullName, defaultBranchName, provider, serverUrl
+      userId, name, fullName, defaultBranchName, provider, serverUrl, username
     )
     res.json({ projectId })
   } catch (error) {
@@ -174,26 +178,24 @@ async function oauth2Callback(req, res) {
     return
   }
 
+  let linkedUsername = ''
   try {
-    await TokenManager.saveUserToken(userId, token)
-    // Keep the stored display username in sync with the account the OAuth
-    // token actually belongs to (otherwise the settings table and the export
-    // modal still show the username of a previously linked PAT/account).
-    try {
-      const { user } = await gitServerClient.listUserAndOrgs(
-        'https://github.com', '', token
-      )
-      if (user) {
-        await TokenManager.updateServerUsername(
-          userId, 'github', 'https://github.com', user
-        )
-      }
-    } catch (err) {
-      logger.warn(
-        { err, userId },
-        'could not resolve GitHub username after OAuth link (non-fatal)'
-      )
-    }
+    // The OAuth slot is account-scoped, so store the linked login as well
+    // (non-fatal: the link must not fail on a transient /user lookup)
+    const { user } = await gitServerClient.listUserAndOrgs(
+      'https://github.com', '', token
+    )
+    linkedUsername = user || ''
+  } catch (err) {
+    logger.warn(
+      { err, userId },
+      'could not resolve GitHub username after OAuth link (non-fatal)'
+    )
+  }
+
+  try {
+    // Dedicated OAuth slot: coexists with any PAT entries the user has.
+    await TokenManager.saveOAuth(userId, token, linkedUsername)
   } catch (err) {
     const info = OError.getFullInfo(err)
     const errStatus  = info?.status || 500
@@ -209,11 +211,11 @@ async function oauth2Callback(req, res) {
   res.redirect('/user/settings?oauth-complete=github#project-sync')
 }
 
-// Unlink user's Git server account
+// Unlink the user's GitHub OAuth account (PAT entries are untouched)
 async function unlink(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   try {
-    await TokenManager.removeUserToken(userId, { clearAll: req.body?.clearAll === true })
+    await TokenManager.removeUserToken(userId)
   } catch (err) {
     const info = OError.getFullInfo(err)
     const errStatus  = info?.status || 500
@@ -330,20 +332,27 @@ async function addServerConfig(req, res) {
 }
 
 // Remove Git server configuration
+// id format: provider:url:username (username optional for legacy ids)
 async function removeServerConfig(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   const { id } = req.params
   
   try {
-    // Parse id as "provider:url" (url may contain extra colons)
+    // Parse id as "provider:url:username" (url may contain colons)
     const sep = id.indexOf(':')
     if (sep < 1) {
       return res.status(400).json({ message: 'Invalid server ID format' })
     }
     const provider = id.slice(0, sep)
-    const serverUrl = id.slice(sep + 1)
+    const rest = id.slice(sep + 1)
+    // The username part is present when the last colon sits beyond the
+    // "https:" colon of the URL.
+    const lastSep = rest.lastIndexOf(':')
+    const hasUsername = lastSep > 7
+    const serverUrl = hasUsername ? rest.slice(0, lastSep) : rest
+    const username = hasUsername ? rest.slice(lastSep + 1) : undefined
 
-    await TokenManager.removeServer(userId, provider, serverUrl)
+    await TokenManager.removeServer(userId, provider, serverUrl, username)
     return res.json({ success: true })
   } catch (err) {
     const info = OError.getFullInfo(err)
@@ -360,23 +369,19 @@ async function linkPAT(req, res) {
   const { provider, url, username, pat } = req.body || {}
 
   try {
-    if (!provider || !url || !pat) {
+    if (!provider || !url || !username || !pat) {
       return res.status(400).json({ message: 'Missing required fields' })
     }
     assertHttpServerUrl(url)
 
-    // Save PAT
-    await TokenManager.saveUserPAT(userId, provider, url, pat)
-
-    // Store username when provided (GitLab PATs do not require one)
-    if (username) {
-      await TokenManager.updateServerUsername(userId, provider, url, username)
-    }
+    // Save the PAT under its (provider, url, username) account identity.
+    // Re-saving the same account replaces only that account's token.
+    await TokenManager.saveUserPAT(userId, provider, url, username, pat)
 
     // Non-fatal verification: try a connection check
     let check = { ok: false, message: 'not checked' }
     try {
-      check = await testServerConnection(userId, provider, url, null, null, true)
+      check = await testServerConnection(userId, provider, url, username, null)
     } catch (err) {
       check = { ok: false, message: mapPatCheckError(err) }
     }
@@ -410,13 +415,15 @@ async function testServerConnection(userId, provider, serverUrl, username, pat) 
 // Test a saved git server connection
 async function testServer(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
-  const { provider, url } = req.body || {}
+  const { provider, url, username } = req.body || {}
 
   try {
     if (!provider || !url) {
       return res.status(400).json({ message: 'Missing provider or url' })
     }
-    const result = await testServerConnection(userId, provider, url, null, null)
+    const result = await testServerConnection(
+      userId, provider, url, username || undefined, null
+    )
     res.json({ ok: result?.ok || false })
   } catch (err) {
     const info = OError.getFullInfo(err)

@@ -58,8 +58,10 @@ const GitProviderModal = ({
     check?: { ok?: boolean; message?: string }
   }>()
 
+  // The username is the account identity: required so that several accounts
+  // on the same provider URL stay distinguishable.
   const canSubmit =
-    !!form.provider && !!form.url && !!form.pat && !isSaving
+    !!form.provider && !!form.url && !!form.username && !!form.pat && !isSaving
 
   const finishLink = (server: { provider: string; url: string; username: string }) => {
     if (hideOnSuccess) onHide()

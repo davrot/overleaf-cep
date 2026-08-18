@@ -49,220 +49,346 @@ async function decryptAccessToken(tokenEncrypted) {
   }
 }
 
-// ------------------------- PAT-based functions -------------------------- //
+// --------------------------------------------------------------------------
+// Credential model (two kinds):
+//
+// 1. PAT entries — one per (provider, serverUrl, username). A user may have
+//    many per provider and many per server URL (different accounts).
+//      tokens[provider][serverUrl][username] = encrypted
+//      servers[provider][serverUrl][username] = { createdAt, lastUsedAt }
+//    Legacy documents may still hold `tokens[provider][serverUrl] = "string"`
+//    (single account, username from the servers map). Those remain readable
+//    everywhere and are migrated to the 3-level shape on first write.
+//
+// 2. GitHub OAuth slot — one special account for github.com, linked via the
+//    OAuth flow, stored in the reserved top-level `github` field as
+//      { token: encrypted, username, linkedAt }
+//    (a bare string is the pre-schema legacy shape and stays readable).
+//    The OAuth account coexists with any number of PAT entries.
+// --------------------------------------------------------------------------
+
+function serverId(provider, serverUrl, username) {
+  return `${provider}:${serverUrl}:${username || ''}`
+}
 
 /**
- * Save PAT for a specific provider and server URL
+ * Enumerate PAT entries stored for one (provider, url) bucket. Handles both
+ * the legacy single-string shape and the current username-keyed map.
  */
-async function _saveUserPAT(userId, provider, serverUrl, pat) {
+function enumerateBucket(bucket, legacyUsername) {
+  if (typeof bucket === 'string') {
+    return [{ username: legacyUsername || '', value: bucket }]
+  }
+  if (bucket && typeof bucket === 'object') {
+    return Object.entries(bucket)
+      .filter(([, v]) => typeof v === 'string')
+      .map(([u, v]) => ({ username: u, value: v }))
+  }
+  return []
+}
+
+// ------------------------- PAT entries -------------------------- //
+
+/**
+ * Save a PAT for (provider, serverUrl, username). Saving under an existing
+ * (provider, serverUrl, username) replaces that account's token (identity),
+ * never another account's.
+ */
+async function _saveUserPAT(userId, provider, serverUrl, username, pat) {
   const tokenEncrypted = await encryptAccessToken(pat)
 
   // Normalize server URL (remove trailing slash)
   const normalizedServerUrl = serverUrl.replace(/\/$/, '')
+  const cleanUsername = (username || '').trim()
   const now = new Date()
 
-  // Read-modify-write: NEVER build Mongo dot-paths from the (dotted) server URL,
-  // or the driver will split the URL on the dot into nested keys.
+  // Read-modify-write: NEVER build Mongo dot-paths from the (dotted) server
+  // URL, or the driver will split the URL on the dot into nested keys.
   const doc = (await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))) ||
     new GitHubSyncUserCredentials({ userId, createdAt: now })
 
   const tokens = { ...(doc.tokens || {}) }
   tokens[provider] = { ...(tokens[provider] || {}) }
-  tokens[provider][normalizedServerUrl] = tokenEncrypted
+  const bucket = tokens[provider][normalizedServerUrl]
+  let usernameMap = {}
+  if (typeof bucket === 'string') {
+    // Legacy single-account bucket: migrate to the username-keyed shape
+    const legacyUsername =
+      doc.servers?.[provider]?.[normalizedServerUrl]?.username || ''
+    usernameMap = { [legacyUsername || '']: bucket }
+  } else if (bucket && typeof bucket === 'object') {
+    usernameMap = { ...bucket }
+  }
+  usernameMap[cleanUsername] = tokenEncrypted
+  tokens[provider][normalizedServerUrl] = usernameMap
   doc.tokens = tokens
   doc.markModified('tokens')
 
   const servers = { ...(doc.servers || {}) }
   servers[provider] = { ...(servers[provider] || {}) }
-  const prev = servers[provider][normalizedServerUrl] || {}
-  servers[provider][normalizedServerUrl] = {
-    url: normalizedServerUrl,
-    username: prev.username || '',
-    createdAt: prev.createdAt || now,
+  const serverBucket = servers[provider][normalizedServerUrl]
+  let serverMap = {}
+  if (serverBucket && typeof serverBucket === 'object' && serverBucket.username !== undefined) {
+    // Legacy single-entry shape: { url, username, createdAt, lastUsedAt }
+    const legacyUsername = serverBucket.username || ''
+    serverMap = legacyUsername ?
+      { [legacyUsername]: { createdAt: serverBucket.createdAt || now, lastUsedAt: now } } :
+      {}
+  } else if (serverBucket && typeof serverBucket === 'object') {
+    serverMap = { ...serverBucket }
+  }
+  const prev = serverMap[cleanUsername]
+  serverMap[cleanUsername] = {
+    createdAt: prev?.createdAt || now,
     lastUsedAt: now
   }
+  servers[provider][normalizedServerUrl] = serverMap
   doc.servers = servers
   doc.markModified('servers')
   doc.lastUsedAt = now
-
   await doc.save()
-  return doc
 }
 
 /**
- * Get PAT for a specific provider and server URL
+ * Resolve stored credentials for (provider, serverUrl[, username]).
+ * PAT entries win for an exact (provider, url, username) match; the GitHub
+ * OAuth slot is the fallback account for github.com.
+ * Returns { token, serverUrl, username, source } or throws InvalidTokenError.
  */
-async function getUserPAT(userId, provider, serverUrl) {
+async function getUserPATCredentials(userId, provider, serverUrl, username) {
   const normalizedServerUrl = serverUrl.replace(/\/$/, '')
+  const wantUsername = (username || '').trim()
+
   const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-  
   if (!credentials) {
     throw new InvalidTokenError('no user token', { userId, status: 400 })
   }
-  
-  let storedToken = credentials.tokens?.[provider]?.[normalizedServerUrl]
-  // Guard against corrupted nested docs (dot-split URLs from older writes)
-  if (storedToken && typeof storedToken !== 'string') storedToken = undefined
-  if (!storedToken) {
-    // legacy OAuth token (pre-PAT schema): credentials.github (github.com only)
-    if (
-      provider === 'github' &&
-      normalizedServerUrl === getDefaultServerUrl('github') &&
-      credentials.github
-    ) {
-      return await decryptAccessToken(credentials.github)
-    }
-    throw new InvalidTokenError(`no token for ${provider} server ${normalizedServerUrl}`, { 
-      userId, 
-      provider, 
-      serverUrl: normalizedServerUrl,
-      status: 400 
-    })
+
+  const bucket = credentials.tokens?.[provider]?.[normalizedServerUrl]
+  const legacyUsername = credentials.servers?.[provider]?.[normalizedServerUrl]?.username
+  const entries = enumerateBucket(bucket, legacyUsername)
+
+  let match
+  if (wantUsername) {
+    match = entries.find(e => e.username === wantUsername)
+  } else if (entries.length === 1) {
+    match = entries[0]
+  } else if (entries.length > 1) {
+    throw new InvalidTokenError(
+      `multiple git accounts are linked for ${provider} ${normalizedServerUrl}; specify one of: ${entries.map(e => e.username || '(unknown)').join(', ')}`,
+      { userId, provider, serverUrl: normalizedServerUrl, status: 400 }
+    )
   }
-  
-  return await decryptAccessToken(storedToken)
+
+  let token
+  let resolvedUsername = match?.username || ''
+  let source = 'pat'
+  if (match?.value) {
+    token = await decryptAccessToken(match.value)
+  } else if (
+    provider === 'github' &&
+    normalizedServerUrl === getDefaultServerUrl('github')
+  ) {
+    // OAuth slot (object shape) or pre-schema legacy string
+    const slotToken = oauthSlotToken(credentials)
+    if (slotToken) {
+      token = await decryptAccessToken(slotToken)
+      const linked = await getOAuth(userId)
+      resolvedUsername = wantUsername || linked.username || ''
+      source = 'oauth'
+    }
+  }
+
+  if (!token) {
+    throw new InvalidTokenError(
+      `no token for ${provider} server ${normalizedServerUrl}`,
+      { userId, provider, serverUrl: normalizedServerUrl, status: 400 }
+    )
+  }
+
+  if (source === 'pat') {
+    await touchLastUsed(userId, provider, normalizedServerUrl, resolvedUsername)
+  }
+  return { token, serverUrl: normalizedServerUrl, username: resolvedUsername, source }
 }
 
 /**
- * Resolve stored PAT + username for a provider/server.
- * Returns { token, serverUrl, username } or throws InvalidTokenError.
+ * Get PAT for (provider, serverUrl[, username]). Without a username, the
+ * single stored entry is used; with several accounts on the same server the
+ * caller must name one (never silently pick a possibly-wrong account).
  */
-async function getUserPATCredentials(userId, provider, serverUrl) {
-  const normalizedServerUrl = serverUrl.replace(/\/$/, '')
-  const token = await getUserPAT(userId, provider, normalizedServerUrl)
+async function getUserPAT(userId, provider, serverUrl, username) {
+  const creds = await getUserPATCredentials(userId, provider, serverUrl, username)
+  return creds.token
+}
 
-  let username = ''
-  const servers = await getUserServers(userId)
-  username =
-    servers?.[provider]?.[normalizedServerUrl]?.username ||
-    servers?.[provider]?.[serverUrl]?.username ||
-    ''
-
-  return { token, serverUrl: normalizedServerUrl, username }
+/** Refresh lastUsedAt without touching the token itself. */
+async function touchLastUsed(userId, provider, serverUrl, username) {
+  try {
+    const doc = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
+    if (!doc) return
+    const servers = { ...(doc.servers || {}) }
+    servers[provider] = { ...(servers[provider] || {}) }
+    const serverBucket = servers[provider][serverUrl]
+    const now = new Date()
+    if (serverBucket && typeof serverBucket === 'object' && serverBucket.username !== undefined) {
+      // legacy single-entry shape
+      serverBucket.lastUsedAt = now
+      doc.servers = servers
+      doc.markModified('servers')
+      await doc.save()
+      return
+    }
+    const serverMap = serverBucket && typeof serverBucket === 'object' ? { ...serverBucket } : {}
+    const entry = serverMap[username || '']
+    if (entry) {
+      entry.lastUsedAt = now
+      servers[provider][serverUrl] = serverMap
+      doc.servers = servers
+      doc.markModified('servers')
+      await doc.save()
+    }
+  } catch (err) {
+    logger.debug({ err, userId, provider }, 'could not refresh lastUsedAt (non-fatal)')
+  }
 }
 
 /**
- * List all servers a user has stored tokens for (for status checks)
+ * List all PAT entries a user has stored tokens for (for status checks).
+ * Each PAT row: { id, provider, url, username, source: 'pat' } plus, when
+ * linked, the GitHub OAuth slot as { ..., source: 'oauth' }.
  */
-async function getLinkedServers(userId) {
+async function getPublicServers(userId) {
   const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-  const servers = []
-  const tokens = credentials?.tokens || {}
 
-  // legacy OAuth token (pre-PAT schema)
-  if (!Object.keys(tokens).length && credentials?.github) {
-    servers.push({
-      id: `github:${getDefaultServerUrl('github')}`,
+  if (!credentials) return []
+
+  const serversList = []
+  const tokens = credentials.tokens || {}
+  for (const [provider, urlMap] of Object.entries(tokens)) {
+    if (typeof urlMap !== 'object' || urlMap === null) continue // legacy corruption guard
+    for (const [serverUrl, bucket] of Object.entries(urlMap)) {
+      const legacyUsername = credentials.servers?.[provider]?.[serverUrl]?.username
+      for (const entry of enumerateBucket(bucket, legacyUsername)) {
+        const username = entry.username || legacyUsername || ''
+        serversList.push({
+          id: serverId(provider, serverUrl, username),
+          provider,
+          url: serverUrl,
+          username,
+          source: 'pat'
+        })
+      }
+    }
+  }
+
+  // GitHub OAuth slot (object or legacy string) -> one virtual oauth server
+  const oauthLinked = typeof credentials.github === 'string' ||
+    (credentials.github && typeof credentials.github === 'object' && credentials.github.token)
+  if (oauthLinked) {
+    const { username } = await getOAuth(userId)
+    const url = getDefaultServerUrl('github')
+    serversList.push({
+      id: serverId('github', url, username),
       provider: 'github',
-      url: getDefaultServerUrl('github'),
-      username: ''
+      url,
+      username,
+      source: 'oauth'
     })
   }
 
-  for (const [provider, urlMap] of Object.entries(tokens)) {
-    for (const [url, entry] of Object.entries(urlMap || {})) {
-      if (typeof entry !== 'string') continue // skip corrupted nested entries
-      const cfg = credentials?.servers?.[provider]?.[url] || {}
-      servers.push({
-        id: `${provider}:${url}`,
-        provider,
-        url,
-        username: cfg.username || '',
-      })
-    }
-  }
-  return servers
+  return serversList
+}
+
+// Backwards-compatible alias (some call sites read "linked servers")
+async function getLinkedServers(userId) {
+  return getPublicServers(userId)
 }
 
 /**
- * Remove PAT for a specific provider and server URL
+ * Remove a PAT entry.
+ * - with username: remove exactly that (provider, url, username) account
+ * - without: remove the whole (provider, url) bucket (all accounts)
  */
-async function _removeUserPAT(userId, provider, serverUrl) {
+async function _removeUserPAT(userId, provider, serverUrl, username) {
   const normalizedServerUrl = serverUrl?.replace(/\/$/, '')
+  const hasUsername = username !== undefined && username !== null
+  const cleanUsername = hasUsername ? (username || '').trim() : undefined
 
   const doc = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
   if (!doc) return
 
-  const tokens = { ...(doc.tokens || {}) }
-  const servers = { ...(doc.servers || {}) }
-
-  if (normalizedServerUrl) {
-    if (tokens[provider]) delete tokens[provider][normalizedServerUrl]
-    if (servers[provider]) delete servers[provider][normalizedServerUrl]
-  } else {
-    delete tokens[provider]
-    delete servers[provider]
+  for (const mapName of ['tokens', 'servers']) {
+    const map = { ...((doc[mapName] || {})) }
+    if (normalizedServerUrl) {
+      if (map[provider]) {
+        const bucket = map[provider][normalizedServerUrl]
+        if (!hasUsername) {
+          delete map[provider][normalizedServerUrl]
+        } else if (typeof bucket === 'string' || bucket?.username !== undefined) {
+          // Legacy single-entry shape: delete the whole bucket
+          delete map[provider][normalizedServerUrl]
+        } else if (bucket && typeof bucket === 'object') {
+          const next = { ...bucket }
+          delete next[cleanUsername]
+          if (Object.keys(next).length) {
+            map[provider][normalizedServerUrl] = next
+          } else {
+            delete map[provider][normalizedServerUrl]
+          }
+        }
+      }
+    } else {
+      delete map[provider]
+    }
+    if (map[provider] && !Object.keys(map[provider]).length) {
+      delete map[provider]
+    }
+    doc[mapName] = map
+    doc.markModified(mapName)
   }
-  if (tokens[provider] && !Object.keys(tokens[provider]).length) delete tokens[provider]
-  if (servers[provider] && !Object.keys(servers[provider]).length) delete servers[provider]
 
-  doc.tokens = tokens
-  doc.servers = servers
-  doc.markModified('tokens')
-  doc.markModified('servers')
   doc.lastUsedAt = new Date()
   await doc.save()
 }
 
 /**
- * Get all registered servers for a user
+ * Get all registered servers for a user (raw map, legacy readers)
  */
 async function getUserServers(userId) {
   const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-  
   if (!credentials) return {}
-  
   return credentials.servers || {}
 }
 
 /**
- * Update username for a specific provider/server URL
- */
-async function _updateServerUsername(userId, provider, serverUrl, username) {
-  const normalizedServerUrl = serverUrl.replace(/\/$/, '')
-
-  const doc = (await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))) ||
-    new GitHubSyncUserCredentials({ userId, createdAt: new Date() })
-  const servers = { ...(doc.servers || {}) }
-  servers[provider] = { ...(servers[provider] || {}) }
-  const prev = servers[provider][normalizedServerUrl] || {}
-  servers[provider][normalizedServerUrl] = {
-    url: normalizedServerUrl,
-    username: username || '',
-    createdAt: prev.createdAt || new Date(),
-    lastUsedAt: new Date()
-  }
-  doc.servers = servers
-  doc.markModified('servers')
-  doc.lastUsedAt = new Date()
-  await doc.save()
-}
-
-
-/**
- * Add a new server configuration for a user
+ * Add a server configuration (no token) for (provider, url, username)
  */
 async function _addServerConfig(userId, provider, serverUrl, username) {
   const normalizedServerUrl = serverUrl.replace(/\/$/, '')
-  
-  // Check if this server is already configured
-  const servers = await getUserServers(userId)
-  if (servers?.[provider]?.[normalizedServerUrl]) {
-    throw new Error('Server already configured')
-  }
-  
-  const now = new Date()
+  const cleanUsername = (username || '').trim()
+
   const doc = (await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))) ||
-    new GitHubSyncUserCredentials({ userId, createdAt: now })
-  const serversMap = { ...(doc.servers || {}) }
-  serversMap[provider] = { ...(serversMap[provider] || {}) }
-  serversMap[provider][normalizedServerUrl] = {
-    url: normalizedServerUrl,
-    username: username || '',
-    createdAt: now,
+    new GitHubSyncUserCredentials({ userId, createdAt: new Date() })
+  const now = new Date()
+
+  const servers = { ...(doc.servers || {}) }
+  servers[provider] = { ...(servers[provider] || {}) }
+  const bucket = servers[provider][normalizedServerUrl]
+  let serverMap = {}
+  if (bucket && typeof bucket === 'object' && bucket.username !== undefined) {
+    const legacyUsername = bucket.username || ''
+    serverMap = legacyUsername ? { [legacyUsername]: { createdAt: bucket.createdAt || now, lastUsedAt: now } } : {}
+  } else if (bucket && typeof bucket === 'object') {
+    serverMap = { ...bucket }
+  }
+  const prev = serverMap[cleanUsername]
+  serverMap[cleanUsername] = {
+    createdAt: prev?.createdAt || now,
     lastUsedAt: now
   }
-  doc.servers = serversMap
+  servers[provider][normalizedServerUrl] = serverMap
+  doc.servers = servers
   doc.markModified('servers')
   doc.lastUsedAt = now
   await doc.save()
@@ -270,101 +396,142 @@ async function _addServerConfig(userId, provider, serverUrl, username) {
   return { success: true, serverUrl: normalizedServerUrl }
 }
 
-/**
- * Remove a server configuration for a user
- */
-async function _removeServer(userId, provider, serverUrl) {
-  const normalizedServerUrl = serverUrl?.replace(/\/$/, '')
-
-  const doc = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-  if (doc) {
-    const serversMap = { ...(doc.servers || {}) }
-    if (normalizedServerUrl) {
-      if (serversMap[provider]) delete serversMap[provider][normalizedServerUrl]
-    } else {
-      delete serversMap[provider]
-    }
-    if (serversMap[provider] && !Object.keys(serversMap[provider]).length) {
-      delete serversMap[provider]
-    }
-    doc.servers = serversMap
-    doc.markModified('servers')
-    doc.lastUsedAt = new Date()
-    await doc.save()
-  }
-
-  // Also remove the PAT token(s)
-  await _removeUserPAT(userId, provider, normalizedServerUrl) // hold: lock already acquired in removeServer
-
-  return { success: true }
-}
+// ------------------------- GitHub OAuth slot -------------------------- //
 
 /**
- * Get servers with usernames only (without encrypted tokens)
+ * State of the GitHub OAuth account (the dedicated slot, separate from PAT
+ * entries). Returns { linked, username }.
  */
-async function getPublicServers(userId) {
-  const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-
-  if (!credentials) return []
-
-  const tokens = credentials.tokens || {}
-  if (!Object.keys(tokens).length) {
-    // legacy OAuth token (pre-PAT schema) -> expose as a single github server
-    if (credentials.github) {
-      return [{
-        id: `github:${getDefaultServerUrl('github')}`,
-        provider: 'github',
-        url: getDefaultServerUrl('github'),
-        username: ''
-      }]
-    }
-    return []
-  }
-
-  // Enumerate stored tokens (source of truth for registered providers)
-  const serversList = []
-  for (const [provider, urlMap] of Object.entries(credentials.tokens)) {
-    for (const [serverUrl, entry] of Object.entries(urlMap || {})) {
-      if (typeof entry !== 'string') continue // skip corrupted nested entries
-      const config = credentials.servers?.[provider]?.[serverUrl] || {}
-      serversList.push({
-        id: `${provider}:${serverUrl}`,
-        provider,
-        url: serverUrl,
-        username: config.username || ''
-      })
-    }
-  }
-
-  return serversList
-}
-
-// ------------------------- Legacy functions (for backward compatibility) -------------------------- //
-
-async function getUserToken(userId) {
-  // Try new format first, fall back to legacy
+async function getOAuth(userId) {
   try {
     const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-    if (!credentials) throw new InvalidTokenError('no user token', { userId, status: 400 })
-    
-    // Check for 'github' provider (legacy format)
-    const defaultUrl = getDefaultServerUrl('github')
-    const storedToken = credentials.tokens?.github?.[defaultUrl]
-    if (storedToken) {
-      return await decryptAccessToken(storedToken)
+    if (!credentials) return { linked: false, username: '' }
+
+    const github = credentials.github
+    if (typeof github === 'string') {
+      // Legacy shape: raw encrypted token, username unknown.
+      return { linked: true, username: '' }
     }
-    
-    throw new InvalidTokenError('no token found', { userId, status: 400 })
+    if (github && typeof github === 'object' && github.token) {
+      return { linked: true, username: github.username || '' }
+    }
+    return { linked: false, username: '' }
   } catch (err) {
-    // If error is "no user token", check for legacy format
-    if ((err).status === 400 && (err.message)?.includes('no user token')) {
-      const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-      if (!credentials) throw new InvalidTokenError('no user token', { userId, status: 400 })
-      
-      // Legacy format: directly stored 'github' field
-      if (credentials.github) {
-        return await decryptAccessToken(credentials.github)
-      }
+    // A corrupted slot must never break the settings page.
+    logger.warn({ err, userId }, 'could not read github oauth slot; treating as not linked')
+    return { linked: false, username: '' }
+  }
+}
+
+/** Encrypted token of the OAuth slot (legacy strings and objects). */
+function oauthSlotToken(credentials) {
+  const github = credentials?.github
+  if (typeof github === 'string') return github
+  if (github && typeof github === 'object') return github.token
+  return undefined
+}
+
+/**
+ * Save the GitHub OAuth account (token + login). Coexists with PAT entries;
+ * only the OAuth slot itself is replaced.
+ */
+async function _saveOAuth(userId, token, username) {
+  const tokenEncrypted = await encryptAccessToken(token)
+  const now = new Date()
+
+  const doc = (await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))) ||
+    new GitHubSyncUserCredentials({ userId, createdAt: now })
+
+  doc.github = {
+    token: tokenEncrypted,
+    username: (username || '').trim(),
+    linkedAt: now
+  }
+  doc.markModified('github')
+  doc.lastUsedAt = now
+  await doc.save()
+}
+
+/**
+ * Remove the GitHub OAuth account only (PAT entries are untouched).
+ */
+async function _removeOAuth(userId) {
+  // Mongoose documents in this build are plain accessor objects (neither
+  // `delete doc.field` nor `doc.unset` reliably trigger a removal), so use
+  // a raw $update with $unset — version-proof.
+  await GitHubSyncUserCredentials.updateOne(
+    normalizeQuery({ userId }),
+    { $unset: { github: 1 }, $set: { lastUsedAt: new Date() } }
+  )
+}
+
+/** Resolve the token for an OAuth-slot account (used by resolveCreds paths). */
+async function getOAuthToken(userId, username) {
+  const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
+  const tokenEncrypted = oauthSlotToken(credentials)
+  if (!tokenEncrypted) {
+    throw new InvalidTokenError('no github oauth token', { userId, status: 400 })
+  }
+  const linked = await getOAuth(userId)
+  if (username && linked.username && username !== linked.username) {
+    throw new InvalidTokenError(
+      `github oauth account is '${linked.username}', not '${username}'`,
+      { userId, status: 400 }
+    )
+  }
+  return decryptAccessToken(tokenEncrypted)
+}
+
+/**
+ * Does (provider, url) have a usable account — PAT entry or (for github.com)
+ * the OAuth slot?
+ */
+async function hasAccount(userId, provider, serverUrl) {
+  const normalizedServerUrl = (serverUrl || '').replace(/\/$/, '')
+  if (normalizedServerUrl) {
+    try {
+      await getUserPAT(userId, provider, normalizedServerUrl)
+      return true
+    } catch {
+      // fall through to the OAuth slot
+    }
+  }
+  if (provider === 'github' &&
+      (!normalizedServerUrl || normalizedServerUrl === getDefaultServerUrl('github'))) {
+    const linked = await getOAuth(userId)
+    if (linked.linked) return true
+  }
+  throw new InvalidTokenError(
+    `no git account for ${provider} ${normalizedServerUrl || '(default)'}`,
+    { userId, provider, serverUrl: normalizedServerUrl, status: 400 }
+  )
+}
+
+// ------------------------- Legacy single-token API -------------------------- //
+
+async function getUserToken(userId) {
+  // Order: OAuth slot first (it is the dedicated github account), then the
+  // github.com PAT entries, then the pre-schema legacy string.
+  const credentials = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
+  if (!credentials) {
+    throw new InvalidTokenError('no user token', { userId, status: 400 })
+  }
+
+  const slotToken = oauthSlotToken(credentials)
+  if (slotToken) {
+    return await decryptAccessToken(slotToken)
+  }
+
+  const defaultUrl = getDefaultServerUrl('github')
+  try {
+    return await getUserPAT(userId, 'github', defaultUrl)
+  } catch (err) {
+    if (!(err instanceof InvalidTokenError || err?.status === 400) || !credentials) {
+      throw err
+    }
+    const legacy = credentials.github
+    if (typeof legacy === 'string') {
+      return await decryptAccessToken(legacy)
     }
     throw err
   }
@@ -374,85 +541,62 @@ async function saveUserToken(userId, accessToken, serverTypeOrServerUrl) {
   let provider = 'github'
   let serverUrl = getDefaultServerUrl('github')
 
-  // Parse parameters (handle legacy vs new format)
   if (typeof serverTypeOrServerUrl === 'string' && validProviders.includes(serverTypeOrServerUrl)) {
-    // Provider type passed as string
     provider = serverTypeOrServerUrl
     serverUrl = getDefaultServerUrl(provider)
   } else if (typeof serverTypeOrServerUrl === 'string') {
-    // It's a URL, assume github provider
     serverUrl = serverTypeOrServerUrl
   }
-  
-  return await saveUserPAT(userId, provider, serverUrl, accessToken)
+
+  // The OAuth slot is the github.com account; other providers fall back to
+  // PAT-style storage under an anonymous account.
+  if (provider === 'github' && serverUrl.replace(/\/$/, '') === getDefaultServerUrl('github')) {
+    return _saveOAuth(userId, accessToken, '')
+  }
+  return _saveUserPAT(userId, provider, serverUrl, '', accessToken)
 }
 
-async function removeUserToken(userId, { clearAll = false } = {}) {
-  // H10: the default must not be an all-providers footgun. It removes ONLY
-  // the `github` provider entries (tokens + servers maps); other providers'
-  // tokens are preserved byte-for-byte. PATs need no server-side revocation.
-  if (clearAll) {
-    // legacy full wipe — kept for explicit opt-in only
-    await GitHubSyncUserCredentials.deleteOne(normalizeQuery({ userId }))
-    return
-  }
-
-  await withUserLock(userId, async () => {
-    const doc = await GitHubSyncUserCredentials.findOne(normalizeQuery({ userId }))
-    if (!doc) return
-
-    const tokens = { ...(doc.tokens || {}) }
-    const servers = { ...(doc.servers || {}) }
-    delete tokens.github
-    delete servers.github
-
-    // Only one (github) provider was stored → the doc becomes empty; delete it.
-    if (!Object.keys(tokens).length && !Object.keys(servers).length) {
-      await GitHubSyncUserCredentials.deleteOne(normalizeQuery({ userId }))
-      return
-    }
-
-    doc.tokens = tokens
-    doc.servers = servers
-    doc.markModified('tokens')
-    doc.markModified('servers')
-    doc.lastUsedAt = new Date()
-    await doc.save()
-  })
-
-  logger.debug({ userId }, 'removed github provider entries from user credentials')
+async function removeUserToken(userId) {
+  // H10: only ever removes the GitHub OAuth slot — never a PAT entry, never
+  // another provider (the old clearAll footgun is gone).
+  await _removeOAuth(userId)
+  logger.debug({ userId }, 'removed github oauth slot from user credentials')
 }
 
 // ------------------------- exports -------------------------- //
-async function saveUserPAT(userId, provider, serverUrl, pat) {
-  return withUserLock(userId, () => _saveUserPAT(userId, provider, serverUrl, pat))
-}
-async function updateServerUsername(userId, provider, serverUrl, username) {
-  return withUserLock(userId, () => _updateServerUsername(userId, provider, serverUrl, username))
+async function saveUserPAT(userId, provider, serverUrl, username, pat) {
+  return withUserLock(userId, () => _saveUserPAT(userId, provider, serverUrl, username, pat))
 }
 async function addServerConfig(userId, provider, serverUrl, username) {
   return withUserLock(userId, () => _addServerConfig(userId, provider, serverUrl, username))
 }
-async function removeServer(userId, provider, serverUrl) {
-  return withUserLock(userId, () => _removeServer(userId, provider, serverUrl))
+async function removeServer(userId, provider, serverUrl, username) {
+  return withUserLock(userId, () => _removeUserPAT(userId, provider, serverUrl, username))
 }
-async function removeUserPAT(userId, provider, serverUrl) {
-  return withUserLock(userId, () => _removeUserPAT(userId, provider, serverUrl))
+async function removeUserPAT(userId, provider, serverUrl, username) {
+  return withUserLock(userId, () => _removeUserPAT(userId, provider, serverUrl, username))
 }
 
 export default {
   saveUserPAT,
   getUserPAT,
   getUserPATCredentials,
+  getPublicServers,
   getLinkedServers,
+  hasAccount,
   removeUserPAT,
   addServerConfig,
   removeServer,
-  getPublicServers,
   getUserServers,
-  updateServerUsername,
-  
-  // Legacy functions (for backward compatibility)
+
+  // GitHub OAuth slot (dedicated account, coexists with PAT entries)
+  getOAuth,
+  saveOAuth: (userId, token, username) =>
+    withUserLock(userId, () => _saveOAuth(userId, token, username)),
+  removeOAuth: (userId) => withUserLock(userId, () => _removeOAuth(userId)),
+  getOAuthToken,
+
+  // Legacy single-token API (kept for backward compatibility)
   saveUserToken,
   getUserToken,
   removeUserToken

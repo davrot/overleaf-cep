@@ -128,7 +128,8 @@ const GitSyncExportModal = ({
                   >
                     {candidates.map(s => (
                       <option key={s.id} value={s.id}>
-                        {t(s.provider)}{s.username ? ` (${s.username})` : ''} — {s.url}
+                        {t(s.provider)}{s.username ? ` (${s.username})` : ''}
+                        {s.source === 'oauth' ? ` — OAuth` : ''} — {s.url}
                       </option>
                     ))}
                   </OLFormSelect>

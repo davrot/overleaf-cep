@@ -37,9 +37,16 @@ githubSync: {
 ```
 
 Only used for the GitHub OAuth redirect flow (`/user/github-sync/oauth2`);
-PAT linking works without it. The exposed flag
+PAT linking works without it. The flag
 `ol-ExposedSettings.githubSyncEnabled` (true when both clientID and clientSecret
-are set) also gates the git-provider card in the IDE integrations rail.
+are set) controls the widget's "Link to your GitHub account" button.
+
+A linked OAuth account is stored in a **dedicated slot** (`credentials.github`)
+that coexists with any number of PAT entries — including PATs for
+github.com. The widget's "Unlink your GitHub account" button removes only the
+OAuth slot; PAT rows are removed via `DELETE /user/git-servers/:id`. The OAuth
+slot's login is resolved via GitHub `/user` at link time and stored on the
+slot so the account shows correctly in selection lists (`GitHub (davrot) — OAuth`).
 
 ### Required: microservice endpoint
 
@@ -59,13 +66,13 @@ variable is needed at runtime.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/user/git-pat/link` | Link a PAT (`provider`, `url`, `username`, `pat`) |
-| `GET` | `/user/git-servers` | List linked git servers (no secrets) |
-| `DELETE` | `/user/git-servers/:id` | Unlink a server |
-| `POST` | `/user/git-servers/test` | Test that a PAT is accepted (REST `/user`, git-protocol fallback) |
-| `GET` | `/user/github-sync/status` | Connection status + linked providers |
-| `GET` | `/user/github-sync/orgs` | User + orgs for the linked server |
-| `GET` | `/user/github-sync/repos` | List repos (`provider`, `serverUrl`) |
+| `POST` | `/user/git-pat/link` | Link a PAT (`provider`, `url`, `username` + `pat`; username is the account identity — required, several accounts per provider URL are allowed) |
+| `GET` | `/user/git-servers` | Linked accounts: PAT rows + the GitHub OAuth slot row (each `{ id, provider, url, username, source }`; no secrets) |
+| `DELETE` | `/user/git-servers/:id` | Remove exactly one PAT account (`id` = `provider:url:username`) |
+| `POST` | `/user/git-servers/test` | Test that a PAT is accepted (`provider`, `url`, optional `username`; REST `/user`, git-protocol fallback) |
+| `GET` | `/user/github-sync/status` | Connection status + linked providers + `oauth: { linked, username }` |
+| `GET` | `/user/github-sync/orgs` | User + orgs (optional `provider`, `serverUrl`, `username`) |
+| `GET` | `/user/github-sync/repos` | List repos (optional `provider`, `serverUrl`, `username`) |
 | `POST` | `/project/new/github-sync` | Create a project from an existing repo |
 | `POST` | `/project/:project_id/github-sync/export` | Export the project to a new repo |
 | `GET` | `/project/:project_id/github-sync/state` | Sync state (`mergeStatus`, `repoFullName`, …) |
@@ -73,9 +80,21 @@ variable is needed at runtime.
 | `POST` | `/project/:project_id/github-sync/merge` | Merge remote commits in (GitHub only) |
 | `DELETE` | `/project/:project_id/github-sync` | Unlink project (removes state; repo stays) |
 | `GET` | `/user/github-sync/oauth2` | Start GitHub OAuth flow (only meaningful when configured) |
-| `GET` | `/user/github-sync/oauth2/callback` | OAuth callback; token stored in the GitHub PAT slot |
+| `GET` | `/user/github-sync/oauth2/callback` | OAuth callback; token stored in the GitHub OAuth slot (login resolved via `/user` and stored on the slot) |
 
 ## State model
+
+`githubSyncUserCredentials` (one doc per user) — the credential store:
+
+- PAT entries: `tokens[provider][serverUrl][username] = encryptedToken`
+  (legacy single-account shape `tokens[provider][serverUrl] = encryptedToken` +
+  `servers[provider][serverUrl].username` is still readable and migrated on
+  the next save).
+- GitHub OAuth slot: `credentials.github = { token, username, linkedAt }`
+  (legacy string value still readable); removed by `POST /user/github-sync/unlink`.
+- Ambiguity rule: an anonymous credential lookup with **several** accounts on
+  the same provider URL fails with a clear 400 naming the usernames instead of
+  silently picking one; for github.com the OAuth slot is the fallback account.
 
 `githubSyncProjectStates` (one doc per project):
 
@@ -89,9 +108,12 @@ variable is needed at runtime.
 
 ## Frontend
 
-- user/settings: `github-sync-widget.tsx` (provider table + add-provider)
+- user/settings: `github-sync-widget.tsx` (PAT table — Test/Link/Delete per row
+  — + add-provider; the Link/Unlink button pair manages the GitHub OAuth slot)
 - project page: `github-integration-card.tsx`, `github-sync-widget.tsx` (rail)
-- modals: `git-provider-modal` (link PAT), `git-sync-export-modal`,
+- modals: `git-provider-modal` (link PAT; username required),
+  `git-sync-export-modal` (provider/account select incl. the OAuth entry),
+  `import-from-github-modal-wrapper` (account select),
   `git-sync-merge-modal`, plus conflict/need-auth/cannot-export states
 
 ## Security notes
