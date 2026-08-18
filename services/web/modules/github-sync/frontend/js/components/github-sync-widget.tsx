@@ -11,7 +11,7 @@ import GitProviderModal from './git-provider-modal'
 
 export const GitHubSyncWidget = function GitHubSyncWidget() {
   const { t } = useTranslation()
-  const { appName } = getMeta('ol-ExposedSettings')
+  const { appName, githubSyncEnabled } = getMeta('ol-ExposedSettings')
 
   const {
     isLoading: isCheckingConn,
@@ -65,12 +65,22 @@ export const GitHubSyncWidget = function GitHubSyncWidget() {
           ) : null}
 
           <GitServersList key={listKey} />
-        </div>
 
-        <div className="settings-widget-actions">
-          <OLButton variant="secondary" onClick={() => setShowAddModal(true)}>
-            {t('add_new_provider')}
-          </OLButton>
+          {/* Buttons live inside the description column (not the grid's
+              actions column) so they stay inside the widget box instead of
+              overflowing its right edge. The OAuth button ("Sign in with
+              GitHub" flow) is only offered when the instance is configured
+              with GitHub OAuth credentials (clientID + clientSecret). */}
+          <div className="d-flex flex-column gap-2 mt-2">
+            {githubSyncEnabled && (
+              <OLButton variant="secondary" href="/user/github-sync/oauth2">
+                {t('link_to_github')}
+              </OLButton>
+            )}
+            <OLButton variant="secondary" onClick={() => setShowAddModal(true)}>
+              {t('add_new_provider')}
+            </OLButton>
+          </div>
         </div>
       </div>
 
