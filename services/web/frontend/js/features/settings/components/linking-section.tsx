@@ -23,9 +23,10 @@ const zoteroEnabled = getMeta('ol-ExposedSettings').zoteroEnabled
 const webdavEnabled = getMeta('ol-ExposedSettings').webdavEnabled
 
 const availableIntegrationLinkingWidgets = allAvailableIntegrationLinkingWidgets.filter(
-  ({ path }) =>
-    (githubSyncEnabled || !path.includes('github-sync')) &&
-    (webdavEnabled || !path.includes('webdav'))
+  // Custom build: the Git Provider widget is PAT-based (per-user token for
+  // GitHub/GitLab/Gitea/Forgejo) and needs no server-side OAuth, so it is
+  // always available — no longer gated on githubSyncEnabled.
+  ({ path }) => (webdavEnabled || !path.includes('webdav'))
 )
 
 function LinkingSection() {

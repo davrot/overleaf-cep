@@ -11,7 +11,10 @@ const allIntegrationPanelComponents = importOverleafModules(
 const integrationPanelComponents = allIntegrationPanelComponents.filter(
   ({ path }) =>
     (getMeta('ol-gitBridgeEnabled') || !path.includes('git-bridge')) &&
-    (getMeta('ol-ExposedSettings').githubSyncEnabled || !path.includes('github-sync')) &&
+    // Custom build: the Git Provider card is PAT-based (per-user token for
+    // GitHub/GitLab/Gitea/Forgejo) and needs no server-side OAuth, so it is
+    // always available — no longer gated on githubSyncEnabled (which only
+    // reflects GitHub OAuth credentials being configured).
     (getMeta('ol-ExposedSettings').zoteroEnabled || !path.includes('zotero')) &&
     (getMeta('ol-ExposedSettings').webdavEnabled || !path.includes('webdav'))
 )
