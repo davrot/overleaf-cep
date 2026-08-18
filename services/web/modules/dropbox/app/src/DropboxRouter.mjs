@@ -9,6 +9,7 @@ import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEn
 import EditorController from '../../../../app/src/Features/Editor/EditorController.mjs'
 import TpdsUpdateHandler from '../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs'
 import HistoryManager from '../../../../app/src/Features/History/HistoryManager.mjs'
+import DocumentUpdaterHandler from '../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
 import fs from 'node:fs/promises'
@@ -187,6 +188,14 @@ async function uploadProjectToDropbox({ client, projectId, rootPath }) {
 
   const projectPath = joinDropboxPath(rootPath, project.name)
   await ensureDropboxDirectory(client, projectPath)
+
+  // C4 (bugfix 2026-08-18): flush pending document updates BEFORE reading
+  // content — without this, a document that was just edited (e.g. main.tex)
+  // can be read in stale form and the STALE body silently overwrites the
+  // Dropbox copy (observed in production: "main.tex was changed but the
+  // update didn't show up on Dropbox"). Mirrors the WebDAV push lane, which
+  // performs this flush before its getAllDocs/getAllFiles read.
+  await DocumentUpdaterHandler.promises.flushProjectToMongo(projectId)
 
   const [docs, files] = await Promise.all([
     ProjectEntityHandler.promises.getAllDocs(projectId),
