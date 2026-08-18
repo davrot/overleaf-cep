@@ -3025,6 +3025,7 @@
   "unlink_forgejo_warning": "Are you sure you want to unlink your Forgejo account? You will lose the ability to sync with linked repositories.",
   "unlink_from_sso": "Unlink from SSO",
   "unlink_gitea_warning": "Are you sure you want to unlink your Gitea account? You will lose the ability to sync with linked repositories.",
+  "unlink_github_account": "Unlink your GitHub account",
   "unlink_github_repository": "Unlink GitHub repository",
   "unlink_github_warning": "Any projects that you have synced with GitHub will be disconnected and no longer kept in sync with GitHub. Are you sure you want to unlink your GitHub account?",
   "unlink_gitlab_warning": "Are you sure you want to unlink your GitLab account? You will lose the ability to sync with linked repositories.",

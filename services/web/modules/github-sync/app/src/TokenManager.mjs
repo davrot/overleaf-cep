@@ -152,6 +152,7 @@ async function getLinkedServers(userId) {
   // legacy OAuth token (pre-PAT schema)
   if (!Object.keys(tokens).length && credentials?.github) {
     servers.push({
+      id: `github:${getDefaultServerUrl('github')}`,
       provider: 'github',
       url: getDefaultServerUrl('github'),
       username: ''
@@ -163,6 +164,7 @@ async function getLinkedServers(userId) {
       if (typeof entry !== 'string') continue // skip corrupted nested entries
       const cfg = credentials?.servers?.[provider]?.[url] || {}
       servers.push({
+        id: `${provider}:${url}`,
         provider,
         url,
         username: cfg.username || '',

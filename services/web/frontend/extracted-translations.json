@@ -2408,6 +2408,7 @@
   "unlink_forgejo_warning": "",
   "unlink_from_sso": "",
   "unlink_gitea_warning": "",
+  "unlink_github_account": "",
   "unlink_github_repository": "",
   "unlink_github_warning": "",
   "unlink_gitlab_warning": "",

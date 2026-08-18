@@ -176,6 +176,24 @@ async function oauth2Callback(req, res) {
 
   try {
     await TokenManager.saveUserToken(userId, token)
+    // Keep the stored display username in sync with the account the OAuth
+    // token actually belongs to (otherwise the settings table and the export
+    // modal still show the username of a previously linked PAT/account).
+    try {
+      const { user } = await gitServerClient.listUserAndOrgs(
+        'https://github.com', '', token
+      )
+      if (user) {
+        await TokenManager.updateServerUsername(
+          userId, 'github', 'https://github.com', user
+        )
+      }
+    } catch (err) {
+      logger.warn(
+        { err, userId },
+        'could not resolve GitHub username after OAuth link (non-fatal)'
+      )
+    }
   } catch (err) {
     const info = OError.getFullInfo(err)
     const errStatus  = info?.status || 500
