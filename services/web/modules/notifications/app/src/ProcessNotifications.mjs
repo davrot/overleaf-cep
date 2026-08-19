@@ -13,7 +13,9 @@
  * - a claim older than `STALE_PROCESSING_MS` (consumer crashed) is reclaimed
  *
  * Dry run (`OVERLEAF_NOTIFICATIONS_DRY_RUN=true`): resolves recipients and
- * counts, but sends nothing and leaves the queue un-consumed.
+ * counts, but sends nothing. Docs stay claimed during the run (so the loop
+ * cannot re-claim them) and are released in one batch afterwards — the queue
+ * is left un-consumed for inspection.
  */
 
 import logger from '@overleaf/logger'
@@ -118,10 +120,11 @@ async function _markFailed(notification, err) {
   )
 }
 
-function _resetForDryRun(notification) {
-  // Do not consume the doc: make it claimable again without a backoff.
-  return db.emailNotifications.updateOne(
-    { _id: notification._id },
+function _releaseForDryRun(ids) {
+  // End of run: release the dry-claimed docs in one batch so they are
+  // claimable again without a backoff (queue left un-consumed for inspection).
+  return db.emailNotifications.updateMany(
+    { _id: { $in: ids } },
     {
       $set: { processing: false },
       $unset: { nextRetryAt: '', processingStartedAt: '' },
@@ -137,6 +140,7 @@ export async function processNotifications() {
   let emailsSent = 0
   let dryRunProcessed = 0
   let dryRunWouldHaveSent = 0
+  const dryClaimedIds = []
 
   while (notificationsFound < BATCH_SIZE) {
     const notification = await _claimNextDueNotification()
@@ -165,8 +169,10 @@ export async function processNotifications() {
       notificationsReady += 1
 
       if (DRY_RUN) {
-        // Dry run leaves the queue un-consumed for inspection.
-        await _resetForDryRun(notification)
+        // Keep the claim in place so the loop cannot re-claim this doc
+        // (it would sort first again); all dry claims are released after
+        // the loop in one batch.
+        dryClaimedIds.push(notification._id)
         dryRunProcessed += 1
         dryRunWouldHaveSent += 1
         continue
@@ -178,6 +184,10 @@ export async function processNotifications() {
     } catch (err) {
       await _markFailed(notification, err)
     }
+  }
+
+  if (DRY_RUN && dryClaimedIds.length > 0) {
+    await _releaseForDryRun(dryClaimedIds)
   }
 
   return {
