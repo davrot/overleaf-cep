@@ -72,6 +72,13 @@ function _claimNextDueNotification() {
       $set: { processing: true, processingStartedAt: nowDate },
     },
     { sort: { scheduledAt: 1 }, returnDocument: 'after' }
+  ).then(
+    // This build resolves findOneAndUpdate (raw mongodb-legacy collection)
+    // to the DOCUMENT itself; some driver builds/tests return { value: doc }.
+    // Normalize to `doc | null` so a claimed doc is not dropped by reading
+    // `result.value` (undefined here) after `processing: true` was already set.
+    result => (result && result.value !== undefined ? result.value : result) ||
+      null
   )
 }
 
@@ -132,8 +139,7 @@ export async function processNotifications() {
   let dryRunWouldHaveSent = 0
 
   while (notificationsFound < BATCH_SIZE) {
-    const result = await _claimNextDueNotification()
-    const notification = result && result.value
+    const notification = await _claimNextDueNotification()
     if (!notification) {
       break
     }

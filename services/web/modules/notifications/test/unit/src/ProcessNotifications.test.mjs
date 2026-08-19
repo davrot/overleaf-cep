@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
 
 const modulePath = path.join(
@@ -64,7 +64,7 @@ describe('ProcessNotifications', function () {
     ctx.ProcessNotifications = await import(modulePath)
   })
 
-  it('should process and delete due scheduled notifications', async function (ctx) {
+  it('should process and delete due scheduled notifications (production driver shape: raw doc)', async function (ctx) {
     const notification = {
       _id: 'notif-1',
       scheduledAt: new Date(Date.now() - 10000),
@@ -72,9 +72,11 @@ describe('ProcessNotifications', function () {
       opts: { to: 'user@example.com' },
     }
 
+    // PRODUCTION SHAPE verified in-container: the raw mongodb-legacy
+    // collection resolves findOneAndUpdate to the doc itself (or null).
     ctx.emailNotifications.findOneAndUpdate
-      .mockResolvedValueOnce({ value: notification })
-      .mockResolvedValueOnce({ value: null })
+      .mockResolvedValueOnce(notification)
+      .mockResolvedValueOnce(null)
 
     const result = await ctx.ProcessNotifications.processNotifications()
 
@@ -86,8 +88,24 @@ describe('ProcessNotifications', function () {
     })
   })
 
+  it('should still handle { value: doc } wrapper shapes (other driver builds)', async function (ctx) {
+    const notification = {
+      _id: 'notif-1w',
+      emailType: 'testEmail',
+      opts: { to: 'user@example.com' },
+    }
+    ctx.emailNotifications.findOneAndUpdate
+      .mockResolvedValueOnce({ value: notification })
+      .mockResolvedValueOnce({ value: null })
+
+    const result = await ctx.ProcessNotifications.processNotifications()
+
+    expect(result.notificationsFound).toBe(1)
+    expect(result.emailsSent).toBe(1)
+  })
+
   it('should stop when there are no due notifications', async function (ctx) {
-    ctx.emailNotifications.findOneAndUpdate.mockResolvedValue({ value: null })
+    ctx.emailNotifications.findOneAndUpdate.mockResolvedValue(null)
 
     const result = await ctx.ProcessNotifications.processNotifications()
 
@@ -105,8 +123,8 @@ describe('ProcessNotifications', function () {
     }
 
     ctx.emailNotifications.findOneAndUpdate
-      .mockResolvedValueOnce({ value: notification })
-      .mockResolvedValueOnce({ value: null })
+      .mockResolvedValueOnce(notification)
+      .mockResolvedValueOnce(null)
 
     await ctx.ProcessNotifications.processNotifications()
 
@@ -126,8 +144,8 @@ describe('ProcessNotifications', function () {
     }
 
     ctx.emailNotifications.findOneAndUpdate
-      .mockResolvedValueOnce({ value: notification })
-      .mockResolvedValue({ value: null })
+      .mockResolvedValueOnce(notification)
+      .mockResolvedValue(null)
     ctx.sendEmail.mockRejectedValue(new Error('smtp down'))
 
     const result = await ctx.ProcessNotifications.processNotifications()
@@ -155,8 +173,8 @@ describe('ProcessNotifications', function () {
     }
 
     ctx.emailNotifications.findOneAndUpdate
-      .mockResolvedValueOnce({ value: notification })
-      .mockResolvedValue({ value: null })
+      .mockResolvedValueOnce(notification)
+      .mockResolvedValue(null)
     ctx.sendEmail.mockRejectedValue(new Error('smtp down'))
 
     await ctx.ProcessNotifications.processNotifications()
