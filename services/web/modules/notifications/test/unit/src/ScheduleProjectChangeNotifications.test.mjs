@@ -156,4 +156,100 @@ describe('scheduleProjectChangeNotifications', function () {
     expect(updateOne).not.toHaveBeenCalled()
     expect(res.scheduled).toBe(0)
   })
+
+  it('schedules a recipient with a user-defined delay at batchTime + delay', async function (ctx) {
+    const batchTs = Date.now() - 5 * 60 * 1000 // past the default 2 min debounce
+    ctx.db.notificationsPreferences.find = query => ({
+      toArray: vi.fn().mockResolvedValue(
+        query.project_id === null
+          ? [
+              {
+                user_id: 'member-2',
+                project_id: null,
+                muteAllNotifications: false,
+                notificationDelayMinutes: 10,
+              },
+            ]
+          : []
+      ),
+    })
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'editor-1', ['member-2'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: batchTs,
+      userId: 'editor-1',
+    })
+
+    const scheduledAt = updateOne.mock.calls[0][1].$set.scheduledAt
+    // 10 min after the batch's change (in the future from now)
+    expect(scheduledAt.getTime()).toBe(batchTs + 10 * 60 * 1000)
+  })
+
+  it('schedules recipients without a user delay immediately (server default)', async function (ctx) {
+    const batchTs = Date.now() - 5 * 60 * 1000
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'editor-1', ['member-2'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    const before = Date.now()
+    await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: batchTs,
+      userId: 'editor-1',
+    })
+
+    // no override -> server default deadline already passed -> due now
+    const scheduledAt = updateOne.mock.calls[0][1].$set.scheduledAt
+    expect(scheduledAt.getTime()).toBeGreaterThanOrEqual(before - 1)
+    expect(scheduledAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000)
+  })
+
+  it('mixes per-recipient delays within the same batch', async function (ctx) {
+    const batchTs = Date.now() - 5 * 60 * 1000
+    ctx.db.notificationsPreferences.find = query => ({
+      toArray: vi.fn().mockResolvedValue(
+        query.project_id === null
+          ? [
+              {
+                user_id: 'member-2',
+                project_id: null,
+                muteAllNotifications: false,
+                notificationDelayMinutes: 20,
+              },
+            ]
+          : []
+      ),
+    })
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'editor-1', ['member-2', 'member-3'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: batchTs,
+      userId: 'editor-1',
+    })
+
+    const calls = updateOne.mock.calls.map(call => ({
+      recipient: call[1].$set.recipient_id.v,
+      t: call[1].$set.scheduledAt.getTime(),
+    }))
+    const delayed = calls.find(c => c.recipient === 'member-2')
+    const defaultRecipient = calls.find(c => c.recipient === 'member-3')
+    expect(delayed.t).toBe(batchTs + 20 * 60 * 1000)
+    // default recipient is due now, long before the delayed one
+    expect(defaultRecipient.t).toBeLessThan(delayed.t - 10 * 60 * 1000)
+  })
 })

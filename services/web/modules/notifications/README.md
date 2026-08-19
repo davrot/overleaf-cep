@@ -6,12 +6,18 @@ Email notifications for project tracked-changes, plus the user-facing
 ## Features
 
 1. **Project tracked-changes notification** — when a project is modified and
-   the change is not acted on for a grace delay (default 2 minutes), every
-   collaborating user who has not muted the notification gets one email
-   ("New tracked changes in <project>").
-2. **Email preferences** — a session-scoped settings UI (`/settings/emails`)
-   to enable/disable email notifications globally or per project, plus an
-   immediate "send test email" endpoint (`/user/send-test-email`).
+   the change is not acted on for a grace delay, every collaborating user who
+   has not muted the notification gets one email ("New tracked changes in
+   <project>"). The editor who made the change is never notified.
+2. **Per-user grace delay** — on `/user/notification-preferences` each user
+   can set the grace delay in minutes (1–10080). Unset → server default
+   (`PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS`). Applied per recipient via
+   `scheduledAt` (the dispatch already only claims docs with
+   `scheduledAt <= now`).
+3. **Email preferences** — settings UI (`/user/notification-preferences`
+global mute + delay; IDE project-settings tab per project) to enable/disable
+   email notifications, plus an immediate "send test email" endpoint
+   (`/user/send-test-email`).
 
 Preferences are stored per user in `db.projectPreferences` as
 `trackedChanges.emailNotifications` (global) and per-project in
@@ -73,7 +79,7 @@ consumer would only re-run the debounce, but two consumers are never needed).
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` | `120000` | Grace delay before a change is notified |
+| `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` | `120000` | **Server default + floor** for the grace delay (per-user override, minimum 1 min, in `notificationDelayMinutes` on the global preferences doc) |
 | `PROJECT_NOTIFICATION_RETRY_COUNT` | `0` | Bull job attempts on hook failure (`< 0` = infinite) |
 | `OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS` | `5` | Dispatch send retries (then dead-lettered) |
 | `OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS` | `3600000` | Retry backoff window (linear: `n × silence`) |
@@ -88,6 +94,9 @@ consumer would only re-run the debounce, but two consumers are never needed).
 
 - `ProjectNotificationTimestamp:{projectId}` — set by document-updater on
   every `meta.tc` change; consumed (deleted) by the enqueue cron.
+- `ProjectNotificationEditor:{projectId}` — the editor who opened the batch
+  (same NX semantics); carried into the Bull job and used to exclude the
+  author; deleted with the timestamp key on enqueue.
 - `ProjectHasCollaborators:{projectId}` — 5-minute cached collaborator check.
 - Bull keys for queue `project-notification` (jobs, locks, counters).
 - `db.emailNotifications` (created by the module's `apply()`) — one doc per
@@ -187,12 +196,21 @@ skip the author):
   editor key in the scan batch, puts `userId` into the Bull job data, and
   deletes the companion key after a successful enqueue.
 
-The `/user/notification-preferences` page's **Save** button is in the module's
-own pug template, so it survives merges untouched.
+**Per-user grace delay** adds two more upstream/semi-upstream touch points:
 
-All i18n strings already exist upstream in `services/web/locales/en.json`
-(shared by the server-side `translate()` and frontend i18next), so no locale
-edits are needed.
+- `libraries/notification-preferences/index.js` —
+  `normalizeGlobalPreferences` also returns `notificationDelayMinutes`
+  (+ `normalizeGlobalDelayMinutes` helper, 1–10080 minutes). The library is
+  shared with the chat service; the addition is additive.
+- `locales/en.json` / `frontend/extracted-translations.json` — the three
+  `notifications_delay_*` keys (label/description/server-default), plus the
+  pre-existing `back_to_account_settings` above.
+
+The `/user/notification-preferences` page's **Save** button and the delay
+input are in the module's own pug template, so they survive merges untouched.
+
+All other i18n strings already exist upstream in `services/web/locales/en.json`
+(shared by the server-side `translate()` and frontend i18next).
 
 ## Operational notes & known quirks
 

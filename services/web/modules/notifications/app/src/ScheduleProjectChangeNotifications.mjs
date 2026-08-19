@@ -70,7 +70,7 @@ async function _loadProjectPreferences(projectId, userIds) {
   return map
 }
 
-async function _loadMuteAllFlags(userIds) {
+async function _loadGlobalPreferences(userIds) {
   if (!userIds.length) return new Map()
 
   const preferences = await db.notificationsPreferences
@@ -85,10 +85,7 @@ async function _loadMuteAllFlags(userIds) {
 
   const map = new Map()
   for (const preference of preferences) {
-    map.set(
-      preference.user_id.toString(),
-      normalizeGlobalPreferences(preference).muteAllNotifications
-    )
+    map.set(preference.user_id.toString(), normalizeGlobalPreferences(preference))
   }
   return map
 }
@@ -142,14 +139,17 @@ export async function scheduleProjectChangeNotifications({
   const ownerId = project.owner_ref ? project.owner_ref.toString() : null
 
   const preferencesMap = await _loadProjectPreferences(projectId, memberIds)
-  const muteAllMap = await _loadMuteAllFlags(memberIds)
+  const globalPrefsMap = await _loadGlobalPreferences(memberIds)
 
   const projectName = project.name || 'project'
 
   let scheduled = 0
 
   for (const memberId of memberIds) {
-    if (muteAllMap.get(memberId) === true) {
+    const globalPrefs =
+      globalPrefsMap.get(memberId) || normalizeGlobalPreferences({})
+
+    if (globalPrefs.muteAllNotifications === true) {
       continue
     }
 
@@ -168,6 +168,15 @@ export async function scheduleProjectChangeNotifications({
       continue
     }
 
+    // Per-user grace delay (minutes, user setting) on top of the global
+    // minimum; unset users fall back to the server default, whose deadline
+    // has already passed by the time this hook runs (scheduledAt = now).
+    const userDelayMs = globalPrefs.notificationDelayMinutes
+      ? globalPrefs.notificationDelayMinutes * 60 * 1000
+      : 0
+    const effectiveDelayMs = Math.max(userDelayMs, MIN_DELAY_MS)
+    const scheduledAt = new Date(Math.max(now, timestamp + effectiveDelayMs))
+
     const result = await db.emailNotifications.updateOne(
       {
         recipient_id: new ObjectId(memberId),
@@ -180,7 +189,7 @@ export async function scheduleProjectChangeNotifications({
           project_id: new ObjectId(projectId),
           emailType: EMAIL_TYPE,
           opts: { projectId, projectName },
-          scheduledAt: new Date(),
+          scheduledAt,
           updatedAt: new Date(),
         },
       },

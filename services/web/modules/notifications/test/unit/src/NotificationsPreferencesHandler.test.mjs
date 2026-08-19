@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  normalizeGlobalPreferences,
+  normalizeGlobalDelayMinutes,
+} from '../../../app/src/PreferenceNormalizer.mjs'
 import path from 'node:path'
 
 const handlerPath = path.join(
@@ -16,6 +20,52 @@ class FakeObjectId {
     return this.value
   }
 }
+
+describe('normalizeGlobalPreferences', function () {
+  it('keeps a valid user delay in minutes', function () {
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: '5' })
+        .notificationDelayMinutes
+    ).toBe(5)
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: 10080 })
+        .notificationDelayMinutes
+    ).toBe(10080)
+  })
+
+  it('drops missing, empty, or invalid user delays to null (server default)', function () {
+    expect(
+      normalizeGlobalPreferences({}).notificationDelayMinutes
+    ).toBeNull()
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: '' })
+        .notificationDelayMinutes
+    ).toBeNull()
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: 'abc' })
+        .notificationDelayMinutes
+    ).toBeNull()
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: -1 })
+        .notificationDelayMinutes
+    ).toBeNull()
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: 0.5 })
+        .notificationDelayMinutes
+    ).toBeNull()
+    expect(
+      normalizeGlobalPreferences({ notificationDelayMinutes: 10081 })
+        .notificationDelayMinutes
+    ).toBeNull()
+  })
+
+  it('normalizesGlobalDelayMinutes directly', function () {
+    expect(normalizeGlobalDelayMinutes(30)).toBe(30)
+    expect(normalizeGlobalDelayMinutes('30')).toBe(30)
+    expect(normalizeGlobalDelayMinutes(null)).toBeNull()
+    expect(normalizeGlobalDelayMinutes(100000)).toBeNull()
+  })
+})
 
 describe('NotificationsPreferencesHandler', function () {
   beforeEach(async function (ctx) {
@@ -158,11 +208,24 @@ describe('NotificationsPreferencesHandler', function () {
     const global = await ctx.Handler.promises.saveGlobalPreferences('user-1', {
       muteAllNotifications: true,
     })
-    expect(global).toEqual({ muteAllNotifications: true })
+    expect(global).toEqual({
+      muteAllNotifications: true,
+      notificationDelayMinutes: null,
+    })
     expect(ctx.notificationsPreferences.updateOne).toHaveBeenCalledWith(
       { user_id: expect.any(FakeObjectId), project_id: null },
-      { $set: { muteAllNotifications: true } },
+      { $set: { muteAllNotifications: true, notificationDelayMinutes: null } },
       { upsert: true }
     )
+
+    // a user-defined delay round-trips through the same handler
+    const withDelay = await ctx.Handler.promises.saveGlobalPreferences('user-1', {
+      muteAllNotifications: true,
+      notificationDelayMinutes: '42',
+    })
+    expect(withDelay).toEqual({
+      muteAllNotifications: true,
+      notificationDelayMinutes: 42,
+    })
   })
 })

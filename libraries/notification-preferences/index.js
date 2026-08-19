@@ -46,5 +46,33 @@ export function normalizeProjectPreferences(preferences = {}) {
 export function normalizeGlobalPreferences(preferences = {}) {
   return {
     muteAllNotifications: Boolean(preferences.muteAllNotifications),
+    notificationDelayMinutes: normalizeGlobalDelayMinutes(
+      preferences.notificationDelayMinutes
+    ),
   }
+}
+
+/**
+ * User-defined grace delay for project-change emails, in whole minutes.
+ *
+ * Returns `null` (meaning: not set -> the server default
+ * `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` applies) for missing/empty/invalid
+ * input, or the number of minutes (clamped to 1..7 days) when valid.
+ */
+export const GLOBAL_DELAY_MINUTES_MIN = 1
+export const GLOBAL_DELAY_MINUTES_MAX = 10080 // 7 days
+
+export function normalizeGlobalDelayMinutes(value) {
+  if (value === undefined || value === null || value === '') {
+    return null
+  }
+  const n = Number(value)
+  if (
+    !Number.isInteger(n) ||
+    n < GLOBAL_DELAY_MINUTES_MIN ||
+    n > GLOBAL_DELAY_MINUTES_MAX
+  ) {
+    return null
+  }
+  return n
 }

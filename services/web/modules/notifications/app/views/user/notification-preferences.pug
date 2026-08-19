@@ -26,6 +26,14 @@ block content
 								h2.h4.mb-0 #{translate("notifications_on_project_activity")}
 							p #{translate("notifications_on_project_activity_description")}
 
+					.setting-container
+						input(name='notificationDelayMinutes' id='notificationDelayMinutes' type='number' min='1' max='10080' step='1' value=(notificationDelayMinutes != null ? notificationDelayMinutes : ''))
+						div
+							label.checkbox-label(for='notificationDelayMinutes')
+								h2.h4.mb-0 #{translate("notifications_delay_minutes_label")}
+							p #{translate("notifications_delay_description")}
+							p.text-muted #{translate("notifications_delay_server_default")} #{defaultDelayLabel}
+
 					p #{translate("note_still_receives_important_emails")}
 
 					.d-flex.justify-content-end.mt-4
