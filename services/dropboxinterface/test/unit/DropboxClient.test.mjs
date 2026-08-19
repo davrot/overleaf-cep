@@ -43,6 +43,46 @@ describe('DropboxClient', () => {
     )
   })
 
+  it('list passes through Dropbox content hashes (hash + content_hash) for incremental sync', async () => {
+    const client = new DropboxClient({ accessToken: 'sl.test-token' })
+    client.dbx.filesListFolder = async () => ({
+      result: {
+        has_more: false,
+        entries: [
+          {
+            '.tag': 'file',
+            name: 'main.tex',
+            path_display: '/root/main.tex',
+            size: 12,
+            rev: 'rev1',
+            id: 'id:1',
+            hash: 'a'.repeat(64),
+            server_modified: '2026-08-19T00:00:00Z',
+          },
+          {
+            '.tag': 'file',
+            name: 'newspec.tex',
+            path_display: '/root/newspec.tex',
+            size: 5,
+            rev: 'rev2',
+            id: 'id:2',
+            content_hash: 'b'.repeat(64),
+          },
+          { '.tag': 'folder', name: 'sub', path_display: '/root/sub', id: 'id:3' },
+        ],
+      },
+    })
+    const res = await client.list('/root', { recursive: false })
+    expect(res.entries).toHaveLength(3)
+    const [f1, f2, f3] = res.entries
+    expect(f1.hash).toBe('a'.repeat(64))
+    expect(f1.content_hash).toBeNull()
+    expect(f1.path_display in f1 || f1.relative_path).toBeTruthy()
+    expect(f2.hash).toBeNull()
+    expect(f2.content_hash).toBe('b'.repeat(64))
+    expect(f3.type).toBe('folder')
+  })
+
   it('maps a Dropbox path-not-found conflict to 404', () => {
     const client = new DropboxClient({ accessToken: 'sl.test-token' })
     const error = client._mapDropboxError({

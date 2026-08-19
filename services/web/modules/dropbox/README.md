@@ -89,10 +89,13 @@ Or use the autostart script:
 
 ## File Sync Strategy
 
-1. **Revision snapshots** store Dropbox's `rev` property for each remote file
-2. **Change detection** skips applying a remote file only when its rev is unchanged, the local content is unchanged, and the local entity still exists
-3. **Mirror deletion** removes the one-sided entries after each operation: local-only on import, remote-only on export
-4. **No per-file conflict state** is generated; every completed mirror run clears legacy conflict entries
+1. **Revision snapshots** store Dropbox's `rev` per remote file together with a `localHash` baseline (sha256 of the content as last synchronized)
+2. **Change detection (export/Push)** — incremental since 2026-08-19: a file is skipped when its remote `rev` is unchanged since the last sync AND the local content hash matches the stored baseline; any miss (no baseline, rev changed, content changed) uploads as before (local still wins). The push response reports `uploadedFiles` and `skippedFiles`
+3. **Change detection (import/Pull)** skips downloading/applying a remote file only when its rev is unchanged, the local content is unchanged, and the local entity still exists; changed remote, locally-deleted and missing baselines all apply (remote wins)
+4. **Mirror deletion** removes the one-sided entries after each operation: local-only on import, remote-only on export; excluded entries are never touched
+5. **No per-file conflict state** is generated; every completed mirror run clears legacy conflict entries
+
+Note: Dropbox's list metadata `hash`/`content_hash` fields are passed through and stored, but are deliberately NOT used for change detection — the live API's `content_hash` is not a plain SHA-256 of the byte content (verified in production: identical bytes, different values), so decisions rely on `rev` + the locally computed content-hash baselines, which is fully under our control.
 
 ## Frontend Components
 

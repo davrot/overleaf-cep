@@ -21,6 +21,9 @@ vi.mock('../../../../../app/src/Features/Project/ProjectEntityHandler.mjs', () =
 vi.mock('../../../../../app/src/Features/Editor/EditorController.mjs', () => ({
   default: { promises: {} },
 }))
+vi.mock('../../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs', () => ({
+  default: { promises: { flushProjectToMongo: async () => true } },
+}))
 vi.mock('../../../../../app/src/Features/ThirdPartyDataStore/TpdsUpdateHandler.mjs', () => ({
   default: { promises: {} },
 }))

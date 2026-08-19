@@ -67,6 +67,13 @@ export class DropboxClient {
               size: entry.size || 0,
               binary: true, // Assume all files are binary for safety
               checksum: null, // Use rev instead (we'll extract below)
+              // Incremental sync (2026-08-19): pass through Dropbox's per-file
+              // content hash (SHA-256 of the byte content). Consumers can
+              // compare it against the hash of local content and skip
+              // byte-identical uploads/downloads. The classic field is
+              // `hash`; the newer spec also exposes `content_hash`.
+              hash: entry.hash || null,
+              content_hash: entry.content_hash || null,
               mtime: entry.server_modified
                 ? new Date(entry.server_modified).toISOString()
                 : null,

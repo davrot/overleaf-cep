@@ -103,6 +103,31 @@ export function shouldApplyRemoteFile({ localPresent, previousRev, currentRev, s
 }
 
 /**
+ * Incremental push (2026-08-19): Dropbox's list metadata is NOT a raw
+ * content hash — the live API returns `content_hash`, which is not a plain
+ * SHA-256 of the bytes (verified in production: byte-identical content,
+ * different hash values), so it cannot be compared against a locally
+ * computed sha256. The reliable mechanism is the one the import lane already
+ * uses: the per-file baseline recorded at last sync (remote rev at that time,
+ * local content hash at that time) versus the current state:
+ *   skip the upload ⟺ remote rev unchanged since last sync
+ *                     AND local content unchanged since last sync
+ * Any doubt (no baseline, rev changed, content changed, malformed values)
+ * uploads as before — local still wins, and the mirror guarantee is
+ * unchanged.
+ * @param {string|null|undefined} p.storedRev baseline remote rev (state doc)
+ * @param {string|null|undefined} p.currentRev current remote rev (pre-push list)
+ * @param {string|null|undefined} p.storedLocalHash baseline local content sha256
+ * @param {string} p.currentLocalHash sha256 of the local bytes now
+ * @returns {boolean} true → skip the upload
+ */
+export function shouldSkipDropboxPush({ storedRev, currentRev, storedLocalHash, currentLocalHash }) {
+  if (!storedRev || !currentRev || storedRev !== currentRev) return false
+  if (!storedLocalHash || !currentLocalHash) return false
+  return String(storedLocalHash).toLowerCase() === String(currentLocalHash).toLowerCase()
+}
+
+/**
  * BUG1 (user-reported: modal showed "/A5 test" but the files live in
  * "Apps/Overleaf Dev/A5 test"): combine the owner's configured root folder
  * (credentials doc `path`, e.g. "Apps/Overleaf Dev" — may be percent-encoded)
@@ -182,12 +207,19 @@ async function ensureDropboxDirectory(client, directoryPath) {
   }
 }
 
-async function uploadProjectToDropbox({ client, projectId, rootPath }) {
+export async function uploadProjectToDropbox({
+  client,
+  projectId,
+  rootPath,
+  // Current remote snapshot (pre-push list): path → { rev, ... }
+  remoteFiles = {},
+  // Stored baseline from the last sync (state doc remoteFiles): path → { rev, localHash }
+  baselines = {},
+}) {
   const project = await ProjectGetter.promises.getProject(projectId, { name: true })
   if (!project) throw new Error('Project not found')
 
   const projectPath = joinDropboxPath(rootPath, project.name)
-  await ensureDropboxDirectory(client, projectPath)
 
   // C4 (bugfix 2026-08-18): flush pending document updates BEFORE reading
   // content — without this, a document that was just edited (e.g. main.tex)
@@ -210,21 +242,55 @@ async function uploadProjectToDropbox({ client, projectId, rootPath }) {
     Object.entries(files).filter(([p]) => !isSyncExcluded(p))
   )
 
-  // Mirror export: the local (non-excluded) file set is the source of truth —
-  // every local file is (re)written to Dropbox unconditionally.
-  // Entity keys carry a leading slash; remoteFiles keys (getDropboxRemoteFiles / relativeDropboxPath) do too — keep the canonical single-slash form.
+  // Mirror export: the local (non-excluded) file set is the source of truth.
+  // Incremental (2026-08-19): a file is skipped when the remote rev is
+  // unchanged since the last sync AND the local content is unchanged since
+  // the last sync (see shouldSkipDropboxPush). Any doubt uploads (local wins).
+  // Entity keys carry a leading slash; callers pass either key style — the
+  // lookups below are slash-tolerant for both maps.
   const canonicalKey = p => `/` + normKey(p)
+  const lookupMeta = (p, map = {}) => {
+    const k = normKey(p)
+    return map[`/` + k] || map[k] || null
+  }
 
   let uploadedFiles = 0
+  let skippedFiles = 0
   // C1: sha256 of each file's content AS PUSHED — becomes the stored
-  // localHash baseline for the pull-side "unchanged?" skip.
+  // localHash baseline for the "unchanged?" skip. Recorded for skipped files
+  // too: that content is unchanged, so the baseline still holds.
   const localHashes = {}
+  // Directory creation is idempotent on Dropbox, but a full-project push
+  // previously re-issued the mkdir chain for EVERY file (~2 calls/file). Only
+  // directories of actually-uploaded files need creating/refreshing, deduped.
+  const ensuredDirectories = new Set()
+  const ensureUploadedDirectoryOnce = async directoryPath => {
+    if (!directoryPath || ensuredDirectories.has(directoryPath)) return
+    ensuredDirectories.add(directoryPath)
+    await ensureDropboxDirectory(client, directoryPath)
+  }
+
+  const shouldSkip = filePath => {
+    const base = lookupMeta(filePath, baselines)
+    const cur = lookupMeta(filePath, remoteFiles)
+    return shouldSkipDropboxPush({
+      storedRev: base?.rev || null,
+      currentRev: cur?.rev || null,
+      storedLocalHash: base?.localHash || null,
+      currentLocalHash: localHashes[canonicalKey(filePath)],
+    })
+  }
+
   for (const [filePath, doc] of Object.entries(localDocs)) {
     const text = doc.lines.join('\n')
-    const remotePath = joinDropboxPath(projectPath, filePath)
-    await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
-    await client.upload(remotePath, Buffer.from(text).toString('base64'))
     localHashes[canonicalKey(filePath)] = sha256(text)
+    if (shouldSkip(filePath)) {
+      skippedFiles += 1
+      continue
+    }
+    const remotePath = joinDropboxPath(projectPath, filePath)
+    await ensureUploadedDirectoryOnce(remotePath.split('/').slice(0, -1).join('/'))
+    await client.upload(remotePath, Buffer.from(text).toString('base64'))
     uploadedFiles += 1
   }
 
@@ -234,10 +300,14 @@ async function uploadProjectToDropbox({ client, projectId, rootPath }) {
       file.hash
     )
     const content = await streamToBuffer(stream)
-    const remotePath = joinDropboxPath(projectPath, filePath)
-    await ensureDropboxDirectory(client, remotePath.split('/').slice(0, -1).join('/'))
-    await client.upload(remotePath, content.toString('base64'))
     localHashes[canonicalKey(filePath)] = sha256(content)
+    if (shouldSkip(filePath)) {
+      skippedFiles += 1
+      continue
+    }
+    const remotePath = joinDropboxPath(projectPath, filePath)
+    await ensureUploadedDirectoryOnce(remotePath.split('/').slice(0, -1).join('/'))
+    await client.upload(remotePath, content.toString('base64'))
     uploadedFiles += 1
   }
 
@@ -245,6 +315,7 @@ async function uploadProjectToDropbox({ client, projectId, rootPath }) {
     projectPath,
     projectName: project.name,
     uploadedFiles,
+    skippedFiles,
     localHashes,
     // Local entity set (non-excluded), for the push route's remote-only
     // deletion: after this call the remote folder must contain exactly these.
@@ -403,7 +474,7 @@ function toRemoteFilesArray(remoteFiles = {}) {
   }))
 }
 
-async function importProjectFromDropbox({
+export async function importProjectFromDropbox({
   client,
   projectId,
   userId,
@@ -498,9 +569,13 @@ async function importProjectFromDropbox({
       const previous =
         previousRemoteFiles?.[relativePath] || previousRemoteFiles?.[relKey] || null
 
-      // Churn guard only: remote unchanged since last sync AND local
-      // unchanged AND local entity still present → skip. Everything else
-      // APPLIES (remote wins): changed remote, locally-deleted, no baseline.
+      // Churn guard only (the ONLY skip): remote unchanged since last sync
+      // AND local unchanged AND local entity still present → skip. Note:
+      // Dropbox's list `content_hash` is NOT comparable to a locally computed
+      // sha256 (verified in production: identical bytes, different values),
+      // so the skip is based on our stored rev + localHash baselines only.
+      // Everything else APPLIES (remote wins): changed remote, locally-
+      // deleted, no baseline.
       if (!shouldApplyRemoteFile({
         localPresent: localKeys.has(relKey),
         previousRev: previous?.rev || null,
@@ -663,6 +738,13 @@ async function getDropboxRemoteFiles(client, projectPath) {
       .filter(entry => entry.type === 'file')
       .map(entry => [relativeDropboxPath(projectPath, entry), {
         rev: entry.rev,
+        // Incremental push: Dropbox's per-file content hash (SHA-256). The
+        // classic JSON field is `hash`; the newer spec also exposes
+        // `content_hash`. Both are passed through; the skip logic accepts
+        // either. Absent on folders/malformed entries → uploads are never
+        // skipped on those paths.
+        hash: entry.hash,
+        content_hash: entry.content_hash,
         size: entry.size,
         modifiedAt: entry.client_modified || entry.server_modified,
       }])
@@ -1026,6 +1108,10 @@ export default {
               client,
               projectId,
               rootPath: dropboxPath,
+              // Link is a first-time full mirror by definition: no baselines
+              // yet → every file uploads exactly as before (the remote
+              // snapshot exists only for the mirror-delete afterwards).
+              baselines: {},
             })
             const toDeleteOnLink = remoteOnlyPaths(
               Object.keys(remoteBeforeLink),
@@ -1289,10 +1375,26 @@ export default {
           }
           const remoteRelBeforePush = normalizeDropboxPathMap(remoteBeforePush)
 
+          // Baselines for the incremental skip: per-file {rev, localHash}
+          // recorded at the LAST sync (state doc). A file is skipped when the
+          // remote rev is unchanged AND the local content is unchanged since
+          // then; anything else uploads (local wins).
+          const baselines = Object.fromEntries(
+            (state.remoteFiles || []).map(f => [f.path, {
+              rev: f.rev || null,
+              localHash: f.localHash || null,
+            }])
+          )
+
           const syncResult = await uploadProjectToDropbox({
             client,
             projectId,
             rootPath: dropboxPath,
+            // Incremental push: the pre-push snapshot carries each remote
+            // file's CURRENT rev; the baselines carry the rev + local content
+            // hash at last sync. Files matching both are uploaded-skip.
+            remoteFiles: remoteRelBeforePush,
+            baselines,
           })
 
           // Mirror deletion (local project wins): remove remote files that are
@@ -1350,6 +1452,7 @@ export default {
           res.json({
             success: true,
             uploadedFiles: syncResult.uploadedFiles,
+            skippedFiles: syncResult.skippedFiles || 0,
             deletedFiles: deletedFromRemote,
             message: 'Export completed (project content is now mirrored to the Dropbox folder)',
           })
