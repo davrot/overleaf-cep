@@ -2,6 +2,7 @@
 
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 import NotificationsPreferencesController from './NotificationsPreferencesController.mjs'
+import { startProjectNotificationConsumer } from './ProjectNotificationQueueConsumer.mjs'
 
 function apply(webRouter, privateApiRouter, publicApiRouter) {
   const auth = AuthenticationController.requireLogin()
@@ -53,6 +54,11 @@ function apply(webRouter, privateApiRouter, publicApiRouter) {
     auth,
     NotificationsPreferencesController.sendTestEmail
   )
+
+  // CE: the QueueWorkers consumer is saas-gated and never runs in CE
+  // (Settings.overleaf undefined), so own the `project-notification`
+  // worker here. No-op when the saas feature is enabled (or in tests).
+  startProjectNotificationConsumer()
 }
 
 export default {
