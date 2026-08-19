@@ -26,6 +26,10 @@ block content
 
 					p #{translate("note_still_receives_important_emails")}
 
+					.d-flex.justify-content-end.mt-4
+						button.btn-primary.btn(type='submit' data-ol-disabled-inflight)
+							span #{translate("save")}
+
 				.page-separator
 				.d-flex.gap-3
 					a.btn.btn-secondary(href='/user/settings') #{translate("back_to_account_settings")}

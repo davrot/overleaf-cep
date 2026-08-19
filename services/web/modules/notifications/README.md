@@ -166,7 +166,16 @@ but the UI entry points disappear in CE:
 - `frontend/js/features/settings/context/settings-modal-context.tsx` — the
   `project_notifications` IDE-settings tab has `hidden: false` (upstream:
   `hidden: !hasEmailNotifications`, i.e. the saas `email-notifications` split-test flag).
+- `frontend/js/features/settings/components/editor-settings/project-notifications-setting.tsx`
+  — the "beta note" block (BetaBadgeIcon + `forms.gle` feedback link) removed;
+  `BetaBadgeIcon` import removed.
+- `frontend/js/features/settings/components/settings-modal-body.tsx` — the
+  `project_notifications` tab β-`OLTooltip` badge removed; now-orphaned
+  `BetaBadgeIcon`/`OLTooltip`/`useTranslation` imports + the local `t` removed.
 - `frontend/extracted-translations.json` — `back_to_account_settings` added.
+
+The `/user/notification-preferences` page's **Save** button is in the module's
+own pug template, so it survives merges untouched.
 
 All i18n strings already exist upstream in `services/web/locales/en.json`
 (shared by the server-side `translate()` and frontend i18next), so no locale
