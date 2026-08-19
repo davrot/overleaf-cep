@@ -16,3 +16,4 @@ services/**/*.node_modules/
 
 # NFS/editor artifacts
 .nfs*
+services/web/.cache/

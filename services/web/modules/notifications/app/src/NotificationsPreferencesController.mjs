@@ -4,7 +4,7 @@ import logger from '@overleaf/logger'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import EmailHandler from '../../../../app/src/Features/Email/EmailHandler.mjs'
 import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
-import * as Path from 'path'
+import * as Path from 'node:path'
 import { parseReq, z } from '../../../../app/src/infrastructure/Validation.mjs'
 import NotificationsPreferencesHandler from './NotificationsPreferencesHandler.mjs'
 
@@ -29,7 +29,7 @@ async function globalPreferencesPage(req, res, next) {
       userId
     )
     res.render(
-      Path.resolve(__dirname, '../views/user/notification-preferences'),
+      Path.resolve(import.meta.dirname, '../views/user/notification-preferences'),
       {
         title: 'email_preferences',
         muteAllNotifications: preferences.muteAllNotifications,

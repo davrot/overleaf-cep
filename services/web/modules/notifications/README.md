@@ -82,6 +82,9 @@ consumer would only re-run the debounce, but two consumers are never needed).
 | `OVERLEAF_NOTIFICATIONS_DRY_RUN` | unset | Dispatch resolves+counts but sends nothing; docs stay pending |
 | `QUEUES_REDIS_HOST/PORT/PASSWORD` | fall back to `REDIS_*` | Redis for the queue (the enqueue cron sets these from the stack's `REDIS_*`) |
 
+> This deployment sets `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` to `30000`
+> (30 s) via the docker compose `environment` for faster testing.
+
 ## Redis & Mongo footprint
 
 - `ProjectNotificationTimestamp:{projectId}` — set by document-updater on
@@ -148,6 +151,26 @@ docker exec -e OVERLEAF_NOTIFICATIONS_DRY_RUN=true overleafserver \
 # 5. clean up
 docker exec overleafmongo mongosh sharelatex --quiet --eval 'db.emailNotifications.deleteMany({})'
 ```
+
+## CE-specific upstream patches (re-apply after an upstream merge)
+
+The settings UI entry points are un-gated for CE (upstream only shows them
+behind `isOverleaf` / the saas `email-notifications` split-test flag).
+Re-apply after any upstream merge — if they are lost, the pipeline keeps working
+but the UI entry points disappear in CE:
+
+- `frontend/js/features/settings/components/root.tsx` — the `isOverleaf ? (...) : null`
+  block after `<SessionsSection />` has a CE branch rendering
+  `<NotificationsSection />` (the "Email preferences" section linking to
+  `/user/notification-preferences`).
+- `frontend/js/features/settings/context/settings-modal-context.tsx` — the
+  `project_notifications` IDE-settings tab has `hidden: false` (upstream:
+  `hidden: !hasEmailNotifications`, i.e. the saas `email-notifications` split-test flag).
+- `frontend/extracted-translations.json` — `back_to_account_settings` added.
+
+All i18n strings already exist upstream in `services/web/locales/en.json`
+(shared by the server-side `translate()` and frontend i18next), so no locale
+edits are needed.
 
 ## Operational notes & known quirks
 
