@@ -53,7 +53,11 @@ async function globalPreferencesPage(req, res, next) {
       Path.resolve(import.meta.dirname, '../views/user/notification-preferences'),
       {
         title: 'email_preferences',
+        // The checkbox is an opt-IN ("Notifications on project activity")
+        // while the stored flag is an opt-OUT (muteAllNotifications), so the
+        // page renders the negated value.
         muteAllNotifications: preferences.muteAllNotifications,
+        notificationsEnabled: !preferences.muteAllNotifications,
         notificationDelayMinutes: preferences.notificationDelayMinutes ?? null,
         defaultDelayLabel: _formatDelayLabel(DEFAULT_DELAY_MS),
       }
@@ -114,7 +118,8 @@ async function updateGlobalPreferencesFromForm(req, res, next) {
     }
 
     const preferences = {
-      muteAllNotifications: Boolean(body.muteAllNotifications),
+      // Opt-IN checkbox vs opt-OUT flag: checked => notifications on.
+      muteAllNotifications: !body.muteAllNotifications,
       notificationDelayMinutes,
     }
 

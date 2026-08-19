@@ -15,8 +15,9 @@ Email notifications for project tracked-changes, plus the user-facing
    `scheduledAt` (the dispatch already only claims docs with
    `scheduledAt <= now`).
 3. **Email preferences** — settings UI (`/user/notification-preferences`
-global mute + delay; IDE project-settings tab per project) to enable/disable
-   email notifications, plus an immediate "send test email" endpoint
+global **on/off checkbox** (opt-in: checked = notifications on) + grace delay
+in minutes; IDE project-settings tab per project) to enable/disable email
+   notifications, plus an immediate "send test email" endpoint
    (`/user/send-test-email`).
 
 Preferences are stored per user in `db.projectPreferences` as
