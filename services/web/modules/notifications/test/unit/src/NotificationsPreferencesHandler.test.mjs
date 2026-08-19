@@ -27,10 +27,7 @@ describe('NotificationsPreferencesHandler', function () {
     ctx.getProject = vi.fn()
 
     vi.doMock(
-      path.join(
-        import.meta.dirname,
-        '../../../../../app/src/infrastructure/mongodb.mjs'
-      ),
+      '../../../../../app/src/infrastructure/mongodb.mjs',
       () => ({
         db: { notificationsPreferences: ctx.notificationsPreferences },
         ObjectId: FakeObjectId,
@@ -39,10 +36,7 @@ describe('NotificationsPreferencesHandler', function () {
     )
 
     vi.doMock(
-      path.join(
-        import.meta.dirname,
-        '../../../../../app/src/Features/Project/ProjectGetter.mjs'
-      ),
+      '../../../../../app/src/Features/Project/ProjectGetter.mjs',
       async () => {
         const mod = { promises: { getProject: ctx.getProject } }
         return { default: mod }

@@ -571,12 +571,22 @@ const RedisManager = {
    * Record the timestamp of the update operation (if it doesn't already exist).
    * This is used for email notifications
    */
-  async recordProjectNotificationTimestamp(projectId, timestamp) {
+  async recordProjectNotificationTimestamp(projectId, timestamp, userId) {
     await rclient.set(
       keys.projectNotificationTimestamp({ project_id: projectId }),
       timestamp,
       'NX'
     )
+    // Store who made this change next to the timestamp (same NX
+    // "first change of the batch wins" semantics) so the notification
+    // scheduler can exclude the editor from their own change notification.
+    if (userId) {
+      await rclient.set(
+        `ProjectNotificationEditor:{${projectId}}`,
+        userId,
+        'NX'
+      )
+    }
   },
 
   async blockProject(projectId) {

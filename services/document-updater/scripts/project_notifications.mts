@@ -126,11 +126,11 @@ async function main() {
   let deleteMismatches = 0
   let lastProgressLog = Date.now()
 
-  for (const { projectId, timestamp } of projects) {
+  for (const { projectId, timestamp, userId } of projects) {
     const numericTimestamp = parseInt(timestamp, 10)
     try {
       await projectNotificationQueue.add(
-        { projectId, timestamp: numericTimestamp },
+        { projectId, timestamp: numericTimestamp, userId },
         {
           jobId: projectId,
           delay: 1000,
@@ -143,6 +143,10 @@ async function main() {
       )
       if (!deleted) {
         deleteMismatches++
+      } else {
+        // Consume the companion editor key only when the timestamp batch was
+        // actually ours (CAS-checked by the delete script).
+        await redisClient.del(`ProjectNotificationEditor:{${projectId}}`)
       }
 
       queued++
@@ -182,6 +186,7 @@ function extractProjectId(key: string): string | undefined {
 type ProjectNotification = {
   projectId: string
   timestamp: string
+  userId?: string
 }
 
 /**
@@ -323,6 +328,13 @@ async function getProjectsToNotify(): Promise<{
         }
 
         const timestamps = await redisClient.mget(keys)
+        // Editor ids sit next to the timestamp keys (same batch semantics),
+        // letting the scheduler exclude the author of the change.
+        const editorKeys = keys.map((key: string) => {
+          const pid = extractProjectId(key)
+          return pid ? `ProjectNotificationEditor:{${pid}}` : key
+        })
+        const editorUserIds = await redisClient.mget(editorKeys)
 
         // Extract valid (projectId, timestamp) pairs from this batch
         const candidates: ProjectNotification[] = []
@@ -352,7 +364,7 @@ async function getProjectsToNotify(): Promise<{
             continue
           }
 
-          candidates.push({ projectId, timestamp })
+          candidates.push({ projectId, timestamp, userId: editorUserIds[index] ?? undefined })
         }
 
         // Bulk-check collaborators for the whole batch

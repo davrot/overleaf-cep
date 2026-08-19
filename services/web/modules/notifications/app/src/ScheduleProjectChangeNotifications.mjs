@@ -105,6 +105,7 @@ async function _loadMuteAllFlags(userIds) {
 export async function scheduleProjectChangeNotifications({
   projectId,
   timestamp,
+  userId,
 }) {
   await connectionPromise
 
@@ -147,13 +148,18 @@ export async function scheduleProjectChangeNotifications({
 
   let scheduled = 0
 
-  for (const userId of memberIds) {
-    if (muteAllMap.get(userId) === true) {
+  for (const memberId of memberIds) {
+    if (muteAllMap.get(memberId) === true) {
       continue
     }
 
-    const prefs = preferencesMap.get(userId) || defaultProjectPreferences()
-    const isOwner = userId === ownerId
+    // Never notify the editor who made this change.
+    if (userId && String(memberId) === String(userId)) {
+      continue
+    }
+
+    const prefs = preferencesMap.get(memberId) || defaultProjectPreferences()
+    const isOwner = memberId === ownerId
     const wantsNotif = isOwner
       ? prefs.trackedChangesOnOwnProject
       : prefs.trackedChangesOnInvitedProject
@@ -164,13 +170,13 @@ export async function scheduleProjectChangeNotifications({
 
     const result = await db.emailNotifications.updateOne(
       {
-        recipient_id: new ObjectId(userId),
+        recipient_id: new ObjectId(memberId),
         project_id: new ObjectId(projectId),
         emailType: EMAIL_TYPE,
       },
       {
         $set: {
-          recipient_id: new ObjectId(userId),
+          recipient_id: new ObjectId(memberId),
           project_id: new ObjectId(projectId),
           emailType: EMAIL_TYPE,
           opts: { projectId, projectName },

@@ -19,10 +19,7 @@ describe('scheduleProjectChangeNotifications', function () {
     }
 
     vi.doMock(
-      path.join(
-        import.meta.dirname,
-        '../../../../../app/src/infrastructure/mongodb.mjs'
-      ),
+      '../../../../../app/src/infrastructure/mongodb.mjs',
       () => ({
         get db() {
           return ctx.db
@@ -103,5 +100,60 @@ describe('scheduleProjectChangeNotifications', function () {
     // owner-1 defaults to opted-in; collab-1 is muted globally
     expect(updateOne).toHaveBeenCalledTimes(1)
     expect(res.scheduled).toBe(1)
+  })
+
+  it('excludes the editor who made the change from recipients', async function (ctx) {
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'editor-1', ['collab-1'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    const res = await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: Date.now() - 9999999,
+      userId: 'editor-1',
+    })
+
+    // the editor (the owner here) does NOT get the email; the collaborator does
+    expect(updateOne).toHaveBeenCalledTimes(1)
+    expect(updateOne.mock.calls[0][0].recipient_id.v).toBe('collab-1')
+    expect(res.scheduled).toBe(1)
+  })
+
+  it('still notifies the owner when a collaborator made the change', async function (ctx) {
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'owner-1', ['editor-1'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    const res = await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: Date.now() - 9999999,
+      userId: 'editor-1',
+    })
+
+    expect(updateOne).toHaveBeenCalledTimes(1)
+    expect(updateOne.mock.calls[0][0].recipient_id.v).toBe('owner-1')
+    expect(res.scheduled).toBe(1)
+  })
+
+  it('schedules nothing when the editor is the only member', async function (ctx) {
+    ctx.db.projects.findOne.mockResolvedValue(project('p-1', 'editor-1', []))
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    const res = await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: Date.now() - 9999999,
+      userId: 'editor-1',
+    })
+
+    expect(updateOne).not.toHaveBeenCalled()
+    expect(res.scheduled).toBe(0)
   })
 })

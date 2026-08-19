@@ -72,10 +72,11 @@ export function startProjectNotificationConsumer() {
   queueInstance = queue
 
   queue.process(async job => {
-    const { projectId, timestamp } = job.data
+    const { projectId, timestamp, userId } = job.data
     await Modules.promises.hooks.fire('projectModified', {
       projectId,
       timestamp,
+      userId,
     })
   })
 

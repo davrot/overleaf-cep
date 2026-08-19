@@ -23,19 +23,18 @@ notified when I add tracked changes on a project" switch uses
 ## Pipeline
 
 ```
-meta.tc edit
-   → document-updater sets redis "ProjectNotificationTimestamp:{projectId}"
-       (services/document-updater/src/handlers/ProjectModifiedHandler.mjs)
+meta.tc edit (document-updater records timestamp + editor id in redis)
    → cron (server-ce/cron/project-notification-enqueue.sh, every minute):
        scans stale timestamp keys (older than the grace delay) with
-       collaborators, enqueues a Bull job on queue "project-notification",
-       deletes the key
+       collaborators, enqueues a Bull job {projectId, timestamp, userId} on
+       queue "project-notification", deletes both keys
    → Bull queue "project-notification" (redis)
    → web container: ProjectNotificationQueueConsumer.mjs (module-owned worker)
-       fires the projectModified hook
-   → hooks/projectModified.mjs → scheduleProjectChangeNotifications()
+       fires the projectModified hook (with the editor id)
+   → scheduleProjectChangeNotifications()
        (Preferences.mjs: resolves recipients from project members + prefs,
-        upserts one doc per recipient into db.emailNotifications)
+        EXCLUDES the editor of the change, upserts one doc per recipient
+        into db.emailNotifications)
    → cron (server-ce/cron/notification-email-dispatch.sh, every minute):
        ProcessNotifications.mjs claims due docs in sorted order, resolves the
        recipient, renders the template, sends via SMTP (EmailHandler)
@@ -174,6 +173,20 @@ but the UI entry points disappear in CE:
   `BetaBadgeIcon`/`OLTooltip`/`useTranslation` imports + the local `t` removed.
 - `frontend/extracted-translations.json` — `back_to_account_settings` added.
 
+**Editor exclusion ("no email for my own changes")** adds four more upstream
+patches to re-apply after a merge (they carry the editor id so the module can
+skip the author):
+
+- `services/document-updater/app/js/RedisManager.js` —
+  `recordProjectNotificationTimestamp(projectId, timestamp, userId)` also sets
+  `ProjectNotificationEditor:{projectId}` (NX, same batch semantics).
+- `services/document-updater/app/js/UpdateManager.js` — passes
+  `update.meta?.user_id` to the setter.
+- `services/document-updater/app/js/HistoryOTUpdateManager.js` — same.
+- `services/document-updater/scripts/project_notifications.mts` — reads the
+  editor key in the scan batch, puts `userId` into the Bull job data, and
+  deletes the companion key after a successful enqueue.
+
 The `/user/notification-preferences` page's **Save** button is in the module's
 own pug template, so it survives merges untouched.
 
@@ -183,10 +196,15 @@ edits are needed.
 
 ## Operational notes & known quirks
 
-- Debounce is per *change batch*: the redis key marks "change not yet acted
-  on"; accepting/rejecting the changes updates `meta.tc` and resets the
-  window. This means: multiple changes within the delay notify once, one
-  email per project per change batch.
+- Debounce is per *change batch*: the redis key is set with `NX` (the FIRST
+  change of the batch opens the window; later changes until enqueue do not
+  reset it). Accepting/rejecting changes updates `meta.tc` and — once the
+  previous batch was consumed — opens a new window.
+- **Editor exclusion**: the editor stored with the batch's timestamp is never
+  a recipient (module `ScheduleProjectChangeNotifications.mjs` skips them;
+  a solo member who edited gets no email at all). If several people edit in
+  one batch, the first editor (the one paired with the timestamp) is the one
+  excluded; the others are still notified.
 - A Bull job left `active` by a killed container generation remains until
   its lock/expiry is cleared (stalled-check); if a ghost job shows up in
   `q.getJobCounts().active`, remove it via its redis keys
