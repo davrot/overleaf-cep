@@ -8,10 +8,12 @@ echo "(scan redis -> project-notification queue)"
 echo "-----------------------------------------------"
 date
 
+source /etc/container_environment.sh
 source /etc/overleaf/env.sh
 
-# Runs the upstream enqueue script (document-updater/scripts/project_notifications.mts)
-# via the module-owned launcher which transpiles it with esbuild.
-cd /overleaf/services/web && /sbin/setuser www-data node scripts/run_project_notifications.mjs
+# Runs the upstream enqueue script directly: the image's node (>= 22.18) strips
+# TS types natively, so no esbuild launcher is needed. /etc/container_environment.sh
+# provides REDIS_HOST / CRYPTO_RANDOM / OVERLEAF_MONGO_URL for the standalone process.
+cd /overleaf && /sbin/setuser www-data node services/document-updater/scripts/project_notifications.mts
 
 echo "Done."
