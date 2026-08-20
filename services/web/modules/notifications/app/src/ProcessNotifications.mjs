@@ -25,8 +25,10 @@ import { db, connectionPromise } from '../../../../app/src/infrastructure/mongod
 
 const BATCH_SIZE = Number(process.env.PROCESS_NOTIFICATIONS_BATCH_SIZE) || 100
 const STALE_PROCESSING_MS = 1000 * 60 * 60 // 1 hour
-const MAX_ATTEMPTS = 3
-const RETRY_BACKOFF_BASE_MS = 2 * 60 * 60 * 1000 // 2 hours, doubling per attempt
+const MAX_ATTEMPTS = Number(process.env.OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS) || 3
+const RETRY_BACKOFF_BASE_MS =
+  Number(process.env.OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS) ||
+  2 * 60 * 60 * 1000 // 2 hours, doubling per attempt
 
 const DRY_RUN = process.env.OVERLEAF_NOTIFICATIONS_DRY_RUN === 'true'
 

@@ -572,10 +572,16 @@ const RedisManager = {
    * This is used for email notifications
    */
   async recordProjectNotificationTimestamp(projectId, timestamp, userId) {
+    // 1h TTL: these keys are one-shot batch markers consumed by the enqueue
+    // cron (or, for projects without collaborators, never consumed). Without
+    // a TTL, every edit in a solo project would leak a key forever.
+    const ttlSeconds = 3600
     await rclient.set(
       keys.projectNotificationTimestamp({ project_id: projectId }),
       timestamp,
-      'NX'
+      'NX',
+      'EX',
+      ttlSeconds
     )
     // Store who made this change next to the timestamp (same NX
     // "first change of the batch wins" semantics) so the notification
@@ -584,7 +590,9 @@ const RedisManager = {
       await rclient.set(
         `ProjectNotificationEditor:{${projectId}}`,
         userId,
-        'NX'
+        'NX',
+        'EX',
+        ttlSeconds
       )
     }
   },

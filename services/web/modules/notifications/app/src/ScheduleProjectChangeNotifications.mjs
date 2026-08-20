@@ -184,6 +184,10 @@ export async function scheduleProjectChangeNotifications({
         emailType: EMAIL_TYPE,
       },
       {
+        // A fresh change restarts the delivery state: a previous failed
+        // attempt (attempts/nextRetryAt) or a dead-lettered doc must not
+        // keep suppressing this recipient — the claim logic otherwise never
+        // picks up a doc that is dead:true or still inside its retry backoff.
         $set: {
           recipient_id: new ObjectId(memberId),
           project_id: new ObjectId(projectId),
@@ -191,6 +195,14 @@ export async function scheduleProjectChangeNotifications({
           opts: { projectId, projectName },
           scheduledAt,
           updatedAt: new Date(),
+          attempts: 0,
+          processing: false,
+        },
+        $unset: {
+          nextRetryAt: '',
+          processingError: '',
+          processingStartedAt: '',
+          dead: '',
         },
       },
       { upsert: true }

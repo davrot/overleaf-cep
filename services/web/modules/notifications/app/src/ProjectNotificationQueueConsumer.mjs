@@ -48,6 +48,40 @@ export function getQueueRedisConfig() {
 
 let queueInstance = null
 
+// Hard cap for a hook run inside the queue worker: a handler that never
+// settles must not wedge the Bull job in "active" forever (observed: a
+// never-resolving fire() left the job active indefinitely and — combined
+// with jobId de-duplication — swallowed every later batch for the project).
+// On timeout the job fails and Bull retries it (attempts/backoff), keeping
+// the queue visible and re-drainable.
+export const HOOK_TIMEOUT_MS = Number(
+  process.env.PROJECT_NOTIFICATION_HOOK_TIMEOUT_MS
+) || 30_000
+
+export function fireHookWithTimeout(
+  hookName,
+  payload,
+  timeoutMs = HOOK_TIMEOUT_MS,
+  // injectable for tests (defaults to the web Modules hook runner)
+  fire = Modules.promises.hooks.fire
+) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${hookName} hook timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    const done = (settle) => {
+      clearTimeout(timer)
+      settle()
+    }
+
+    fire(hookName, payload).then(
+      result => done(() => resolve(result)),
+      err => done(() => reject(err))
+    )
+  })
+}
+
 /**
  * Start the consumer exactly once per process (idempotent).
  * Returns the bull queue, or null when it is not started
@@ -73,7 +107,7 @@ export function startProjectNotificationConsumer() {
 
   queue.process(async job => {
     const { projectId, timestamp, userId } = job.data
-    await Modules.promises.hooks.fire('projectModified', {
+    await fireHookWithTimeout('projectModified', {
       projectId,
       timestamp,
       userId,

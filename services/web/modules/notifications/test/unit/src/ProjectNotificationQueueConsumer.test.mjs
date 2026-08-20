@@ -6,25 +6,25 @@ const consumerPath = path.join(
   '../../../app/src/ProjectNotificationQueueConsumer.mjs'
 )
 
+let consumer
+const savedEnv = {}
+
+beforeAll(async function () {
+  consumer = await import(consumerPath)
+  for (const key of [
+    'QUEUES_REDIS_HOST',
+    'QUEUES_REDIS_PORT',
+    'QUEUES_REDIS_PASSWORD',
+    'REDIS_HOST',
+    'REDIS_PORT',
+    'REDIS_PASSWORD',
+  ]) {
+    savedEnv[key] = process.env[key]
+    delete process.env[key]
+  }
+})
+
 describe('ProjectNotificationQueueConsumer', function () {
-  let consumer
-  const savedEnv = {}
-
-  beforeAll(async function () {
-    consumer = await import(consumerPath)
-    for (const key of [
-      'QUEUES_REDIS_HOST',
-      'QUEUES_REDIS_PORT',
-      'QUEUES_REDIS_PASSWORD',
-      'REDIS_HOST',
-      'REDIS_PORT',
-      'REDIS_PASSWORD',
-    ]) {
-      savedEnv[key] = process.env[key]
-      delete process.env[key]
-    }
-  })
-
   it('does not start a queue in the test environment', function () {
     expect(consumer.startProjectNotificationConsumer()).toBeNull()
     // idempotent no-op on repeat calls
@@ -60,5 +60,48 @@ describe('ProjectNotificationQueueConsumer', function () {
 
   it('exposes the upstream queue name', function () {
     expect(consumer.QUEUE_NAME).toBe('project-notification')
+  })
+})
+
+describe('fireHookWithTimeout', function () {
+  it('rejects when a hook handler never settles', async function () {
+    // hung handler (like the promisified-async regression) must not wedge the
+    // worker: it rejects and the Bull job can fail/retry instead of hanging
+    let err = null
+    try {
+      await consumer.fireHookWithTimeout(
+        'projectModified',
+        {},
+        50,
+        () => new Promise(() => {})
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).not.toBeNull()
+    expect(String(err.message)).toMatch(/timed out/)
+  })
+
+  it('resolves with the hook results when they settle in time', async function () {
+    const result = await consumer.fireHookWithTimeout(
+      'projectModified',
+      {},
+      500,
+      async () => ['scheduled:1']
+    )
+    expect(result).toEqual(['scheduled:1'])
+  })
+
+  it('propagates handler errors', async function () {
+    let err = null
+    try {
+      await consumer.fireHookWithTimeout('projectModified', {}, 500, async () => {
+        throw new Error('boom')
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).not.toBeNull()
+    expect(String(err.message)).toBe('boom')
   })
 })

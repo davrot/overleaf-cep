@@ -252,4 +252,32 @@ describe('scheduleProjectChangeNotifications', function () {
     // default recipient is due now, long before the delayed one
     expect(defaultRecipient.t).toBeLessThan(delayed.t - 10 * 60 * 1000)
   })
+
+  it('reschedules with a clean delivery state (resets retry/dead-letter state)', async function (ctx) {
+    const batchTs = Date.now() - 5 * 60 * 1000
+    ctx.db.projects.findOne.mockResolvedValue(
+      project('p-1', 'editor-1', ['member-2'])
+    )
+
+    const updateOne = vi.fn().mockResolvedValue({ upsertedCount: 1 })
+    ctx.db.emailNotifications = { updateOne }
+
+    await ctx.Loader.scheduleProjectChangeNotifications({
+      projectId: 'p-1',
+      timestamp: batchTs,
+      userId: 'editor-1',
+    })
+
+    const update = updateOne.mock.calls[0][1]
+    // without this reset, a previously failed/dead-lettered doc would keep
+    // suppressing new notifications for the same recipient+project forever
+    expect(update.$set.attempts).toBe(0)
+    expect(update.$set.processing).toBe(false)
+    expect(update.$unset).toEqual({
+      nextRetryAt: '',
+      processingError: '',
+      processingStartedAt: '',
+      dead: '',
+    })
+  })
 })

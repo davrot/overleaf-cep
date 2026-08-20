@@ -20,12 +20,14 @@ in minutes; IDE project-settings tab per project) to enable/disable email
    notifications, plus an immediate "send test email" endpoint
    (`/user/send-test-email`).
 
-Preferences are stored per user in `db.projectPreferences` as
-`trackedChanges.emailNotifications` (global) and per-project in
-`project_settings.emailNotifications`. The "owner notified about changes on
-own projects" switch uses `emailType: projectNotification`; the "collaborator
-notified when I add tracked changes on a project" switch uses
-`emailType: trackedChangesNotification`. The two switches are independent.
+Preferences are stored in `db.notificationsPreferences` (module-owned,
+migration `20251110151140`):
+- per project: `{ user_id, project_id, <12 preference keys> }`
+- global: `{ user_id, project_id: null, muteAllNotifications, notificationDelayMinutes }`
+
+The email type is `trackedChangesNotification`. Recipient resolution
+(owner vs invited member, global on/off, per-project off, editor exclusion,
+per-user delay) happens in `ScheduleProjectChangeNotifications.mjs`.
 
 ## Pipeline
 
@@ -33,15 +35,17 @@ notified when I add tracked changes on a project" switch uses
 meta.tc edit (document-updater records timestamp + editor id in redis)
    → cron (server-ce/cron/project-notification-enqueue.sh, every minute):
        scans stale timestamp keys (older than the grace delay) with
-       collaborators, enqueues a Bull job {projectId, timestamp, userId} on
+       collaborators, enqueues a Bull job {projectId, timestamp, userId}
+       (jobId `<projectId>:<timestamp>`, one per batch) on
        queue "project-notification", deletes both keys
    → Bull queue "project-notification" (redis)
    → web container: ProjectNotificationQueueConsumer.mjs (module-owned worker)
-       fires the projectModified hook (with the editor id)
+       fires the projectModified hook (with the editor id, timeout-guarded)
    → scheduleProjectChangeNotifications()
-       (Preferences.mjs: resolves recipients from project members + prefs,
-        EXCLUDES the editor of the change, upserts one doc per recipient
-        into db.emailNotifications)
+       (ScheduleProjectChangeNotifications.mjs: resolves recipients from
+        project members + prefs, EXCLUDES the editor of the change, applies
+        the per-user delay, upserts one doc per recipient into
+        db.emailNotifications with a clean delivery state)
    → cron (server-ce/cron/notification-email-dispatch.sh, every minute):
        ProcessNotifications.mjs claims due docs in sorted order, resolves the
        recipient, renders the template, sends via SMTP (EmailHandler)
@@ -54,14 +58,17 @@ The two crons are registered in `server-ce/Dockerfile` into
 
 | Path | Role |
 | --- | --- |
+| `index.mjs` | Module registration (router + `hooks.promises.projectModified`) — see promisify trap below |
 | `app/src/NotificationsPreferencesRouter.mjs` | Settings UI + test-email endpoints; starts the CE queue consumer in `apply()` |
-| `app/src/Preferences.mjs` | `scheduleProjectChangeNotifications` — debounce, recipient + permission resolution, `db.emailNotifications` upsert |
+| `app/src/NotificationsPreferencesController.mjs` | Page rendering (global on/off checkbox + delay input) + form/JSON handlers |
+| `app/src/NotificationsPreferencesHandler.mjs` | Preference storage (global + per-project docs) |
+| `app/src/PreferenceNormalizer.mjs` | Global/project preference normalization (module-side clone of the `@overleaf/notification-preferences` library) |
+| `app/src/ScheduleProjectChangeNotifications.mjs` | Debounce, recipient + permission resolution, editor exclusion, per-user delay, `db.emailNotifications` upsert (clean delivery state) |
 | `app/src/ProcessNotifications.mjs` | Dispatch: atomic claim → send → delete / retry; dry-run mode |
-| `app/src/ProjectNotificationQueueConsumer.mjs` | CE-only Bull worker for the `project-notification` queue (fires the `projectModified` hook) |
-| `app/src/hooks/projectModified.mjs` | Hook handler (upserts scheduled notifications) |
-| `app/src/Schemas.mjs` | Zod schemas (project + user settings, API body) |
+| `app/src/ProjectNotificationQueueConsumer.mjs` | CE-only Bull worker for the `project-notification` queue (timeout-guarded hook fire) |
+| `app/views/user/notification-preferences.pug` | The settings page (checkbox + delay input + Save) |
 | `test/unit/src/*.test.mjs` | Vitest unit tests (run from `services/web`) |
-| `templates/` | Jinja email templates (`trackedChangesNotification.j2`, `projectNotification.j2`, `testEmail.j2`, `emailLayout.j2`) |
+| outside module | `services/document-updater/app/js/{RedisManager,UpdateManager,HistoryOTUpdateManager}.js`, `services/document-updater/scripts/project_notifications.mts`, `server-ce/cron/project-notification-enqueue.sh` + `notification-email-dispatch.sh`, `libraries/notification-preferences/index.js` |
 
 ## CE-only consumer: why it lives in this module
 
@@ -80,13 +87,17 @@ consumer would only re-run the debounce, but two consumers are never needed).
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` | `120000` | **Server default + floor** for the grace delay (per-user override, minimum 1 min, in `notificationDelayMinutes` on the global preferences doc) |
-| `PROJECT_NOTIFICATION_RETRY_COUNT` | `0` | Bull job attempts on hook failure (`< 0` = infinite) |
-| `OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS` | `5` | Dispatch send retries (then dead-lettered) |
-| `OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS` | `3600000` | Retry backoff window (linear: `n × silence`) |
+| `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` | `120000` | **Server default + floor** for the grace delay (per-user override, whole minutes 1–10080, stored as `notificationDelayMinutes` on the global preferences doc) |
+| `PROJECT_NOTIFICATION_HOOK_TIMEOUT_MS` | `30000` | Consumer-side cap for the hook run; on timeout the job fails and Bull retries (default 3 attempts, exponential backoff) |
+| `OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS` | `3` | Dispatch send attempts per doc (then dead-lettered) |
+| `OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS` | `7200000` | Retry backoff base, **exponential**: `base × 2^(n-1)` |
 | `PROCESS_NOTIFICATIONS_BATCH_SIZE` | `100` | Docs processed per dispatch run |
 | `OVERLEAF_NOTIFICATIONS_DRY_RUN` | unset | Dispatch resolves+counts but sends nothing; docs stay pending |
 | `QUEUES_REDIS_HOST/PORT/PASSWORD` | fall back to `REDIS_*` | Redis for the queue (the enqueue cron sets these from the stack's `REDIS_*`) |
+
+> Bull job options (attempts `3`, exponential backoff base `3000ms`,
+> `jobId = <projectId>:<timestamp>`) are set by the module-owned enqueue
+> script `services/document-updater/scripts/project_notifications.mts`.
 
 > This deployment sets `PROJECT_CHANGE_NOTIFICATION_MIN_DELAY_MS` to `30000`
 > (30 s) via the docker compose `environment` for faster testing.
@@ -94,10 +105,15 @@ consumer would only re-run the debounce, but two consumers are never needed).
 ## Redis & Mongo footprint
 
 - `ProjectNotificationTimestamp:{projectId}` — set by document-updater on
-  every `meta.tc` change; consumed (deleted) by the enqueue cron.
+  every history-generating edit; consumed (deleted) by the enqueue cron.
+  **TTL 1 h** so solo-project markers self-expire.
 - `ProjectNotificationEditor:{projectId}` — the editor who opened the batch
   (same NX semantics); carried into the Bull job and used to exclude the
-  author; deleted with the timestamp key on enqueue.
+  author; deleted with the timestamp key on enqueue. **TTL 1 h**.
+- `ProjectHasCollaborators:{projectId}` — cached collaborator check,
+  randomized **1–2 h** TTL; a stale "0" entry is double-checked against
+  mongo for candidates that actually have a pending batch (a stale entry
+  must not kill a real notification).
 - `ProjectHasCollaborators:{projectId}` — 5-minute cached collaborator check.
 - Bull keys for queue `project-notification` (jobs, locks, counters).
 - `db.emailNotifications` (created by the module's `apply()`) — one doc per
@@ -111,11 +127,14 @@ consumer would only re-run the debounce, but two consumers are never needed).
 - Claim = atomic `findOneAndUpdate` of the first claimable doc in
   `scheduledAt` order (`processing` unset/false or stale > 1h), setting
   `processing: true` — safe under concurrent dispatchers.
-- On success: delete. On failure: `attempts += 1`, linear backoff
-  `attempts × OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS`; after
-  `OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS` the doc is dead-lettered (`processing`
-  stays `true`, `nextRetryAt` unset — it is never reclaimed; the claim stays
-  for audit).
+- On success: delete. On failure: `attempts += 1`, exponential backoff
+  `base × 2^(n-1)` with `base = OVERLEAF_NOTIFICATION_SILENCE_PERIOD_MS`
+  (default 2 h); after `OVERLEAF_NOTIFICATIONS_MAX_ATTEMPTS` attempts
+  (default 3) the doc is dead-lettered (`dead: true`, claim released).
+- A new change batch **resets the delivery state** of an existing pending
+  doc (`attempts: 0`, `processing: false`, `nextRetryAt`/
+  `processingError`/`dead` cleared) — a failed or dead-lettered past
+  email must not suppress later notifications for the same recipient.
 - Claim results come back as a *raw document* (legacy mongodb driver shape)
   in production; the code normalizes both shapes at the single point of
   claim (covered by `ProcessNotifications.test.mjs` — regression F7).
@@ -136,7 +155,7 @@ resolves `redis.documentupdater.key_schema` from the CWD's config.
 
 ```sh
 cd services/web
-yarn vitest run modules/notifications          # all unit tests (5 files, 21 tests)
+yarn vitest run modules/notifications          # all unit tests (5 files, 34 tests)
 npx eslint --cache --cache-location ./.cache/eslint/ --max-warnings 0 --format unix modules/notifications
 ```
 
@@ -189,13 +208,16 @@ skip the author):
 
 - `services/document-updater/app/js/RedisManager.js` —
   `recordProjectNotificationTimestamp(projectId, timestamp, userId)` also sets
-  `ProjectNotificationEditor:{projectId}` (NX, same batch semantics).
+  `ProjectNotificationEditor:{projectId}` (NX, same batch semantics); both
+  keys carry a 1 h TTL.
 - `services/document-updater/app/js/UpdateManager.js` — passes
   `update.meta?.user_id` to the setter.
 - `services/document-updater/app/js/HistoryOTUpdateManager.js` — same.
 - `services/document-updater/scripts/project_notifications.mts` — reads the
-  editor key in the scan batch, puts `userId` into the Bull job data, and
-  deletes the companion key after a successful enqueue.
+  editor key in the scan batch, puts `userId` into the Bull job data, deletes
+  the companion key after a successful enqueue, uses `jobId =
+  <projectId>:<timestamp>` (per-batch identity), and double-checks a stale
+  "no collaborators" cache against mongo for real candidates.
 
 **Per-user grace delay** adds two more upstream/semi-upstream touch points:
 
@@ -232,3 +254,24 @@ All other i18n strings already exist upstream in `services/web/locales/en.json`
   uses `smtp.uni-bremen.de:465` (secure) as the uni mail gateway.
 - SaaS deployments: do nothing — the upstream QueueWorkers owns the queue
   there; the module consumer is a no-op when saas is on.
+- **Modules promisify trap (regression found in production):** web's
+  `app/src/infrastructure/Modules.mjs` runs every handler in the plain
+  `hooks` map through `util.promisify()`, which assumes callback-style
+  functions. An *async* handler in that slot executes but never settles the
+  promisified promise → `fire()` hangs forever → the Bull job stays `active`
+  forever and (with per-project job ids) swallows every later batch for that
+  project. Native async handlers **must** be registered under
+  `hooks.promises` (as `index.mjs` does, with a comment).
+- **Two web node processes** in the CE image both run the module worker
+  (observed: two `node app.mjs` pids); Bull's distributed locking keeps job
+  processing exclusive, and the scheduler's upsert is idempotent, so double
+  registration is harmless (at worst a harmless re-schedule).
+- **Stale "no collaborators" cache**: `ProjectHasCollaborators:{id}` has a
+  randomized 1–2 h TTL. If a collaborator is added to a project, batches
+  recorded before the cache is refreshed are skipped — the enqueue script
+  double-checks those candidates directly in mongo; a manual fix is
+  `DEL ProjectHasCollaborators:{projectId}`.
+- **Orphan batch markers**: solo projects used to leak timestamp keys
+  forever; they now expire after 1 h (TTL). Pre-existing orphan keys can be
+  swept with `KEYS 'ProjectNotificationTimestamp:*'` + `DEL` (they are
+  always ≥ grace-delay old by definition).
