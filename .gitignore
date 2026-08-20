@@ -17,3 +17,6 @@ services/**/*.node_modules/
 # NFS/editor artifacts
 .nfs*
 services/web/.cache/
+
+# pi session state (todos) — local only, never commit
+.pi/
