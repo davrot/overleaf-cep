@@ -4,3 +4,6 @@
 # user defined files
 .env
 docker-compose.override.yml
+
+# dependencies — never uploaded
+node_modules/

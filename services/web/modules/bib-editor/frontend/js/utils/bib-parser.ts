@@ -1,12 +1,14 @@
 /**
  * Lightweight BibTeX parser and serializer.
  * Parses a .bib file string into BibEntry objects and serializes them back.
+ *
+ * Parsing is offset-based: every parsed entry carries its start/end offset in
+ * the source so the editor can replace or remove it surgically.
  */
 import type { BibEntry } from './bib-types'
 
 /**
- * Parse a BibTeX source string into an array of entries.
- * Each entry includes its character offsets in the source for editing.
+ * A BibEntry plus its positional info in the source string.
  */
 export type ParsedBibEntry = BibEntry & {
   /** Start offset in the source string (inclusive) */
@@ -17,50 +19,55 @@ export type ParsedBibEntry = BibEntry & {
   raw: string
 }
 
+/** Entry types that are parsed but not editable bibliographies entries. */
+const SKIP_TYPES = new Set(['comment', 'preamble', 'string'])
+
 /**
  * Parse all BibTeX entries from a source string.
+ *
+ * Entries without a citation key (`@misc{}`) and entries with a key but no
+ * comma or fields (`@misc{key}`) are still returned, with an empty `id` /
+ * empty `fields`, so the UI can show them (red frame) and repair them.
  */
 export function parseBibFile(source: string): ParsedBibEntry[] {
   const entries: ParsedBibEntry[] = []
-  // Match @type{...} blocks, handling nested braces
-  const entryStartRe = /@\s*([\w-]+)\s*\{/g
+  // Match "@type{" openings (type may be absent for stray `@{` which we skip)
+  const entryStartRe = /@\s*([\w-]*)\s*\{/g
   let match: RegExpExecArray | null
 
   while ((match = entryStartRe.exec(source)) !== null) {
-    const type = match[1].toLowerCase()
-    // Skip @comment, @preamble, @string
-    if (type === 'comment' || type === 'preamble' || type === 'string') {
-      // Still need to skip past the braces
-      const braceStart = match.index + match[0].length - 1
-      const endIdx = findMatchingBrace(source, braceStart)
-      if (endIdx !== -1) {
-        entryStartRe.lastIndex = endIdx + 1
-      }
+    const type = match[1]?.toLowerCase() || ''
+    const braceStart = match.index + match[0].length - 1
+    const braceEnd = findMatchingBrace(source, braceStart)
+    if (braceEnd === -1) {
+      entryStartRe.lastIndex = braceStart + 1
+      continue
+    }
+
+    if (type && SKIP_TYPES.has(type)) {
+      // Skip @comment / @preamble / @string but advance past their braces
+      entryStartRe.lastIndex = braceEnd + 1
       continue
     }
 
     const entrySourceStart = match.index
-    const braceStart = match.index + match[0].length - 1
-    const braceEnd = findMatchingBrace(source, braceStart)
-    if (braceEnd === -1) continue
-
     const entrySourceEnd = braceEnd + 1
     const innerContent = source.slice(braceStart + 1, braceEnd)
     const raw = source.slice(entrySourceStart, entrySourceEnd)
 
-    // Parse the id (citation key) - everything up to the first comma
+    // The id (citation key) is everything up to the first comma; a keyless
+    // entry (`@misc{}`) has all of the inner content as fields (or none).
     const commaIdx = innerContent.indexOf(',')
-    if (commaIdx === -1) continue
-    const id = innerContent.slice(0, commaIdx).trim()
-
-    // Parse fields from the rest
-    const fieldsStr = innerContent.slice(commaIdx + 1)
-    const fields = parseFields(fieldsStr)
+    const id =
+      commaIdx === -1
+        ? innerContent.trim()
+        : innerContent.slice(0, commaIdx).trim()
+    const fieldsStr = commaIdx === -1 ? '' : innerContent.slice(commaIdx + 1)
 
     entries.push({
-      type,
+      type: type || 'misc',
       id,
-      fields,
+      fields: parseFields(fieldsStr),
       sourceStart: entrySourceStart,
       sourceEnd: entrySourceEnd,
       raw,
@@ -78,16 +85,27 @@ export function parseBibFile(source: string): ParsedBibEntry[] {
 export function parseBibEntry(source: string): BibEntry | null {
   const entries = parseBibFile(source)
   return entries.length > 0
-    ? { type: entries[0].type, id: entries[0].id, fields: entries[0].fields }
+    ? {
+        type: entries[0].type,
+        id: entries[0].id,
+        fields: entries[0].fields,
+      }
     : null
 }
 
 /**
  * Find the index of the matching closing brace for the opening brace at `start`.
+ * Backslash-escaped braces (`\{` / `\}`) are treated as literal characters
+ * and do not change the depth, matching BibTeX semantics. This is what keeps
+ * serialized values such as `a\}b` parseable.
  */
 function findMatchingBrace(source: string, start: number): number {
   let depth = 0
   for (let i = start; i < source.length; i++) {
+    if (source[i] === '\\' && (source[i + 1] === '{' || source[i + 1] === '}')) {
+      i++ // escape: skip the brace
+      continue
+    }
     if (source[i] === '{') depth++
     else if (source[i] === '}') {
       depth--
@@ -98,34 +116,127 @@ function findMatchingBrace(source: string, start: number): number {
 }
 
 /**
- * Parse "field = {value}" or "field = "value"" pairs from a fields string.
+ * Parse "field = {value}" / "field = "value"" / "field = number" pairs.
+ *
+ * Brace values are extracted with a character scan (nested braces of any
+ * depth are preserved); quoted and bare values end at the next separator.
  */
 function parseFields(fieldsStr: string): Record<string, string> {
   const fields: Record<string, string> = {}
-  // Match field = {value} or field = "value" or field = number
-  const fieldRe =
-    /\b([\w-]+)\s*=\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}|"([^"]*)"|(\d+))/g
-  let m: RegExpExecArray | null
-  while ((m = fieldRe.exec(fieldsStr)) !== null) {
-    const name = m[1].toLowerCase()
-    const value = m[2] ?? m[3] ?? m[4] ?? ''
-    fields[name] = value.trim()
+  let i = 0
+  const n = fieldsStr.length
+
+  while (i < n) {
+    // skip whitespace and separators
+    while (i < n && (/\s/.test(fieldsStr[i]) || fieldsStr[i] === ',')) i++
+    if (i >= n) break
+
+    // field name (letters, digits, minus)
+    let nameStart = i
+    while (i < n && /[\w-]/.test(fieldsStr[i])) i++
+    const name = fieldsStr.slice(nameStart, i)
+    if (name === '') {
+      // unexpected character — skip one and rescan
+      i++
+      continue
+    }
+
+    // field name is lowercase
+    while (i < n && /\s/.test(fieldsStr[i])) i++
+    if (fieldsStr[i] !== '=') {
+      // malformed (no "=") — skip this token, keep scanning
+      i++
+      continue
+    }
+    i++ // consume '='
+    while (i < n && /\s/.test(fieldsStr[i])) i++
+    if (i >= n) break
+
+    let value: string
+    if (fieldsStr[i] === '{') {
+      const open = i
+      const braceEnd = findMatchingBrace(fieldsStr, i)
+      if (braceEnd === -1) {
+        // unbalanced — take the rest
+        value = fieldsStr.slice(i + 1)
+        i = n
+      } else {
+        value = fieldsStr.slice(open + 1, braceEnd)
+        i = braceEnd + 1
+      }
+    } else if (fieldsStr[i] === '"') {
+      const close = fieldsStr.indexOf('"', i + 1)
+      if (close === -1) {
+        value = fieldsStr.slice(i + 1)
+        i = n
+      } else {
+        value = fieldsStr.slice(i + 1, close)
+        i = close + 1
+      }
+    } else {
+      // bare value (e.g. a number): up to the next comma
+      let j = i
+      while (j < n && fieldsStr[j] !== ',') j++
+      value = fieldsStr.slice(i, j)
+      i = j
+    }
+
+    fields[name.toLowerCase()] = value.trim()
   }
+
   return fields
+}
+
+/**
+ * Escape a raw BibTeX field value for writing inside braces: a `}` that is
+ * not part of a balanced {…} pair inside the value gets a backslash (e.g. a
+ * stray `a}b` → `a\}b`). Balanced nested braces such as `{Last, First}` are
+ * preserved, so values round-trip through serialize → parse unchanged.
+ * Idempotent: an already-escaped `\}` is left alone.
+ */
+export function escapeBibValue(value: string): string {
+  let out = ''
+  let depth = 0
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i]
+    if (c === '\\' && (value[i + 1] === '{' || value[i + 1] === '}')) {
+      // already-escaped brace: copy both, skip the brace
+      out += c
+      i++
+      out += value[i]
+      continue
+    }
+    if (c === '{') depth++
+    else if (c === '}') {
+      if (depth === 0) {
+        out += '\\}'
+        continue
+      }
+      depth--
+    }
+    out += c
+  }
+  return out
 }
 
 /**
  * Serialize a BibEntry to a BibTeX string.
  */
 export function serializeBibEntry(entry: BibEntry): string {
-  const escape = (s: string) => s.replace(/\}/g, '\\}')
   const lines: string[] = []
   for (const [key, value] of Object.entries(entry.fields)) {
     if (value && value.trim()) {
-      lines.push(`  ${key} = {${escape(value.trim())}}`)
+      lines.push(`  ${key} = {${escapeBibValue(value.trim())}}`)
     }
   }
-  return `@${entry.type}{${entry.id},\n${lines.join(',\n')}\n}`
+  const linesText = lines.length > 0 ? lines.join(',\n') : ''
+  // Keyless entries serialize without the trailing comma (valid BibTeX).
+  if (entry.id.trim()) {
+    return linesText
+      ? `@${entry.type}{${entry.id},\n${linesText}\n}`
+      : `@${entry.type}{${entry.id}}\n`
+  }
+  return linesText ? `@${entry.type}{\n${linesText}\n}` : '@' + entry.type + '{}\n'
 }
 
 /**
@@ -138,7 +249,9 @@ export function replaceEntryInSource(
   newEntry: BibEntry
 ): string {
   const newText = serializeBibEntry(newEntry)
-  return source.slice(0, parsed.sourceStart) + newText + source.slice(parsed.sourceEnd)
+  return (
+    source.slice(0, parsed.sourceStart) + newText + source.slice(parsed.sourceEnd)
+  )
 }
 
 /**
@@ -189,6 +302,7 @@ export function generateCitationKey(fields: Record<string, string>): string {
   // Last resort: random
   const chars = 'abcdefghijklmnopqrstuvwxyz'
   let rand = ''
-  for (let i = 0; i < 6; i++) rand += chars[Math.floor(Math.random() * chars.length)]
+  for (let i = 0; i < 6; i++)
+    rand += chars[Math.floor(Math.random() * chars.length)]
   return `ref${rand}${year}`
 }
