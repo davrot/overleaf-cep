@@ -3,9 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 import { expressify } from '@overleaf/promise-utils'
-import OError from '@overleaf/o-error'
 import { encryptSecret, decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: at-rest encryption of admin API key
-import { createLLMProvider, detectApiType } from './LLMProviderFactory.mjs'
+import { listModels, detectProviderType } from './LLMClient.mjs' // overleaf-lab: AI-SDK provider seam
 import {
   DEFAULT_ASK_AI_SYSTEM_PROMPT,
   DEFAULT_ERROR_PROMPT,
@@ -75,13 +74,7 @@ async function buildDisplaySettings() {
     llmApiType:
       settings.llmApiType ||
       process.env.LLM_API_TYPE ||
-      detectApiType({
-        llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
-        llmApiKey:
-          settings.llmApiKey
-            ? decryptSecret(settings.llmApiKey)
-            : process.env.LLM_API_KEY,
-      }),
+      detectProviderType(settings.llmApiUrl || process.env.LLM_API_URL),
     hasLlmApiKey: !!(settings.llmApiKey || process.env.LLM_API_KEY),
     allowedModels: jsonHasModels ? settings.allowedModels : envModels,
     // overleaf-lab: item 8 (PR decision) — the FULL fetched model list; allowedModels
@@ -134,7 +127,9 @@ async function getAdminSettings(req, res) {
 }
 
 const llmSettingsSchema = z.object({
-  systemPrompt: z.string().max(4000),
+  // overleaf-lab: optional so a save that omits it (or sends '') still works; the
+  // chat falls back to its own language instruction when no prompt is set.
+  systemPrompt: z.string().max(4000).optional(),
 
   llmApiUrl: z.string().optional(),
   llmApiType: z.string().optional(),
@@ -314,7 +309,7 @@ async function saveAdminSettings(req, res) {
 
   const updatedSettings = {
     ...existing,
-    systemPrompt,
+    systemPrompt: typeof systemPrompt === 'string' ? systemPrompt : (existing.systemPrompt || ''),
     llmApiUrl: typeof llmApiUrl === 'string' ? llmApiUrl : (existing.llmApiUrl || ''),
     llmApiType: typeof llmApiType === 'string' ? llmApiType : (existing.llmApiType || ''),
     allowedModels: Array.isArray(allowedModels) ? allowedModels : existing.allowedModels || [],
@@ -381,10 +376,7 @@ export async function getAdminLLMSettings() {
     llmApiType:
       settings.llmApiType ||
       process.env.LLM_API_TYPE ||
-      detectApiType({
-        llmApiUrl: settings.llmApiUrl || process.env.LLM_API_URL,
-        llmApiKey: jsonKey || process.env.LLM_API_KEY,
-      }),
+      detectProviderType(settings.llmApiUrl || process.env.LLM_API_URL),
     llmApiKey: jsonKey || process.env.LLM_API_KEY || null,
     allowedModels: jsonHasModels ? settings.allowedModels : envModelList(),
     completionModel: settings.completionModel || '',
@@ -432,46 +424,32 @@ export async function getLLMPrompts() {
   }
 }
 
-// overleaf-lab: hard cap for an interactive provider call (model list / token
-// count) so a wedged backend cannot hang the settings UI. The provider's own
-// fetch timeout still applies below this.
-function withTimeout(promise, ms, label) {
-  let timer
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms)
-  })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
-}
-
 async function checkAdminLLMConnection(req, res) {
   const { apiUrl, apiKey, apiType } = req.body
   const adminSettings = await getAdminLLMSettings()
   const llmApiUrl = apiUrl || adminSettings.llmApiUrl
   const llmApiKey = apiKey || adminSettings.llmApiKey
-  const llmApiType = apiType || adminSettings.llmApiType || detectApiType({ llmApiUrl, llmApiKey })
+  const llmApiType = apiType || adminSettings.llmApiType || detectProviderType(llmApiUrl)
+
+  const testModel =
+    adminSettings.allowedModels[0] ||
+    (process.env.LLM_MODEL_NAME || '').split(',')[0].trim()
+
+  if (!llmApiUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'LLM API URL is required',
+    })
+  }
 
   // overleaf-lab: PR decision (item 7) — "testing the connection" IS a
   // successful model-list fetch: it proves reachability, auth, and that the
   // backend serves at least one model, in ONE round trip. The first configured
   // model (if any) must be in the list, which catches typos/stopped models.
-  const testModel =
-    adminSettings.allowedModels[0] ||
-    (process.env.LLM_MODEL_NAME || '').split(',')[0].trim()
-
-  if (!llmApiUrl || !llmApiType) {
-    return res.status(400).json({
-      success: false,
-      error: 'LLM API URL and type is required',
-    })
-  }
+  const spec = normalizeSpecFor(llmApiUrl, llmApiKey, llmApiType, testModel || 'probe')
 
   try {
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType })
-    const data = await withTimeout(provider.listModels(), 60000, 'Model list fetch')
-
-    const ids = Array.isArray(data?.data)
-      ? data.data.map(entry => String(entry.id))
-      : []
+    const { ids } = await listModels(spec, { timeoutMs: 60000 })
 
     if (testModel && !ids.includes(testModel)) {
       logger.warn({ testModel, ids: ids.length }, '[LLM] Admin check: configured model not in backend list')
@@ -485,16 +463,23 @@ async function checkAdminLLMConnection(req, res) {
 
     res.json({ success: true, message: 'Connection successful', models: ids })
   } catch (err) {
-    const info = OError.getFullInfo(err)
-    const errStatus  = info?.status || 500
-    logger.error({ err }, '[LLM] Admin connection check failed')
-    res.status(errStatus).json({
+    const status = err.code === 'auth' ? 401 : (err.status || 500)
+    logger.error({ err: err.message, code: err.code }, '[LLM] Admin connection check failed')
+    res.status(status).json({
       success: false,
       error: 'LLM connection failed',
-      status: errStatus,
-      details: info?.error?.message || err.message,
+      status,
+      details: err.message,
+      models: [],
     })
   }
+}
+
+function normalizeSpecFor(baseUrl, apiKey, providerType, model) {
+  const type = providerType || detectProviderType(baseUrl)
+  const base = String(baseUrl || '').replace(/\/+$/, '')
+  const baseForType = type === 'anthropic' ? base.replace(/\/v\d+$/, '') : base
+  return { providerType: type, baseUrl: baseForType, apiKey: apiKey || '', model }
 }
 
 async function scanAdminModels(req, res) {
@@ -504,34 +489,26 @@ async function scanAdminModels(req, res) {
   const adminSettings = await getAdminLLMSettings()
   const llmApiUrl = apiUrl || adminSettings.llmApiUrl
   const llmApiKey = apiKey || adminSettings.llmApiKey
-  const llmApiType = apiType || adminSettings.llmApiType || detectApiType({ llmApiUrl, llmApiKey })
+  const llmApiType = apiType || adminSettings.llmApiType || detectProviderType(llmApiUrl)
 
-  if (!llmApiUrl || !llmApiType) {
+  if (!llmApiUrl) {
     return res.status(400).json({
       success: false,
-      error: 'Admin LLM API URL and type must be configured first',
+      error: 'Admin LLM API URL must be configured first',
     })
   }
 
   try {
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType })
-    const result = await provider.listModels()
-
-    const ids = Array.isArray(result?.data)
-      ? result.data.map(entry => String(entry.id))
-      : []
-
+    const { ids } = await listModels(normalizeSpecFor(llmApiUrl, llmApiKey, llmApiType, 'scan'), { timeoutMs: 60000 })
     res.json({ success: true, models: ids })
-
   } catch (error) {
-    const info = OError.getFullInfo(error)
-    const errStatus = info?.status || 500
-    logger.error({ error }, '[LLM] Admin model scan failed')
-    res.status(errStatus).json({
+    const status = error.code === 'auth' ? 401 : (error.status || 500)
+    logger.error({ error: error.message, code: error.code }, '[LLM] Admin model scan failed')
+    res.status(status).json({
       success: false,
       error: 'Model scan failed',
-      status: errStatus,
-      details: info?.error?.message || error.message,
+      status,
+      details: error.message,
     })
   }
 }

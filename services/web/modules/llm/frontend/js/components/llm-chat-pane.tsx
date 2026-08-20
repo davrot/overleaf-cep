@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useLLMChat } from '../hooks/use-llm-chat'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import '../../stylesheets/llm-chat.scss'
 
 interface LLMChatPaneProps {
@@ -56,10 +57,21 @@ const LLMChatPane = React.memo(function LLMChatPane({
         rerunLastMessage()
     }
 
+    const [armedClear, setArmedClear] = useState(false)
+    const armedTimer = useRef<number | null>(null)
+    const armClear = () => {
+        setArmedClear(true)
+        if (armedTimer.current) window.clearTimeout(armedTimer.current)
+        armedTimer.current = window.setTimeout(() => setArmedClear(false), 3000)
+    }
     const handleClear = () => {
-        if (confirm(t('clear_conversation_confirm', 'Clear conversation?'))) {
-            clearMessages()
+        if (!armedClear) {
+            armClear()
+            return
         }
+        if (armedTimer.current) window.clearTimeout(armedTimer.current)
+        setArmedClear(false)
+        clearMessages()
     }
 
     if (modelsLoaded && !hasModels) {
@@ -117,8 +129,12 @@ const LLMChatPane = React.memo(function LLMChatPane({
                                 type="button"
                                 onClick={handleClear}
                                 className="llm-action-button"
-                                title={t('clear_conversation', 'Clear conversation')}
-                                aria-label={t('clear_conversation', 'Clear conversation')}
+                                title={armedClear
+                                    ? t('llm_chat_confirm_clear', 'Click again to clear the conversation')
+                                    : t('clear_conversation', 'Clear conversation')}
+                                aria-label={armedClear
+                                    ? t('llm_chat_confirm_clear', 'Click again to clear the conversation')
+                                    : t('clear_conversation', 'Clear conversation')}
                             >
                                 <MaterialIcon type="delete" />
                             </button>
@@ -158,10 +174,14 @@ const LLMChatPane = React.memo(function LLMChatPane({
                                 <div className="message-container">
                                     <div
                                         className="message-content"
-                                        // Content comes only from the configured LLM API — not from other users
+                                        // Content is LLM output (attacker-influenceable via the
+                                        // document, so sanitize after markdown). See F3.
                                         // eslint-disable-next-line react/no-danger
                                         dangerouslySetInnerHTML={{
-                                            __html: marked.parse(msg.content) as string,
+                                            __html: DOMPurify.sanitize(
+                                                marked.parse(msg.content) as string,
+                                                { USE_PROFILES: { html: true, svg: false, mathMl: false } }
+                                            ),
                                         }}
                                     />
                                 </div>

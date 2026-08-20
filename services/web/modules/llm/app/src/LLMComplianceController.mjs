@@ -5,7 +5,7 @@ import SessionManager from '../../../../app/src/Features/Authentication/SessionM
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import { getAdminLLMSettings, getComplianceRubrics, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
 import OError from '@overleaf/o-error'
-import { createLLMProvider } from './LLMProviderFactory.mjs' // overleaf-lab: PR item 4 — provider-agnostic review passes
+import { chatText, chatObject, listModels as listModelsSdk, normalizeProviderSpec } from './LLMClient.mjs' // overleaf-lab: AI-SDK provider seam (PR item 4: provider-agnostic review passes)
 
 // overleaf-lab: in-memory job queue for compliance reviews. A review sends the
 // whole project to the LLM and can run for minutes, so we run one at a time per
@@ -18,6 +18,10 @@ let running = false // one review at a time
 // user last looked at the panel, so the retention must be generous.
 const JOB_TTL_MS = 30 * 60 * 1000
 
+// overleaf-lab: F6 — concurrency caps (enforced in startReview).
+const MAX_USER_REVIEWS_IN_FLIGHT = 3 // 1 running + 2 queued per user
+const MAX_GLOBAL_QUEUE = 5 // queued jobs across all users
+
 // overleaf-lab: FALLBACK token budget for the review's JSON answer, used when the
 // admin has not set one in the LLM settings page (which is the normal way to change
 // it). The effective value is BOTH the hard max_tokens sent to the model AND the room
@@ -27,6 +31,12 @@ const REVIEW_MAX_TOKENS =
     Number.parseInt(process.env.LLM_REVIEW_MAX_TOKENS, 10) > 0
         ? Number.parseInt(process.env.LLM_REVIEW_MAX_TOKENS, 10)
         : 12000
+
+// overleaf-lab: F6 — maximum model passes per review job (see the cap where
+// mainPassCount is computed).
+const MAX_PASSES_PER_JOB = Number.parseInt(process.env.LLM_REVIEW_MAX_PASSES, 10) > 0
+    ? Number.parseInt(process.env.LLM_REVIEW_MAX_PASSES, 10)
+    : 200
 
 // overleaf-lab: rough backend throughput, now used only to SIZE THE PER-PASS TIMEOUT
 // (progress is pass-based and needs no time estimate, so a wrong rate can only make
@@ -52,6 +62,55 @@ const FALLBACK_GEN_TPS = 4
 // the first review just runs on the fallbacks (only the timeout cap depends on this).
 let measuredPrefillTps = null
 let measuredGenTps = null
+
+// overleaf-lab: AI-SDK seam for review passes. currentBaseSpec is set per job
+// from the effective admin settings; llmChat() derives the full spec from the
+// body's model (same body shape as the old provider calls).
+let currentBaseSpec = null
+
+function specFor(model) {
+    return normalizeProviderSpec(currentBaseSpec || {}, { model })
+}
+
+const STRUCTURED_FALLBACK_CODES = new Set(['empty-response', 'llm-error'])
+
+async function chatDetailedCompat(spec, body, opts = {}) {
+    const schema = body.response_format?.json_schema?.schema
+    const call = {
+        maxOutputTokens: body.max_tokens,
+        temperature: body.temperature,
+        signal: opts.signal,
+        timeoutMs: opts.timeoutMs,
+    }
+    try {
+        if (schema) {
+            const { object } = await chatObject(spec, body.messages, schema, call)
+            return { content: JSON.stringify(object), raw: {} }
+        }
+        const { text } = await chatText(spec, body.messages, call)
+        return { content: text, raw: {} }
+    } catch (err) {
+        if (err && (err.code === 'llm-abort' || /abort/i.test(String(err.name || '')))) {
+            throw err
+        }
+        if (schema && STRUCTURED_FALLBACK_CODES.has(err?.code)) {
+            // The backend does not honor structured output (or the strict parse
+            // failed): ask for plain JSON text and let the caller's extractJson
+            // + retry loop do the tolerant work.
+            try {
+                const { text } = await chatText(spec, body.messages, call)
+                return { content: text, raw: {} }
+            } catch (fallbackErr) {
+                throw err
+            }
+        }
+        throw err
+    }
+}
+
+function llmChat(body, opts) {
+    return chatDetailedCompat(specFor(body.model), body, opts)
+}
 
 // overleaf-lab: sample-size gates for trusting a timings measurement. llama.cpp
 // reports prompt_per_second over the tokens it ACTUALLY evaluated (prompt_n): on a
@@ -141,14 +200,13 @@ function providerErrorText(err) {
 // When it errs HIGH we refuse a document that would actually have fit, and nothing
 // downstream can correct that: the user is simply blocked. The exact count removes both.
 // Returns null for any backend without the exact count, so the caller falls back.
-async function countPromptTokens(provider, text) {
-    try {
-        const n = await provider.tokenize(text)
-        return typeof n === 'number' ? n : null
-    } catch (err) {
-        logger.debug({ err }, '[LLM] compliance: exact token count unavailable, using the estimate')
-        return null
-    }
+// overleaf-lab: exact token counting. The custom provider factory used to expose
+// llama.cpp's /tokenize endpoint; the AI-SDK seam (v6) has no cross-provider exact
+// counter, so the conservative estimate (estimateTokens + safety margin) is the
+// authoritative budgeting path. Kept as an async function so a backend that DOES
+// serve exact counts can plug back in without touching the call sites.
+async function countPromptTokens() {
+    return null
 }
 // overleaf-lab: floor for the review timeout (the value it used to be fixed at).
 const REVIEW_MIN_TIMEOUT_MS = 60 * 60 * 1000
@@ -672,14 +730,14 @@ async function performReview(job) {
     if (!llmApiUrl) {
         throw new Error('LLM backend is not configured')
     }
-    // overleaf-lab: PR item 4 — the provider owns endpoint shape, auth, and
-    // response normalization, so the SAME passes run on OpenAI-compatible AND
-    // Anthropic backends. llmApiType may be absent; the factory auto-detects.
-    const provider = createLLMProvider({
-        llmApiUrl,
-        llmApiKey,
-        llmApiType: admin.llmApiType,
-    })
+    // overleaf-lab: provider seam (Vercel AI SDK). baseSpec per job; llmChat()
+    // derives the per-call spec from body.model. llmApiType may be absent — the
+    // client detects from the URL (openai.com / anthropic.com / compatible).
+    currentBaseSpec = {
+        providerType: admin.llmApiType,
+        baseUrl: llmApiUrl,
+        apiKey: llmApiKey,
+    }
     const maxContextTokens = admin.maxContextTokens || 32000
     // overleaf-lab: the admin-set answer budget wins; fall back to the env default.
     const reviewMaxTokens = admin.reviewMaxTokens || REVIEW_MAX_TOKENS
@@ -761,10 +819,7 @@ async function performReview(job) {
         estimateTokens(scanHints) +
         estimateTokens(rubric.guidelines) +
         estimateTokens(prompts.reviewSystemPrompt)
-    const exactPromptTokens = await countPromptTokens(
-        provider,
-        `${prompts.reviewSystemPrompt}\n${rubric.guidelines}\n${assembled}\n${scanHints}`
-    )
+    const exactPromptTokens = await countPromptTokens()
     const promptTokens = exactPromptTokens || heuristicPromptTokens
     logger.debug(
         { projectId, promptTokens, exact: exactPromptTokens != null, heuristicPromptTokens },
@@ -805,10 +860,7 @@ async function performReview(job) {
         try {
             // overleaf-lab: provider-agnostic model preflight (PR item 4) — same list
             // API as the admin model scan; the provider owns path + auth.
-            const data = await provider.listModels()
-            const ids = Array.isArray(data?.data)
-                ? data.data.map(entry => String(entry.id))
-                : []
+            const { ids } = await listModelsSdk(specFor(reviewModel), { timeoutMs: 60000 })
             if (!ids.includes(reviewModel)) {
                 return {
                     type: 'error',
@@ -849,11 +901,20 @@ async function performReview(job) {
 
     // overleaf-lab: pass-based progress, read by the status endpoint. A [per-file]
     // requirement counts one pass per source file.
-    const mainPassCount = requirements.reduce(
+    let mainPassCount = requirements.reduce(
         (n, r) =>
             n + (isPerFileRequirement(r) && strippedDocs.length > 1 ? strippedDocs.length : 1),
         0
     )
+    // overleaf-lab: F6 — hard cap on passes per job. [per-file] requirements on a
+    // 100-file project would otherwise multiply passes (and cost) by 100x.
+    if (mainPassCount > MAX_PASSES_PER_JOB) {
+        logger.warn(
+            { projectId, requested: mainPassCount, cap: MAX_PASSES_PER_JOB },
+            '[LLM] compliance: pass cap applied'
+        )
+        mainPassCount = MAX_PASSES_PER_JOB
+    }
     job.passesTotal = mainPassCount
     job.passesDone = 0
     let completedPasses = 0
@@ -870,6 +931,21 @@ async function performReview(job) {
         }
         const perFile = isPerFileRequirement(requirements[i]) && strippedDocs.length > 1
         const requirement = stripPerFileMarker(requirements[i])
+        // overleaf-lab: F6 — hard stop at the configured pass budget. This and
+        // every remaining requirement are reported as 'skipped' below so the
+        // report stays complete and honest about coverage.
+        const passCost = perFile ? strippedDocs.length : 1
+        if (completedPasses + passCost > MAX_PASSES_PER_JOB) {
+            for (let k = i; k < requirements.length; k++) {
+                allItems.push({
+                    requirement: stripPerFileMarker(requirements[k]),
+                    status: 'skipped',
+                    evidence: `Pass budget reached (${MAX_PASSES_PER_JOB} passes; see LLM_REVIEW_MAX_PASSES)`,
+                    suggestion: '',
+                })
+            }
+            break
+        }
         job.passesDone = completedPasses
         job.currentRequirement = requirement.replace(/\s+/g, ' ').slice(0, 160)
 
@@ -923,7 +999,7 @@ async function performReview(job) {
                     // (OError) instead of returning a non-ok Response.
                     let detailed = null
                     try {
-                        detailed = await provider.chatDetailed(subBody, {
+                        detailed = await llmChat(subBody, {
                             signal: job.controller ? job.controller.signal : undefined,
                         })
                     } catch (err) {
@@ -1034,7 +1110,7 @@ async function performReview(job) {
             let data
             let content
             try {
-                const detailed = await provider.chatDetailed(requestBody, {
+                const detailed = await llmChat(requestBody, {
                     signal: job.controller ? job.controller.signal : undefined,
                 })
                 data = detailed.raw
@@ -1110,7 +1186,7 @@ async function performReview(job) {
                     let retryD
                     let retryOk = false
                     try {
-                        retryD = await provider.chatDetailed(retryBody, {
+                        retryD = await llmChat(retryBody, {
                             signal: job.controller ? job.controller.signal : undefined,
                         })
                         retryOk = true
@@ -1286,7 +1362,7 @@ async function performReview(job) {
             try {
                 // overleaf-lab: PR item 4 — provider call; a refusal now throws and
                 // falls into the outer catch ("keeping the finding"), same as before.
-                const detailed = await provider.chatDetailed(verifyBody, {
+                const detailed = await llmChat(verifyBody, {
                     signal: job.controller ? job.controller.signal : undefined,
                 })
                 try {
@@ -1383,7 +1459,7 @@ async function performReview(job) {
         }
         let detailed = null
         try {
-            detailed = await provider.chatDetailed(summaryBody, {
+            detailed = await llmChat(summaryBody, {
                 signal: job.controller ? job.controller.signal : undefined,
             })
         } catch (err) {
@@ -1520,6 +1596,27 @@ async function startReview(req, res) {
     const admin = await getAdminLLMSettings()
     if (!admin.llmApiUrl) {
         return res.json({ ok: false, error: 'not_configured', message: 'LLM backend is not configured' })
+    }
+
+    // overleaf-lab: F6 — concurrency caps. One user keeps at most one review
+    // running plus two queued; the global queue stays bounded so a slow shared
+    // backend cannot be stacked with work by many projects.
+    const userActive = [...jobs.values()].filter(
+        j => j.userId === userId && (j.status === 'running' || j.status === 'queued')
+    ).length
+    if (userActive >= MAX_USER_REVIEWS_IN_FLIGHT) {
+        return res.json({
+            ok: false,
+            error: 'too_many',
+            message: `You already have ${MAX_USER_REVIEWS_IN_FLIGHT} reviews running or queued; wait for one to finish`,
+        })
+    }
+    if (queue.length >= MAX_GLOBAL_QUEUE) {
+        return res.json({
+            ok: false,
+            error: 'server_busy',
+            message: 'Several reviews are already queued; try again shortly',
+        })
     }
 
     // 5. Create and enqueue the job.

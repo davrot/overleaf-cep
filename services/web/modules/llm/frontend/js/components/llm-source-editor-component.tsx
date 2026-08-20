@@ -2,7 +2,6 @@
 // Provides root-level LLM editor features (inline completion, floating toolbar)
 import React, { useEffect, useRef, useState } from 'react'
 import { useCodeMirrorViewContext } from '@/features/source-editor/components/codemirror-context'
-import { inlineCompletionExtension } from './llm-completion'
 import LLMToolbar, { LLMToolbarHandle } from './llm-toolbar'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 
@@ -25,7 +24,9 @@ function LLMSourceEditorComponent() {
     useEffect(() => {
         if (!view || extensionInstalled) return
         try {
-            const ext = inlineCompletionExtension()
+            // overleaf-lab: the extension itself registers through the
+            // sourceEditorExtensions config entry; here we only flip the
+            // installed flag once the view exists.
             view.dispatch({
                 effects: (window as any).__cm_llm_reconfigure
                     ? []

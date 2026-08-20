@@ -18,7 +18,6 @@ interface LogEntry {
 
 interface AskAIButtonProps {
     logEntry?: LogEntry
-    id?: string
 }
 
 function PdfLogEntryAskAIButton({ logEntry }: AskAIButtonProps) {
@@ -78,8 +77,7 @@ function PdfLogEntryAskAIButton({ logEntry }: AskAIButtonProps) {
                 )
             }, 150)
         } catch (err) {
-            console.error('[LLM] Failed to send error to AI:', err)
-        }
+                    }
     }, [logEntry, prompts?.errorPrompt])
 
     // logEntry may be undefined in certain contexts; only show for errors
@@ -116,7 +114,7 @@ function formatErrorForLLM(
     errorPrompt?: string
 ): string {
     const parts = [
-        '🔴 **LaTeX Compilation Error**',
+        '**[CRITICAL] LaTeX Compilation Error**',
         '',
         '**Error Message:**',
         logEntry.message || logEntry.content || 'Unknown error',

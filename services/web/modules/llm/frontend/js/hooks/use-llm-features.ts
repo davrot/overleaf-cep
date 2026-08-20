@@ -62,10 +62,9 @@ function fetchFeatures(): Promise<Features> {
             cache = features
             return features
         })
-        .catch(err => {
+        .catch(() => {
             // overleaf-lab: fail open on the client; the backend still enforces.
-            console.error('[LLMFeatures] Failed to fetch feature flags:', err)
-            cache = { ...ALL_ENABLED }
+                        cache = { ...ALL_ENABLED }
             return cache
         })
 

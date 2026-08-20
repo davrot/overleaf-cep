@@ -259,8 +259,7 @@ export const useLLMCompliance = () => {
                 setSelectedRubricId(loadedRubrics[0]?.id || '')
                 setRubricsLoaded(true)
             } catch (err) {
-                console.error('[LLMCompliance] Failed to fetch rubrics:', err)
-                if (cancelled) return
+                                if (cancelled) return
                 setRubrics([])
                 setRubricsLoaded(true)
             }
@@ -370,8 +369,7 @@ export const useLLMCompliance = () => {
             } catch (err) {
                 // overleaf-lab: a transient network error should not kill the poll;
                 // keep the interval and try again on the next tick.
-                console.error('[LLMCompliance] Status poll failed:', err)
-            }
+                            }
         },
         [projectId, stopPolling]
     )
@@ -424,8 +422,7 @@ export const useLLMCompliance = () => {
                 setPhase('error')
             }
         } catch (err) {
-            console.error('[LLMCompliance] Start review request failed:', err)
-            if (!mountedRef.current) return
+                        if (!mountedRef.current) return
             setErrorInfo({ errorCode: 'failed', message: 'Request failed' })
             setPhase('error')
         }
@@ -448,8 +445,7 @@ export const useLLMCompliance = () => {
                 credentials: 'same-origin',
             })
         } catch (err) {
-            console.error('[LLMCompliance] Cancel request failed:', err)
-        }
+                    }
     }, [projectId, stopPolling])
 
     // overleaf-lab: best-effort cancel on page refresh/close. keepalive lets the

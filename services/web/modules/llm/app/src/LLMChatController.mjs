@@ -1,457 +1,398 @@
+/*
+ * LLMChatController - chat, inline completion, model discovery, features,
+ * whole-document generators, source context, and prompt resolution.
+ *
+ * Lane routing (the model id IS the router):
+ *  - site models:     bare model id (e.g. "qwen3.8:latest")
+ *  - user BYO rows:   namespaced id  u:<rowId8hex>:<modelId>
+ *
+ * A request without a model resolves, in order: the user's first enabled BYO
+ * row (when allowed), then the site default. This preserves the old
+ * "personal settings preferred, shared fallback" behavior.
+ *
+ * Gating (F1): every user lane requires LLM_ALLOW_USER_SETTINGS=true.
+ * Allowlist (F2): site-lane model ids must be in the admin allowedModels.
+ * Provider calls go through LLMClient (Vercel AI SDK).
+ */
+
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
-import OError from '@overleaf/o-error'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
-import { User } from '../../../../app/src/models/User.mjs'
-import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs' // overleaf-lab: read project docs for error source context
 import Settings from '@overleaf/settings'
+import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
-import { decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: decrypt user API keys stored at rest
-import { createLLMProvider } from './LLMProviderFactory.mjs'
-// Parse available models from admin settings or environment variable
-async function getAvailableModels() {
-    if (Settings.llm && !Settings.llm.enabled) {
-        logger.debug({ llmEnabled: Settings.llm.enabled }, '[LLM] getAvailableModels: LLM disabled')
-        return []
-    }
+import { decryptSecret } from './LLMCrypto.mjs'
+import { chatText, normalizeProviderSpec, detectProviderType, assertNonEmpty } from './LLMClient.mjs'
+import { isUserSettingsAllowed, loadProviders } from './LLMSettingsController.mjs'
+import { parseModelRef } from './LLMModelRef.mjs'
+import { guardLLMCall } from './LLMBudget.mjs' // overleaf-lab: per-user rate + daily token budget (F4)
 
+/*
+ * Build the model list for the editor picker: site models (bare ids) plus
+ * the user's enabled BYO rows (namespaced ids, grouped).
+ */
+async function getSiteModels() {
     const adminSettings = await getAdminLLMSettings()
-    let modelsList = Array.isArray(adminSettings.allowedModels)
+    let models = Array.isArray(adminSettings.allowedModels)
         ? adminSettings.allowedModels.filter(m => typeof m === 'string' && m.trim().length > 0)
         : []
-
-    if (modelsList.length === 0) {
+    if (!models.length) {
         const modelsEnv = process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME
-        logger.debug(
-            {
-                LLM_AVAILABLE_MODELS: process.env.LLM_AVAILABLE_MODELS,
-                LLM_MODEL_NAME: process.env.LLM_MODEL_NAME,
-                resolved: modelsEnv,
-            },
-            '[LLM] getAvailableModels: reading env'
-        )
-
-        if (modelsEnv) {
-            modelsList = modelsEnv
-                .split(',')
-                .map(m => m.trim())
-                .filter(m => m.length > 0)
-        }
+        if (modelsEnv) models = modelsEnv.split(',').map(m => m.trim()).filter(Boolean)
     }
-
-    if (modelsList.length === 0) {
-        return []
-    }
-
-    const result = modelsList.map((id, index) => ({
-        id,
-        name: id.replace(/-/g, ' ').toUpperCase(),
-        isDefault: index === 0,
-    }))
-
-    logger.debug({ count: result.length, models: result.map(m => m.id) }, '[LLM] getAvailableModels: parsed models')
-    return result
+    return models.map((id, index) => ({ id, name: id.replace(/-/g, ' ').toUpperCase(), isDefault: index === 0 }))
 }
 
 async function getModels(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const projectId = req.params.Project_id
 
-    logger.debug(
-        { projectId, userId, llmSettings: Settings.llm },
-        '[LLM] getModels: request received'
-    )
+    if (Settings.llm && !Settings.llm.enabled) {
+        return res.json({ models: [], userRows: [] })
+    }
+    const flags = await getLLMFeatureFlags()
+    if (!flags.chatEnabled) {
+        return res.json({ models: [], userRows: [] })
+    }
 
-    try {
-        if (Settings.llm && !Settings.llm.enabled) {
-            logger.debug({}, '[LLM] getModels: LLM disabled, returning empty')
-            return res.json({ models: [] })
-        }
-
-        // overleaf-lab: chat feature disabled by admin -> no models to select.
-        const flags = await getLLMFeatureFlags()
-        if (!flags.chatEnabled) {
-            return res.json({ models: [] })
-        }
-
-        const models = []
-
-        // 1. Add server-wide models from admin settings/env
-        const serverModels = await getAvailableModels()
-        models.push(...serverModels)
-
-        // 2. Add user's personal LLM model if configured and activated
-        if (userId && Settings.llm && Settings.llm.allowUserSettings) {
-            try {
-                const user = await User.findById(
-                    userId,
-                    'useOwnLLMSettings llmModelName llmApiUrl llmApiKey'
-                )
-
-                if (
-                    user &&
-                    user.useOwnLLMSettings &&
-                    user.llmModelName &&
-                    user.llmApiUrl
-                ) {
-                    // overleaf-lab: llmModelName may be a comma-separated list of
-                    // personal chat models; expose one selectable entry per id.
-                    const personalModelIds = user.llmModelName
-                        .split(',')
-                        .map(id => id.trim())
-                        .filter(id => id.length > 0)
-                    for (const modelId of personalModelIds) {
-                        models.push({
-                            id: `personal-${modelId}`,
-                            name: `${modelId} (🔒 Personal)`,
-                            isDefault: false,
-                            isPersonal: true,
-                            label: 'Private',
-                        })
-                    }
-                }
-            } catch (error) {
-                logger.warn(
-                    { userId, projectId, err: error },
-                    '[LLM] Error fetching user LLM settings'
-                )
+    const siteModels = await getSiteModels()
+    const userRows = []
+    if (userId && isUserSettingsAllowed()) {
+        try {
+            const providers = await loadProviders(userId)
+            for (const row of providers.filter(r => r.enabled !== false && r.models?.length)) {
+                userRows.push({
+                    id: row.id,
+                    name: row.name,
+                    providerType: row.providerType,
+                    completionModel: row.completionModel || '',
+                    models: row.models.map((modelId, index) => ({
+                        id: `u:${row.id}:${modelId}`,
+                        name: modelId,
+                        isDefault: index === 0
+                    }))
+                })
             }
         }
-
-        logger.debug(
-            { count: models.length, modelIds: models.map(m => m.id) },
-            '[LLM] getModels: returning models'
-        )
-        res.json({ models })
-    } catch (error) {
-        logger.error(
-            { userId, projectId, err: error },
-            '[LLM] Error fetching available models'
-        )
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch available models',
-        })
+        catch (error) {
+            logger.warn({ userId, projectId, err: error }, '[LLM] getModels: user rows failed')
+        }
     }
+
+    logger.debug({ count: siteModels.length, userRows: userRows.length }, '[LLM] getModels: returning models')
+    res.json({ models: siteModels, userRows })
+}
+
+/*
+ * Resolve the shared (site) lane. Returns { spec } or null when unconfigured.
+ * Enforces the admin model allowlist (F2) for explicit model ids.
+ */
+async function resolveSiteLane(modelName) {
+    const adminSettings = await getAdminLLMSettings()
+    const baseUrl = adminSettings.llmApiUrl || process.env.LLM_API_URL
+    const apiKey = adminSettings.llmApiKey ? decryptSecret(adminSettings.llmApiKey) : (process.env.LLM_API_KEY || '')
+    const providerType = adminSettings.llmProviderType || adminSettings.llmApiType || detectProviderType(baseUrl)
+
+    const allowed = Array.isArray(adminSettings.allowedModels)
+        ? adminSettings.allowedModels.filter(m => typeof m === 'string' && m.trim().length > 0)
+        : []
+    const allowedEnv = (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME || '')
+        .split(',').map(m => m.trim()).filter(Boolean)
+    const pool = allowed.length ? allowed : allowedEnv
+
+    const model = modelName || pool[0]
+    if (modelName && pool.length && !pool.includes(modelName)) {
+        throw Object.assign(
+            new Error(`Model "${modelName}" is not available on the site backend`),
+            { code: 'llm-bad-model' }
+        )
+    }
+    if (!baseUrl || !model) {
+        throw Object.assign(new Error('LLM service is not configured'), { code: 'llm-disabled' })
+    }
+    const spec = normalizeProviderSpec({ providerType, baseUrl, apiKey }, { model })
+    return { spec, model: spec.model }
+}
+
+/*
+ * Resolve a user BYO lane from a namespaced model ref (or the first enabled
+ * row when no model id was sent). Enforces the BYO gate (F1).
+ */
+async function resolveUserLane(userId, ref) {
+    if (!isUserSettingsAllowed()) {
+        throw Object.assign(new Error('Bring-your-own LLM settings are disabled on this deployment'), { code: 'disabled' })
+    }
+    const providers = await loadProviders(userId)
+    let row = null
+    if (ref?.rowId) {
+        row = providers.find(r => r.id === ref.rowId)
+        if (!row) throw Object.assign(new Error('Unknown provider row'), { code: 'llm-bad-row' })
+        if (ref.model && !row.models?.includes(ref.model)) {
+            throw Object.assign(new Error(`Model "${ref.model}" is not in the provider "${row.name}"`), { code: 'llm-bad-model' })
+        }
+    }
+    else {
+        row = providers.find(r => r.enabled !== false && r.models?.length)
+        if (!row) throw Object.assign(new Error('No BYO provider configured'), { code: 'llm-bad-row' })
+    }
+    if (row.enabled === false) {
+        throw Object.assign(new Error(`Provider "${row.name}" is disabled`), { code: 'llm-bad-row' })
+    }
+    const modelName = ref?.model || row.completionModel || row.models?.[0]
+    if (!modelName) throw Object.assign(new Error('Provider row has no models'), { code: 'llm-bad-row' })
+    const spec = normalizeProviderSpec(
+        {
+            providerType: row.providerType,
+            baseUrl: row.baseUrl || '',
+            apiKey: row.apiKey ? decryptSecret(row.apiKey) : ''
+        },
+        { model: modelName }
+    )
+    return { spec, model: spec.model, row }
+}
+
+/*
+ * Map a client model ref (or none) to { spec, model, lane }. A bare/missing
+ * model on the site lane wins over user rows ONLY when user rows do not
+ * exist - users keep their preference for their own backends (old behavior).
+ */
+async function resolveLane(userId, modelRef) {
+    if (modelRef.kind === 'user') {
+        return { ...(await resolveUserLane(userId, modelRef)), lane: 'user' }
+    }
+    const providers = isUserSettingsAllowed() ? await loadProviders(userId).catch(() => []) : []
+    const hasEnabledRow = providers.some(r => r.enabled !== false && r.models?.length)
+    if (!modelRef.model && hasEnabledRow) {
+        return { ...(await resolveUserLane(userId, { rowId: null })), lane: 'user' }
+    }
+    if (modelRef.model && modelRef.model.startsWith('personal-')) {
+        // Legacy id from pre-BYO clients: treat as the first user row.
+        if (hasEnabledRow) {
+            return { ...(await resolveUserLane(userId, { rowId: null, model: modelRef.model.slice('personal-'.length) })), lane: 'user' }
+        }
+    }
+    return { ...(await resolveSiteLane(modelRef.model)), lane: 'site' }
+}
+
+function sendError(res, err, fallbackStatus) {
+    const statusMap = {
+        auth: 401,
+        'llm-bad-model': 404,
+        'llm-rate-limited': 429,
+        disabled: 403,
+        'llm-bad-row': 400,
+        'llm-bad-config': 400,
+        'llm-invalid': 400,
+        'empty-response': 502,
+        'llm-timeout': 504,
+        'llm-abort': 409,
+        'llm-disabled': 503,
+        'llm-budget': 429
+    }
+    const status = statusMap[err?.code] || fallbackStatus || 502
+    logger.error?.({ code: err?.code, message: err?.message }, '[LLM] request failed')
+    res.status(status).json({
+        ok: false,
+        error: err?.code || 'llm-error',
+        message: err?.message || 'LLM request failed'
+    })
 }
 
 async function chat(req, res) {
-    const { messages, model } = req.body
+    const { messages, model: modelRefString } = req.body
     const projectId = req.params.Project_id
     const userId = SessionManager.getLoggedInUserId(req.session)
 
-    logger.debug(
-        {
-            projectId,
-            userId,
-            model,
-            messageCount: Array.isArray(messages) ? messages.length : 'invalid',
-            isPersonalModel: model?.startsWith('personal-'),
-        },
-        '[LLM] chat: request received'
-    )
-
-    if (!messages || !Array.isArray(messages)) {
-        return res.status(400).json({ error: 'Invalid messages format' })
+    if (!Array.isArray(messages) || !messages.length) {
+        return res.status(400).json({ ok: false, error: 'llm-invalid', message: 'messages must be a non-empty array' })
     }
-
     if (Settings.llm && !Settings.llm.enabled) {
-        return res.status(503).json({ error: 'LLM service is disabled' })
+        return res.status(503).json({ ok: false, error: 'llm-disabled', message: 'LLM service is disabled' })
     }
-
-    // overleaf-lab: chat feature disabled by admin. Enforced for everyone, including
-    // users with personal API keys, before any personal-settings resolution.
     const flags = await getLLMFeatureFlags()
     if (!flags.chatEnabled) {
-        return res.status(403).json({ error: 'feature_disabled', message: 'The chat feature is disabled' })
+        return res.status(403).json({ ok: false, error: 'feature_disabled', message: 'The chat feature is disabled' })
     }
 
-    const isPersonalModel = model && model.startsWith('personal-')
-    // overleaf-lab: when the request carries NO model (the selection toolbar /
-    // "Ask AI" sends only messages), honor the user's personal LLM settings if they
-    // have them, so those features use the user's own key/model just like the chat
-    // does. Falls back to the shared backend when no personal settings exist.
-    const tryPersonalNoModel =
-        !model && userId && Settings.llm && Settings.llm.allowUserSettings
-
-    const adminLlmSettings = await getAdminLLMSettings()
-    let llmApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
-    let llmApiKey = adminLlmSettings.llmApiKey || process.env.LLM_API_KEY
-    let personalModelName = null
-
-    if ((isPersonalModel || tryPersonalNoModel) && userId) {
-        try {
-            const user = await User.findById(
-                userId,
-                'useOwnLLMSettings llmApiUrl llmApiKey llmModelName'
-            )
-            if (
-                user &&
-                user.useOwnLLMSettings &&
-                user.llmApiUrl &&
-                (isPersonalModel || user.llmModelName)
-            ) {
-                llmApiUrl = user.llmApiUrl
-                llmApiKey = user.llmApiKey ? decryptSecret(user.llmApiKey) : '' // overleaf-lab: decrypt stored key at rest (empty when keyless)
-                personalModelName = isPersonalModel
-                    ? model.substring('personal-'.length)
-                    : user.llmModelName.split(',')[0].trim() // overleaf-lab: no model sent -> use the user's first (default) model
-            } else if (isPersonalModel) {
-                return res.status(400).json({
-                    error:
-                        'Your LLM settings are incomplete. Please configure API URL, API Key, and Model Name in your account settings.',
-                })
-            }
-            // A no-model request with incomplete personal settings falls through to
-            // the shared backend checked below.
-        } catch (error) {
-            if (isPersonalModel) {
-                return res.status(500).json({
-                    error: 'Failed to retrieve user LLM settings',
-                })
-            }
-        }
-    }
-
-    if (!llmApiUrl) {
-        return res.status(503).json({
-            error:
-                'LLM service is not configured. Please contact your administrator or configure your own LLM settings.',
-        })
-    }
-
-    // if model is not configured, the model hardcoded in the provider code will be used
-    const modelNameForApi = personalModelName
-        ? personalModelName
-        : model || ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || '').split(',')[0].trim())
-
-    // overleaf-lab: honor the admin's explicit provider type for the SHARED
-    // backend only; personal backends are detected from their own URL/key.
-    const sharedApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
-    const chatApiType =
-        llmApiUrl && llmApiUrl === sharedApiUrl ? adminLlmSettings.llmApiType : undefined
-
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType: chatApiType })
-
+    // overleaf-lab: F4 — per-user rate + daily token budget (both lanes).
+    let budget
     try {
-        // Prepend the admin-configured system prompt (if any) plus an always-on
-        // instruction to reply in the user's language, then merge any client
-        // system message. This keeps replies in the input language regardless of
-        // whether an admin prompt is set.
-        const languageInstruction = "Reply in the same language as the user's latest message (for example, answer in Italian if the user writes in Italian)."
-        const adminSystemPrompt = await getSystemPrompt()
-        const systemPreamble = adminSystemPrompt
-            ? `${adminSystemPrompt}\n\n${languageInstruction}`
-            : languageInstruction
-        const hasSystemMessage = messages.length > 0 && messages[0].role === 'system'
-        const finalMessages = hasSystemMessage
-            ? [
-                  { role: 'system', content: `${systemPreamble}\n\n${messages[0].content}` },
-                  ...messages.slice(1),
-              ]
-            : [{ role: 'system', content: systemPreamble }, ...messages]
+        budget = await guardLLMCall(userId)
+    }
+    catch (err) {
+        return sendError(res, err, 429)
+    }
 
-        const requestBody = {
-            model: modelNameForApi,
-            messages: finalMessages,
-            max_tokens: 8192,
-            temperature: 0.7,
-        }
+    let lane
+    let spec
+    let model
+    try {
+        const resolved = await resolveLane(userId, parseModelRef(modelRefString))
+        lane = resolved.lane
+        spec = resolved.spec
+        model = resolved.model
+    }
+    catch (err) {
+        return sendError(res, err, 400)
+    }
 
-        const startTime = Date.now()
+    // System prompt: admin-configured prompt (if any) + language-follow
+    // instruction, merged with a client system message when present.
+    const languageInstruction = "Reply in the same language as the user's latest message (for example, answer in Italian if the user writes in Italian)."
+    const adminSystemPrompt = lane === 'site' ? (await getSystemPrompt()) : ''
+    const systemPreamble = adminSystemPrompt
+        ? `${adminSystemPrompt}\n\n${languageInstruction}`
+        : languageInstruction
+    const hasSystemMessage = messages[0]?.role === 'system'
+    const finalMessages = hasSystemMessage
+        ? [{ role: 'system', content: `${systemPreamble}\n\n${messages[0].content}` }, ...messages.slice(1)]
+        : [{ role: 'system', content: systemPreamble }, ...messages]
 
-        logger.info(
-            {
-                projectId,
-                model: modelNameForApi,
-                url: llmApiUrl,
-                isPersonalModel,
-                maxTokens: 8192,
-            },
-            '[LLM] chat: sending request to LLM API'
+    const started = Date.now()
+    logger.info(
+        { projectId, lane, model, messages: messages.length, timeout: 300000 },
+        '[LLM] chat: sending request'
+    )
+    try {
+        const { text, usage, finishReason } = await chatText(
+            spec,
+            finalMessages,
+            { maxOutputTokens: 8192, temperature: 0.7, timeoutMs: 300000 }
         )
-
-        const data = await provider.chat(requestBody)
-
-        logger.info(
-            { projectId, duration: `${Date.now() - startTime}ms`, model: modelNameForApi },
-            '[LLM] chat: response sent successfully'
-        )
-        res.json(data)
-
-    } catch (err) {
-        const info = OError.getFullInfo(err)
-        const errStatus  = info?.status || 500
-        logger.error({ projectId, userId, err }, '[LLM] Error communicating with LLM service')
-        return res.status(errStatus).json({
-          error: err.message,
-          details: info?.error?.message || err.cause?.message,
-          status: errStatus,
-        })
+        assertNonEmpty(text)
+        budget.record(usage?.outputTokens)
+        logger.info({ projectId, lane, model, duration: `${Date.now() - started}ms` }, '[LLM] chat: ok')
+        res.json({ ok: true, content: text.trim(), usage, model, lane, finishReason })
+    }
+    catch (err) {
+        sendError(res, err, 502)
     }
 }
 
 async function completion(req, res) {
     const projectId = req.params.Project_id
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const { leftContext, rightContext, language, maxLength } =
-        req.body
-
-    logger.debug(
-        {
-            projectId,
-            userId,
-            language,
-            maxLength,
-            leftContextLen: leftContext?.length,
-            rightContextLen: rightContext?.length,
-        },
-        '[LLM] completion: request received'
-    )
+    const { leftContext, rightContext, maxLength, model: modelRefString } = req.body
 
     if (!leftContext && !rightContext) {
         return res.status(400).json({ success: false, error: 'No context provided' })
     }
-
     if (Settings.llm && !Settings.llm.enabled) {
-        return res.status(503).json({ success: false, error: 'LLM service is disabled' })
+        return res.json({ success: true, data: '' }) // silent: no LLM at all
     }
-
-    // overleaf-lab: inline completion disabled by admin. Enforced before any
-    // personal-settings resolution so a personal key cannot re-enable completion.
-    // Return an empty suggestion so the editor simply shows nothing, with no error.
     const flags = await getLLMFeatureFlags()
     if (!flags.completionEnabled) {
         return res.json({ success: true, data: '' })
     }
 
-    const adminLlmSettings = await getAdminLLMSettings()
-    let llmApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
-    let llmApiKey = adminLlmSettings.llmApiKey || process.env.LLM_API_KEY
-
-    // overleaf-lab: the admin can disable shared inline completion (a sentinel value
-    // for the completion model). When disabled, only users with their own completion
-    // route get suggestions; everyone else gets none. This keeps a self-hosted CPU
-    // backend free from the high-frequency autocomplete load.
-    const sharedCompletionDisabled = adminLlmSettings.completionModel === '__disabled__'
-
-    // overleaf-lab: default completion model for the shared backend. Prefer the
-    // admin-chosen completion model, then the env override, then the first env
-    // model. May be overridden below by the user's personal completion settings.
-    let completionModel =
-        adminLlmSettings.completionModel ||
-        process.env.LLM_COMPLETION_MODEL ||
-        (process.env.LLM_MODEL_NAME || 'default').split(',')[0].trim() // 'default' instead of hardcoded 'qwen3-32b'
-
-    // overleaf-lab: per-user inline-completion override (highest precedence). When
-    // the user opted into their own provider AND explicitly picked a completion
-    // model, route completion to their personal endpoint+key+model, overriding the
-    // shared/local server. Incomplete personal creds -> silently fall back to shared.
-    let usingPersonalCompletion = false
-    if (userId) {
-        try {
-            const user = await User.findById(
-                userId,
-                'useOwnLLMSettings llmApiUrl llmApiKey llmCompletionModel'
-            )
-            if (
-                user &&
-                user.useOwnLLMSettings &&
-                user.llmCompletionModel &&
-                user.llmApiUrl &&
-                user.llmApiKey
-            ) {
-                llmApiUrl = user.llmApiUrl
-                llmApiKey = decryptSecret(user.llmApiKey) // decrypt stored key at rest
-                completionModel = user.llmCompletionModel
-                usingPersonalCompletion = true
-            }
-        } catch (error) {
-            logger.warn({ userId, err: error }, '[LLM] Error loading user completion settings')
-        }
+    // overleaf-lab: F4 — the rate gate here is what makes inline completion safe
+    // to run while typing (per-user, per-minute).
+    let budget
+    try {
+        budget = await guardLLMCall(userId)
     }
-
-    // Try the user's own settings when NO shared server URL is configured, OR when
-    // the admin disabled shared completion (so a user with their own API still gets
-    // suggestions from their own endpoint).
-    // overleaf-lab: gate on the URL alone (not the key). A keyless shared endpoint
-    // is valid, so an empty key must NOT hijack completion onto the user's personal
-    // endpoint while the shared one is fine. When we do fall back, also switch
-    // completionModel to the user's own model, otherwise the env-derived 'default'
-    // is sent to their endpoint (e.g. OpenAI 404s on model 'default').
-    if (!usingPersonalCompletion && (!llmApiUrl || sharedCompletionDisabled) && userId) {
-        try {
-            const user = await User.findById(
-                userId,
-                'useOwnLLMSettings llmApiUrl llmApiKey llmModelName'
-            )
-            if (user && user.useOwnLLMSettings && user.llmApiUrl) {
-                llmApiUrl = user.llmApiUrl
-                llmApiKey = user.llmApiKey ? decryptSecret(user.llmApiKey) : '' // decrypt stored key at rest (empty when keyless)
-                if (user.llmModelName) {
-                    completionModel = user.llmModelName.split(',')[0].trim()
-                }
-            }
-        } catch (error) {
-            logger.warn({ userId, err: error }, '[LLM] Error loading user settings for completion')
-        }
-    }
-
-    // overleaf-lab: shared completion disabled and no personal route resolved (the
-    // completion model is still the sentinel) -> return an empty suggestion so the
-    // editor simply shows nothing, with no error.
-    if (completionModel === '__disabled__') {
+    catch (err) {
+        // Silent for completion: the editor simply shows no suggestion, with no
+        // error toast (same semantics as disabled features).
+        logger.debug({ userId, code: err?.code }, '[LLM] completion: budget gate')
         return res.json({ success: true, data: '' })
     }
 
-    if (!llmApiUrl) {
-        return res.status(503).json({ success: false, error: 'LLM service is not configured' })
+    // Resolve the lane. Explicit selection wins; otherwise the user's first
+    // enabled BYO row (when allowed), then the admin completion model, then
+    // the site default. A missing/broken user lane falls through to the site
+    // lane when one exists; broken site lane + no user lane -> empty
+    // suggestion (the editor shows nothing, no error toast).
+    const adminSettings = await getAdminLLMSettings()
+    const ref = parseModelRef(modelRefString)
+    const adminSharedCompletionDisabled = adminSettings.completionModel === '__disabled__'
+    const siteCompletionModel = adminSettings.completionModel !== '__disabled__'
+        ? (adminSettings.completionModel ||
+          process.env.LLM_COMPLETION_MODEL ||
+          (process.env.LLM_MODEL_NAME || '').split(',')[0].trim())
+        : null
+
+    const candidates = []
+    if (ref.kind === 'user') candidates.push({ lane: 'user', ref })
+    else if (!ref.model && isUserSettingsAllowed()) candidates.push({ lane: 'user', ref: { rowId: null } })
+    if (!adminSharedCompletionDisabled && (adminSettings.llmApiUrl || process.env.LLM_API_URL) && (adminSettings.allowedModels?.length || (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME))) {
+        if (adminSettings.allowedModels?.length) {
+            if (ref.kind === 'site' && ref.model && !adminSettings.allowedModels.includes(ref.model)) {
+                // explicit model not allowed -> reject (F2)
+                return res.status(400).json({ success: false, error: `Model "${ref.model}" is not available` })
+            }
+        }
+        candidates.push({ lane: 'site', ref })
     }
 
-    // overleaf-lab: honor the admin's explicit provider type for the SHARED
-    // backend only; personal backends are detected from their own URL/key.
-    const sharedApiUrl = adminLlmSettings.llmApiUrl || process.env.LLM_API_URL
-    const completionApiType =
-        llmApiUrl && llmApiUrl === sharedApiUrl ? adminLlmSettings.llmApiType : undefined
-
-    const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType: completionApiType })
-    try {
-        const systemPrompt = `/no_think\nYou are a text completion engine. Output ONLY the missing text, in the same language as the surrounding text. No thinking, no explanation, no markdown, no code fences, no tags. Just the raw continuation characters.`
-        const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:\n\n${leftContext}[CURSOR]${rightContext}`
-
-        const data = await provider.complete({
-            model: completionModel,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-            ],
-            max_tokens: maxLength || 60,
-        })
-
-        res.json({ success: true, data })
-    } catch (err) {
-        const info = OError.getFullInfo(err)
-        const errStatus  = info?.status || 500
-        logger.error({ projectId, userId, err }, '[LLM] Completion error')
-        return res.status(errStatus).json({
-            success: false,
-            error: 'Completion failed',
-        })
+    const started = Date.now()
+    let lastError = null
+    for (const candidate of candidates) {
+        try {
+            const resolved = candidate.lane === 'user'
+                ? { ...(await resolveUserLane(userId, candidate.ref)), lane: 'user' }
+                : {
+                      ...resolveSiteSpec(adminSettings, ref.model || siteCompletionModel),
+                      lane: 'site'
+                  }
+            const systemPrompt = '/no_think\nYou are a text completion engine. Output ONLY the missing text, in the same language as the surrounding text. No thinking, no explanation, no markdown, no code fences, no tags. Just the raw continuation characters.'
+            const userPrompt = `Complete the text at [CURSOR]. Output only the few words that replace [CURSOR]:\n\n${leftContext}[CURSOR]${rightContext}`
+            const maxTokens = Math.max(16, Math.min(1024, parseInt(maxLength, 10) || 320))
+            const { text, usage } = await chatText(
+                resolved.spec,
+                [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                { maxOutputTokens: maxTokens, temperature: 0.2, timeoutMs: 15000 }
+            )
+            const data = text || ''
+            budget.record(usage?.outputTokens)
+            logger.debug(
+                { projectId, lane: resolved.lane, model: resolved.model, len: data.length, duration: `${Date.now() - started}ms` },
+                '[LLM] completion: ok'
+            )
+            return res.json({ success: true, data, model: resolved.model, lane: resolved.lane })
+        }
+        catch (err) {
+            lastError = err
+            logger.debug({ lane: candidate.lane, code: err?.code, message: err?.message }, '[LLM] completion: lane failed, trying next')
+        }
     }
+
+    const error = lastError || Object.assign(new Error('No usable LLM backend configured'), { code: 'llm-disabled' })
+    if (error.code === 'disabled' || error.code === 'llm-bad-row') {
+        // No valid BYO lane is allowed/configured: silent empty suggestion.
+        return res.json({ success: true, data: '' })
+    }
+    logger.warn({ projectId, err: error.message, code: error.code }, '[LLM] completion: all lanes failed')
+    const status = error.code === 'auth' ? 401 : (error.code === 'llm-disabled' ? 503 : 502)
+    return res.status(status).json({ success: false, error: error.code || 'Completion failed', message: error.message })
 }
 
-// overleaf-lab: expose the per-feature enable flags to the project UI so it can hide
-// disabled features. allowUserSettings tells the client whether personal settings
-// are available at all.
+/*
+ * Site lane spec builder (inline to avoid the circular-resolve dance used in
+ * resolveSiteLane, which also enforces the allowlist on explicit ids).
+ */
+function resolveSiteSpec(adminSettings, modelName) {
+    const baseUrl = adminSettings.llmApiUrl || process.env.LLM_API_URL
+    const apiKey = adminSettings.llmApiKey ? decryptSecret(adminSettings.llmApiKey) : (process.env.LLM_API_KEY || '')
+    const providerType = adminSettings.llmProviderType || adminSettings.llmApiType || detectProviderType(baseUrl)
+    const pool = Array.isArray(adminSettings.allowedModels) && adminSettings.allowedModels.length
+        ? adminSettings.allowedModels
+        : (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME || '').split(',').map(m => m.trim()).filter(Boolean)
+    const model = modelName || pool[0]
+    const spec = normalizeProviderSpec({ providerType, baseUrl, apiKey }, { model })
+    return { spec, model: spec.model }
+}
+
 async function getFeatures(req, res) {
     const flags = await getLLMFeatureFlags()
-    res.json({ ...flags, allowUserSettings: !!(Settings.llm && Settings.llm.allowUserSettings) })
+    res.json({ ...flags, allowUserSettings: isUserSettingsAllowed() })
 }
 
-// overleaf-lab: return a window of source lines around a compile-error line, so the
-// "Ask AI about this error" prompt can include the actual code (not just the log
-// message). Works for any project file via getAllDocs, so an error inside an
-// \input-ed file that is not open in the editor is still covered.
+// overleaf-lab: source lines around a compile-error line, for "Ask AI about
+// this error". (Unchanged from the pre-BYO controller.)
 async function getSourceContext(req, res) {
     const flags = await getLLMFeatureFlags()
     if (!flags.chatEnabled) {
@@ -465,19 +406,13 @@ async function getSourceContext(req, res) {
     if (!Number.isFinite(radius) || radius < 0) {
         radius = 15
     }
-    radius = Math.min(radius, 40) // overleaf-lab: cap the snippet size
+    radius = Math.min(radius, 40)
 
     if (!rawFile || !Number.isFinite(line) || line < 1) {
         return res.json({ ok: false, error: 'bad_request' })
     }
 
-    // overleaf-lab: normalize a log file path (may be /compile/x, ./x, or /x) to the
-    // project doc path key used by getAllDocs.
-    const norm = p =>
-        String(p || '')
-            .replace(/^\/?compile\//, '')
-            .replace(/^\.\//, '')
-            .replace(/^\//, '')
+    const norm = p => String(p || '').replace(/^\/?compile\//, '').replace(/^\.\//, '').replace(/^\//, '')
 
     try {
         const docsByPath = await ProjectEntityHandler.promises.getAllDocs(projectId)
@@ -486,9 +421,7 @@ async function getSourceContext(req, res) {
         let match = null
         let baseMatch = null
         for (const [docPath, value] of Object.entries(docsByPath || {})) {
-            if (!value) {
-                continue
-            }
+            if (!value) continue
             const np = norm(docPath)
             if (np === target || np.endsWith('/' + target) || target.endsWith('/' + np)) {
                 match = { path: docPath, lines: value.lines || [] }
@@ -509,142 +442,102 @@ async function getSourceContext(req, res) {
         const end = Math.min(lines.length, idx + radius + 1)
         const numbered = []
         for (let i = start; i < end; i++) {
-            // overleaf-lab: a leading '>' marks the line the compiler flagged.
             const marker = i === idx ? '>' : ' '
             numbered.push(`${marker} ${i + 1}: ${lines[i]}`)
         }
-
-        return res.json({
-            ok: true,
-            file: match.path,
-            line,
-            startLine: start + 1,
-            snippet: numbered.join('\n'),
-        })
-    } catch (err) {
+        return res.json({ ok: true, file: match.path, line, startLine: start + 1, snippet: numbered.join('\n') })
+    }
+    catch (err) {
         logger.warn({ projectId, err }, '[LLM] source-context failed')
         return res.json({ ok: false, error: 'failed' })
     }
 }
 
-// overleaf-lab: expose the EFFECTIVE editable prompts (admin override or default) to
-// the project UI so the "Ask AI" toolbar and the "Ask AI about this error" button use
-// the admin-tuned system prompt, action templates, and error instruction block. The
-// review system prompt stays server-side and is not returned here.
 async function getPrompts(req, res) {
     const prompts = await getLLMPrompts()
     res.json({
         askAiSystemPrompt: prompts.askAiSystemPrompt,
         errorPrompt: prompts.errorPrompt,
-        askAiActionPrompts: prompts.askAiActionPrompts,
+        askAiActionPrompts: prompts.askAiActionPrompts
     })
 }
 
-// overleaf-lab: PR item 13 — whole-document generators (title / abstract /
-// keywords). These operate on the ENTIRE project source (not a selection), so
-// they live in the File menu rather than the selection toolbar. Project files
-// are read server-side via the same getAllDocs pattern as getSourceContext.
-// overleaf-lab: generous max_tokens on purpose — reasoning models (e.g. qwen3
-// via Ollama) spend most of the budget on hidden thinking before emitting the
-// answer; the instructions above still constrain visible output size.
+// overleaf-lab: whole-document generators (title/abstract/keywords).
+// Budgets raised for reasoning models (thinking consumes output budget).
 const GENERATOR_TYPES = {
     title: {
-        max_tokens: 2000,
+        maxOutputTokens: 4000,
         temperature: 0.4,
         instruction:
-            'Write ONE concise, grammatically correct title for the document below. '
-            + 'Return ONLY the title text — no quotes, no numbering, no explanation.',
+            'Write ONE concise, grammatically correct title for the document below. ' +
+            'Return ONLY the title text — no quotes, no numbering, no explanation.'
     },
     abstract: {
-        max_tokens: 4000,
+        maxOutputTokens: 8000,
         temperature: 0.3,
         instruction:
-            'Write a structured abstract (150–250 words) for the document below: '
-            + 'purpose, methods, key results/findings, and conclusion in that order. '
-            + 'Return ONLY the abstract text — no heading, no quotes, no explanation.',
+            'Write a structured abstract (150–250 words) for the document below: ' +
+            'purpose, methods, key results/findings, and conclusion in that order. ' +
+            'Return ONLY the abstract text — no heading, no quotes, no explanation.'
     },
     keywords: {
-        max_tokens: 2000,
+        maxOutputTokens: 4000,
         temperature: 0.2,
         instruction:
-            'Generate 5–8 keyword phrases for the document below that capture its '
-            + 'core topics, methods, and domain. Return ONLY the keywords, '
-            + 'separated by commas, in order of importance.',
-    },
+            'Generate 5–8 keyword phrases for the document below that capture its ' +
+            'core topics, methods, and domain. Return ONLY the keywords, ' +
+            'separated by commas, in order of importance.'
+    }
 }
 
 async function generateDocument(req, res) {
-    const { type, model: requestedModel } = req.body
+    const { type, model: modelRefString } = req.body
     const projectId = req.params.Project_id
     const userId = SessionManager.getLoggedInUserId(req.session)
 
-    const spec = GENERATOR_TYPES[type]
-    if (!spec) {
+    const generator = GENERATOR_TYPES[type]
+    if (!generator) {
         return res.status(400).json({
             ok: false,
-            error: 'bad_request',
-            detail: `Unknown generator type. Expected one of: ${Object.keys(GENERATOR_TYPES).join(', ')}`,
+            error: 'llm-invalid',
+            message: `Unknown generator type. Expected one of: ${Object.keys(GENERATOR_TYPES).join(', ')}`
         })
     }
-
     if (Settings.llm && !Settings.llm.enabled) {
-        return res.status(503).json({ ok: false, error: 'llm_disabled' })
+        return res.status(503).json({ ok: false, error: 'llm-disabled', message: 'LLM service is disabled' })
     }
-
     const flags = await getLLMFeatureFlags()
     if (!flags.chatEnabled) {
-        return res.status(403).json({ ok: false, error: 'feature_disabled' })
+        return res.status(403).json({ ok: false, error: 'feature_disabled', message: 'The chat feature is disabled' })
     }
 
-    logger.debug({ projectId, userId, type, hasModel: !!requestedModel }, '[LLM] generateDocument: request')
+    let budget
+    try {
+        budget = await guardLLMCall(userId)
+    }
+    catch (err) {
+        return sendError(res, err, 429)
+    }
+
+    let lane
+    let spec
+    let model
+    try {
+        const resolved = await resolveLane(userId, parseModelRef(modelRefString))
+        lane = resolved.lane
+        spec = resolved.spec
+        model = resolved.model
+    }
+    catch (err) {
+        return res.status(503).json({ ok: false, error: err?.code || 'llm-disabled', message: err?.message || 'No LLM backend is configured' })
+    }
 
     try {
-        // overleaf-lab: resolve credentials/model exactly like chat(): the request
-        // model (if any), else the user's personal settings (when allowed and set),
-        // else the shared admin backend.
-        let llmApiUrl = null
-        let llmApiKey = null
-        let llmApiType = null
-        let model = null
-
-        if (requestedModel && requestedModel.startsWith('personal-') && userId) {
-            const user = await User.findById(userId, 'useOwnLLMSettings llmApiUrl llmApiKey llmModelName')
-            if (user && user.useOwnLLMSettings && user.llmApiUrl) {
-                llmApiUrl = user.llmApiUrl
-                llmApiKey = user.llmApiKey ? decryptSecret(user.llmApiKey) : ''
-                model = requestedModel.substring('personal-'.length)
-            }
-        }
-
-        const adminSettings = await getAdminLLMSettings()
-        if (!llmApiUrl) {
-            llmApiUrl = adminSettings.llmApiUrl || process.env.LLM_API_URL
-            llmApiKey = adminSettings.llmApiKey || process.env.LLM_API_KEY
-            llmApiType = adminSettings.llmApiType || null
-        }
-        if (!model) {
-            model =
-                (adminSettings.allowedModels || [])[0] ||
-                (process.env.LLM_MODEL_NAME || '').split(',')[0].trim() ||
-                null
-        }
-
-        if (!llmApiUrl || !model) {
-            return res.status(503).json({
-                ok: false,
-                error: 'not_configured',
-                detail: 'No LLM backend is configured',
-            })
-        }
-
-        // overleaf-lab: concatenate every document in the project (LaTeX sources
-        // first) with file headers, so multi-file projects are covered. The char
-        // cap keeps worst-case prompts inside typical 32k–128k context windows;
-        // the last files in a very large project lose the tail (titles/abstracts
-        // rarely depend on the 100th appendix).
+        // Whole-project document text (LaTeX sources first), with per-file and
+        // total caps so worst-case prompts fit typical context windows.
         const docsByPath = (await ProjectEntityHandler.promises.getAllDocs(projectId)) || {}
         const entries = Object.entries(docsByPath).filter(([, v]) => v && Array.isArray(v.lines))
-        const isTex = p => /\.(tex|sty|cls|sty\.in|bib)$/i.test(String(p)) || /\btex\b/i.test(String(p))
+        const isTex = p => /\.(tex|sty|cls|bib)$/i.test(String(p))
         entries.sort((a, b) => Number(isTex(b[0])) - Number(isTex(a[0])))
 
         const perFileCap = 60000
@@ -652,73 +545,42 @@ async function generateDocument(req, res) {
         let docText = ''
         const included = []
         for (const [docPath, value] of entries) {
-            if (docText.length >= totalCap) {
-                break
-            }
+            if (docText.length >= totalCap) break
             const text = (value.lines || []).join('\n')
-            if (!text.trim()) {
-                continue
-            }
+            if (!text.trim()) continue
             const clipped = text.length > perFileCap ? text.slice(0, perFileCap) + '\n[...truncated...]' : text
             docText += `===== FILE: ${docPath} =====\n${clipped}\n\n`
             included.push(docPath)
         }
-
         if (!docText.trim()) {
-            return res.status(422).json({
-                ok: false,
-                error: 'no_document',
-                detail: 'The project contains no readable document file',
-            })
+            return res.status(422).json({ ok: false, error: 'no_document', message: 'The project contains no readable document file' })
         }
 
-        // overleaf-lab: honor the admin's global writing system prompt and, when the
-        // admin has tuned a matching action template (title/abstract), append it as
-        // style guidance after the task instruction.
-        const systemPrompt = (await getSystemPrompt()) || ''
+        const systemPrompt = lane === 'site' ? (await getSystemPrompt()) || '' : ''
         const templates = (await getLLMPrompts()).askAiActionPrompts || {}
         const styleGuidance = templates[type] ? `STYLE GUIDANCE from the author's template: ${templates[type]}\n\n` : ''
 
-        const provider = createLLMProvider({ llmApiUrl, llmApiKey, llmApiType })
         const messages = []
-        if (systemPrompt) {
-            messages.push({ role: 'system', content: systemPrompt })
-        }
-        messages.push({
-            role: 'user',
-            content: `${styleGuidance}${spec.instruction}\n\nDOCUMENT:\n${docText}`,
+        if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
+        messages.push({ role: 'user', content: `${styleGuidance}${generator.instruction}\n\nDOCUMENT:\n${docText}` })
+
+        const started = Date.now()
+        const { text, usage } = await chatText(spec, messages, {
+            maxOutputTokens: generator.maxOutputTokens,
+            temperature: generator.temperature,
+            timeoutMs: 300000
         })
+        assertNonEmpty(text)
+        budget.record(usage?.outputTokens)
 
-        // overleaf-lab: provider.chat() returns the raw response OBJECT; use
-        // chatDetailed() so `output` is the extracted content string (not
-        // "[object Object]").
-        const detailed = await provider.chatDetailed({
-            model,
-            messages,
-            max_tokens: spec.max_tokens,
-            temperature: spec.temperature,
-        })
-        const output = detailed?.content || ''
-
-        const trimmed = String(output).trim()
-        if (!trimmed) {
-            return res.status(502).json({
-                ok: false,
-                error: 'empty_response',
-                detail: 'The model returned an empty answer',
-            })
-        }
-
-        logger.info({ projectId, userId, type, files: included.length, chars: docText.length }, '[LLM] generateDocument: ok')
-
-        res.json({ ok: true, type, output: trimmed, model, files: included.length })
-    } catch (err) {
-        const info = OError.getFullInfo(err)
-        logger.error({ projectId, userId, type, err }, '[LLM] generateDocument: failed')
-        return res.status(info?.status || 502).json({
-            ok: false,
-            error: info?.error?.message || err.message,
-        })
+        logger.info(
+            { projectId, lane, model, type, files: included.length, chars: docText.length, duration: `${Date.now() - started}ms` },
+            '[LLM] generateDocument: ok'
+        )
+        res.json({ ok: true, type, output: text.trim(), model, lane, files: included.length })
+    }
+    catch (err) {
+        sendError(res, err, 502)
     }
 }
 
@@ -729,5 +591,5 @@ export default {
     getFeatures: expressify(getFeatures),
     getSourceContext: expressify(getSourceContext),
     getPrompts: expressify(getPrompts),
-    generateDocument: expressify(generateDocument),
+    generateDocument: expressify(generateDocument)
 }

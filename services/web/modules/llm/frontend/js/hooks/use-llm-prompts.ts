@@ -76,10 +76,9 @@ function fetchPrompts(): Promise<PromptsState> {
             cache = state
             return state
         })
-        .catch(err => {
+        .catch(() => {
             // overleaf-lab: on failure, callers keep their hardcoded prompts.
-            console.error('[LLMPrompts] Failed to fetch prompts:', err)
-            cache = { ...NO_PROMPTS }
+                        cache = { ...NO_PROMPTS }
             return cache
         })
 

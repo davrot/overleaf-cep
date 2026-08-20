@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import getMeta from '@/utils/meta'
+import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import {
     readSelectedModel,
     writeSelectedModel,
@@ -16,14 +17,14 @@ interface LLMModel {
     isDefault: boolean
     isPersonal?: boolean
     label?: string
+    rowName?: string
 }
 
 interface LLMResponse {
-    choices: Array<{
-        message: {
-            content: string
-        }
-    }>
+    ok: boolean
+    content?: string
+    model?: string
+    lane?: 'site' | 'user'
 }
 
 const SYSTEM_PROMPT = `You are an expert LaTeX debugging assistant and compiler error specialist.
@@ -102,20 +103,25 @@ export const useLLMChat = () => {
                 return
             }
             try {
-                const response = await fetch(`/project/${projectId}/llm/models`)
-                if (!response.ok) {
-                    throw new Error(`[LLMChat] Models endpoint returned ${response.status}`)
-                }
-                const data = await response.json()
+                const data = await getJSON<{
+                    models: LLMModel[]
+                    userRows?: Array<{ id: string; name: string; models: LLMModel[] }>
+                }>(`/project/${projectId}/llm/models`)
 
                 const { llmAllowUserSettings } = getMeta('ol-ExposedSettings') || {}
-                let modelsFromBackend: LLMModel[] = data.models || []
-                if (!llmAllowUserSettings) {
-                    modelsFromBackend = modelsFromBackend.filter(
-                        (m: LLMModel) =>
-                            !m.isPersonal && !(m.id && m.id.startsWith('personal-'))
-                    )
+                const siteModels: LLMModel[] = data.models || []
+                // overleaf-lab: BYO rows are namespaced u:<rowId>:<model>; the
+                // backend returns them grouped per provider row. Flatten into the
+                // picker list while keeping the row name for grouping in the UI.
+                const rowModels: LLMModel[] = []
+                if (llmAllowUserSettings !== false) {
+                    for (const row of data.userRows || []) {
+                        for (const m of row.models || []) {
+                            rowModels.push({ ...m, rowName: row.name })
+                        }
+                    }
                 }
+                const modelsFromBackend = [...siteModels, ...rowModels]
 
                 setModels(modelsFromBackend)
                 setModelsError(false)
@@ -126,7 +132,7 @@ export const useLLMChat = () => {
                 // overleaf-lab: restore the last selected model if it is still
                 // available (remembers the choice and self-heals a stale/removed
                 // id by falling back to the default). See utils/llm-selected-model.
-                const stored = readSelectedModel()
+                const stored = readSelectedModel(projectId)
                 const restored =
                     stored && modelsFromBackend.some((m: LLMModel) => m.id === stored)
                         ? stored
@@ -150,8 +156,10 @@ export const useLLMChat = () => {
     // overleaf-lab: persist the selected model so the selection toolbar ("Ask AI")
     // can reuse it. Runs for the initial default and every user change.
     useEffect(() => {
-        writeSelectedModel(selectedModel)
-    }, [selectedModel])
+        // overleaf-lab: selection is remembered per project (falls back to the
+        // global key outside project contexts).
+        writeSelectedModel(selectedModel, projectId)
+    }, [selectedModel, projectId])
 
     const sendMessage = useCallback(
         async (userMessage: string) => {
@@ -168,36 +176,25 @@ export const useLLMChat = () => {
             abortControllerRef.current = new AbortController()
 
             try {
-                const url = `/project/${projectId}/llm/chat`
-                const csrfToken = getMeta('ol-csrfToken')
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken,
-                    },
-                    body: JSON.stringify({
+                // overleaf-lab: swallowAbortError=false so a Stop press REJECTS the
+                // request with AbortError (the default would leave it pending and
+                // the UI would hang on "loading").
+                const data: LLMResponse = await postJSON('/project/' + projectId + '/llm/chat', {
+                    body: {
                         messages: newMessages,
                         model: selectedModel,
-                    }),
+                    },
                     signal: abortControllerRef.current.signal,
-                    credentials: 'same-origin',
+                    swallowAbortError: false,
                 })
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`)
-                }
-
-                const data: LLMResponse = await response.json()
-
-                if (!data.choices || !data.choices[0]) {
-                    throw new Error('Invalid response format from LLM API')
+                if (!data || typeof data.content !== 'string') {
+                    throw new Error((data && data.message) || 'Invalid response format from LLM API')
                 }
 
                 const assistantMessage: Message = {
                     role: 'assistant',
-                    content: data.choices[0].message.content,
+                    content: data.content,
                 }
 
                 setMessages([...newMessages, assistantMessage])
@@ -210,7 +207,8 @@ export const useLLMChat = () => {
                     setMessages([...newMessages, abortMsg])
                 } else {
                     const errorMessage =
-                        err instanceof Error ? err.message : 'Unknown error'
+                        err?.data?.message ||
+                        (err instanceof Error ? err.message : 'Unknown error')
                     setError(errorMessage)
 
                     const errorMsg: Message = {

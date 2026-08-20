@@ -14,7 +14,7 @@ export default {
                 allowUserSettings: Settings.llm?.allowUserSettings,
                 apiUrl: process.env.LLM_API_URL ? '(set)' : '(not set)',
                 apiKey: process.env.LLM_API_KEY ? '(set)' : '(not set)',
-                modelName: process.env.LLM_MODEL_NAME,
+                modelName: process.env.LLM_MODEL_NAME
             },
             '[LLM] Registering routes'
         )
@@ -50,8 +50,7 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: GET /project/:id/llm/source-context')
 
-        // overleaf-lab: effective editable prompts (Ask AI system prompt, error
-        // instruction block, and per-action templates) for the project UI.
+        // overleaf-lab: effective editable prompts for the project UI.
         webRouter.get(
             '/project/:Project_id/llm/prompts',
             AuthorizationMiddleware.ensureUserCanReadProject,
@@ -67,7 +66,7 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/completion')
 
-        // overleaf-lab: PR item 13 — whole-document generators (title/abstract/keywords)
+        // overleaf-lab: whole-document generators (title/abstract/keywords)
         webRouter.post(
             '/project/:Project_id/llm/generate',
             AuthorizationMiddleware.ensureUserCanReadProject,
@@ -104,48 +103,71 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/compliance/cancel/:jobId')
 
-        // User LLM settings (only if allowed)
-        if (Settings.llm && Settings.llm.allowUserSettings) {
-            webRouter.get(
-                '/user/llm-settings',
-                AuthenticationController.requireLogin(),
-                LLMSettingsController.llmSettingsPage
-            )
-            logger.debug({}, '[LLM] Route registered: GET /user/llm-settings')
+        // overleaf-lab: BYO provider rows (user-scoped). Every handler enforces
+        // the LLM_ALLOW_USER_SETTINGS gate itself (F1): the router registers them
+        // unconditionally, and disabled deployments answer 403, so there is no
+        // registration path that skips the gate.
+        webRouter.get(
+            '/user/llm-providers',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.getProvidersJson
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm-providers')
 
-            webRouter.get(
-                '/user/llm-settings/json',
-                AuthenticationController.requireLogin(),
-                LLMSettingsController.getLLMSettingsJson
-            )
-            logger.debug({}, '[LLM] Route registered: GET /user/llm-settings/json')
+        webRouter.post(
+            '/user/llm-providers',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.addProvider
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-providers')
+
+        // overleaf-lab: /check and /scan MUST be registered before /:id —
+        // Express matches in registration order, so ':id' would swallow them
+        // (observed: POST /check 404'd as updateProvider with id='check').
+        webRouter.post(
+            '/user/llm-providers/check',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.checkProviderConnection
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-providers/check')
+
+        webRouter.post(
+            '/user/llm-providers/scan',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.scanProviderModels
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-providers/scan')
+
+        webRouter.post(
+            '/user/llm-providers/:id',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.updateProvider
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-providers/:id')
+
+        webRouter.post(
+            '/user/llm-providers/:id/delete',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.deleteProvider
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-providers/:id/delete')
+
+        // overleaf-lab: /user/llm-settings is the dedicated BYO settings page
+        // (Account menu 'AI Settings' and the Account Settings card link here).
+        webRouter.get(
+            '/user/llm-settings',
+            LLMSettingsController.llmSettingsPage
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm-settings (settings page)')
+
+        if (Settings.llm && Settings.llm.allowUserSettings) {
+            logger.debug({}, '[LLM] BYO enabled by deployment config')
         } else {
             logger.debug(
                 { allowUserSettings: Settings.llm?.allowUserSettings },
-                '[LLM] Skipping /user/llm-settings route (user settings disabled)'
+                '[LLM] BYO endpoints registered but gated (LLM_ALLOW_USER_SETTINGS not set -> 403)'
             )
         }
-
-        webRouter.post(
-            '/user/llm-settings/check',
-            AuthenticationController.requireLogin(),
-            LLMSettingsController.checkLLMConnection
-        )
-        logger.debug({}, '[LLM] Route registered: POST /user/llm-settings/check')
-
-        webRouter.post(
-            '/user/llm-settings/models',
-            AuthenticationController.requireLogin(),
-            LLMSettingsController.scanUserModels
-        )
-        logger.debug({}, '[LLM] Route registered: POST /user/llm-settings/models')
-
-        webRouter.post(
-            '/user/llm-settings',
-            AuthenticationController.requireLogin(),
-            LLMSettingsController.saveLLMSettings
-        )
-        logger.debug({}, '[LLM] Route registered: POST /user/llm-settings')
 
         logger.info({}, '[LLM] All routes registered successfully')
 
@@ -184,5 +206,5 @@ export default {
             LLMAdminController.scanAdminModels
         )
         logger.debug({}, '[LLM] Route registered: POST /admin/llm/models')
-    },
+    }
 }

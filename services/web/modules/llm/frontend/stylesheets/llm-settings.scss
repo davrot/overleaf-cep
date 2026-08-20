@@ -105,3 +105,138 @@
     font-size: 1rem;
   }
 }
+
+/* overleaf-lab: BYO provider table (Account settings) */
+.llm-buo {
+  &-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1.25rem;
+  }
+
+  &-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+
+    th,
+    td {
+      text-align: left;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--border-color-01, #dee2e6);
+      vertical-align: middle;
+    }
+
+    th {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+  }
+
+  &-actions-col {
+    width: 14rem;
+  }
+
+  &-actions {
+    display: flex;
+    gap: 0.35rem;
+    justify-content: flex-end;
+  }
+
+  &-name {
+    font-weight: 600;
+  }
+
+  &-sub {
+    font-size: 0.8rem;
+    color: var(--content-secondary, #6c757d);
+  }
+
+  &-models {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  &-more {
+    font-size: 0.8rem;
+    color: var(--content-secondary, #6c757d);
+  }
+
+  &-empty {
+    padding: 1rem 0 1.25rem;
+    color: var(--content-secondary, #6c757d);
+  }
+
+  &-required {
+    color: var(--text-error, #dc3545);
+    margin-left: 0.15rem;
+  }
+
+  &-keytoggle {
+    margin-top: 0.35rem;
+    font-size: 0.9rem;
+  }
+
+  &-model-editor {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  &-model-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+  }
+
+  &-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background-color: var(--bg-light-secondary, #f8f9fa);
+    border: 1px solid var(--border-color-01, #dee2e6);
+    font-size: 0.85rem;
+  }
+
+  &-chip-x {
+    all: unset;
+    cursor: pointer;
+    line-height: 1;
+    color: var(--content-secondary, #6c757d);
+    font-size: 1rem;
+
+    &:hover {
+      color: var(--text-error, #dc3545);
+    }
+  }
+
+  &-enabled {
+    margin: 1rem 0;
+    font-size: 0.95rem;
+  }
+
+  &-editor {
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-01, #dee2e6);
+    background-color: var(--bg-light-primary, #fff);
+    margin-top: 1rem;
+
+    &-title {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
+    &-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+  }
+}

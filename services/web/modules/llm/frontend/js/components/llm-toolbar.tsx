@@ -12,7 +12,9 @@ import React, {
 } from 'react'
 import { EditorView } from '@codemirror/view'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import getMeta from '@/utils/meta'
+import { postJSON } from '@/infrastructure/fetch-json'
 import { readSelectedModel } from '../utils/llm-selected-model'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 import { useLLMPrompts } from '../hooks/use-llm-prompts'
@@ -130,7 +132,6 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
 
     const postToAPI = async (mode: number, ask: string) => {
         const projectId = getMeta('ol-project_id')
-        const csrfToken = getMeta('ol-csrfToken')
 
         // overleaf-lab: PR item 13 — title/abstract are document-level generators:
         // feed the whole current file (the toolbar's editor doc) instead of the
@@ -228,29 +229,20 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         // "Ask AI" follows the same model. When nothing is stored (chat never
         // opened / storage disabled) we omit `model`, keeping the previous
         // behavior: the backend uses the user's personal model or the shared one.
-        const selectedModelId = readSelectedModel()
+        const selectedModelId = readSelectedModel(projectId)
 
         try {
-            const resp = await fetch(`/project/${projectId}/llm/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken,
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify(
-                    selectedModelId ? { messages, model: selectedModelId } : { messages }
-                ),
+            const json = await postJSON('/project/' + projectId + '/llm/chat', {
+                body: selectedModelId
+                    ? { messages, model: selectedModelId }
+                    : { messages },
             })
-
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-            const json = await resp.json()
-            if (json?.choices?.[0]?.message?.content) {
-                return json.choices[0].message.content
+            if (json && typeof json.content === 'string') {
+                return json.content
             }
-            throw new Error('Unexpected response format')
+            throw new Error((json && json.message) || 'Unexpected response format')
         } catch (err: any) {
-            return `Error: ${err?.message || 'Request failed'}`
+            return `Error: ${err?.data?.message || err?.data?.details || err?.message || 'Request failed'}`
         }
     }
 
@@ -295,7 +287,15 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
 
     const renderedHtml = useMemo(() => {
         try {
-            return marked.parse(result || 'No result yet.', { renderer })
+            // overleaf-lab: F3 — LLM output is attacker-influenceable via document
+            // content, so the marked output is sanitized before being injected into
+            // the page. The whitelist keeps the custom LaTeX-block markup (class,
+            // style, data-code, title) that the copy button depends on.
+            const html = marked.parse(result || 'No result yet.', { renderer }) as string
+            return DOMPurify.sanitize(html, {
+                ADD_ATTR: ['data-code'],
+                USE_PROFILES: { html: true, svg: false, mathMl: false },
+            })
         } catch {
             return escapeHtml(result || 'No result yet.')
         }
@@ -516,7 +516,6 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         k: 'title' | 'abstract' | 'keywords'
     ) => {
         const projectId = getMeta('ol-project_id')
-        const csrfToken = getMeta('ol-csrfToken')
         setKind(k)
         setPanelMode('paraphrase')
         setLoading(true)
@@ -524,35 +523,20 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         setShowDiff(false)
         setResult('')
         try {
-            const resp = await fetch(`/project/${projectId}/llm/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken,
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify({ type: k }),
-            })
-            let data: {
+            const data = await postJSON<{
                 ok?: boolean
                 output?: string
                 error?: string
-                detail?: string
-            } = {}
-            try {
-                data = await resp.json()
-            } catch {
-                data = {}
-            }
-            if (resp.ok && data.ok) {
+                message?: string
+            }>('/project/' + projectId + '/llm/generate', { body: { type: k } })
+            if (data && data.ok) {
                 setResult(String(data.output || ''))
-            } else {
-                setResult(
-                    `Generation failed: ${data.detail || data.error || `HTTP ${resp.status}`}`
-                )
+            }
+            else {
+                setResult(`Generation failed: ${(data && (data.message || data.error)) || 'Unknown error'}`)
             }
         } catch (err: any) {
-            setResult(`Generation failed: ${err?.message || 'Request failed'}`)
+            setResult(`Generation failed: ${err?.data?.message || err?.data?.detail || err?.message || 'Request failed'}`)
         } finally {
             setLoading(false)
         }
