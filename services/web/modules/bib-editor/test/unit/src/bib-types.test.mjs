@@ -8,6 +8,7 @@ import {
   hasAllRequiredFields,
   ENTRY_TYPES,
   getNewEntryInitialType,
+  isFormRebind,
 } from '../../../frontend/js/utils/bib-types.ts'
 import bibtexSchema from '../../../frontend/js/utils/bibtex-schema.json'
 
@@ -36,6 +37,35 @@ describe('bib-types (schema + display rules)', () => {
 
     it('rejects an unsupported preset (defensive) and falls back to article', () => {
       expect(getNewEntryInitialType('not-a-bibtex-type')).toBe('article')
+    })
+  })
+
+  describe('isFormRebind (W3a post-write re-sync)', () => {
+    it('is NOT a rebind for a fresh parse of the same bound entry', () => {
+      expect(
+        isFormRebind(
+          { kind: 'existing', originalId: 'a' },
+          { kind: 'existing', originalId: 'a' }
+        )
+      ).toBe(false)
+    })
+
+    it('is a rebind on materialization (new → existing)', () => {
+      expect(
+        isFormRebind(
+          { kind: 'new', originalId: null },
+          { kind: 'existing', originalId: 'a' }
+        )
+      ).toBe(true)
+    })
+
+    it('is a rebind on a rename (existing → existing, different key)', () => {
+      expect(
+        isFormRebind(
+          { kind: 'existing', originalId: 'old' },
+          { kind: 'existing', originalId: 'new' }
+        )
+      ).toBe(true)
     })
   })
 

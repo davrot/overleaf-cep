@@ -156,7 +156,11 @@
   background-color: var(--bib-panel-card-hover-bg);
 }
 
-.bib-entry-card:focus {
+.bib-entry-card:focus:not(:focus-visible) {
+  outline: none;
+  outline-offset: 0;
+}
+.bib-entry-card:focus-visible {
   outline: 2px solid var(--blue-50);
   outline-offset: -2px;
 }
@@ -404,4 +408,14 @@
 .bib-form-footer-right {
   display: flex;
   gap: 0.5rem;
+}
+
+/* W3c (§12 P3): explicit keyboard-focus outlines. :focus-visible is the
+   keyboard-only marker (pointer focus does not paint an outline on these
+   module controls). OLButton wraps a native <button>, so `button` covers
+   Check / Add / Delete / fetch-type etc. by element. */
+.bib-list-search-input:focus-visible,
+.bib-entry-form button:focus-visible {
+  outline: 2px solid var(--blue-50);
+  outline-offset: 2px;
 }

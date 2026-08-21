@@ -35,6 +35,7 @@ import {
   displayFieldsFor,
   requiredStarMembers,
   flattenRequired,
+  isFormRebind,
 } from '../utils/bib-types'
 import { validateEntry } from '../utils/bib-validate'
 import type { BibEntry } from '../utils/bib-types'
@@ -87,18 +88,26 @@ export default function BibEntryForm({
 
   // Re-sync from the parsed entry when a different entry is opened
   // (selection change remounts the form — this effect covers it).
+  // W3a (§12 P3): a REBIND (parse-confirmed write: new→existing or a
+  // rename) re-shows Check results immediately — `checked` is recomputed
+  // from the written values (re-validate, no re-press). A fresh parse of
+  // the SAME bound entry (same kind + originalId) keeps today's behavior:
+  // values sync, `checked` clears.
   const [entrySig, setEntrySig] = useState(
     () => `${kind}:${originalId ?? ''}:${JSON.stringify(entry)}`
   )
+  const lastBoundRef = useRef({ kind, originalId })
   useEffect(() => {
     const sig = `${kind}:${originalId ?? ''}:${JSON.stringify(entry)}`
     if (sig !== entrySig) {
+      const rebind = isFormRebind(lastBoundRef.current, { kind, originalId })
+      lastBoundRef.current = { kind, originalId }
       setEntrySig(sig)
       setType(entry.type || 'article')
       setId(entry.id || '')
       setFields({ ...entry.fields })
       setShowAllFields(false)
-      setChecked(false)
+      setChecked(rebind)
     }
   }, [entry, kind, originalId, entrySig])
 

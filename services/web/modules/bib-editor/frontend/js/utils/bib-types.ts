@@ -86,6 +86,19 @@ export function getNewEntryInitialType(preset: string | null): string {
   return 'article'
 }
 
+/**
+ * W3a (§12 P3): is a form re-sync a REBIND (parse-confirmed write landed —
+ * new → existing, or an existing entry was renamed) rather than a fresh
+ * parse of the SAME bound entry? Only a rebind keeps re-shows Check results
+ * (`checked` stays true); a fresh parse of the same entry clears them.
+ */
+export function isFormRebind(
+  prev: { kind: 'existing' | 'new'; originalId: string | null },
+  next: { kind: 'existing' | 'new'; originalId: string | null }
+): boolean {
+  return prev.kind !== next.kind || prev.originalId !== next.originalId
+}
+
 export function getEntryType(name: string): BibEntryType | undefined {
   return ENTRY_TYPES.find(t => t.name === name.toLowerCase())
 }
