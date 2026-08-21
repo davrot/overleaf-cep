@@ -64,8 +64,11 @@ settings are user- or admin-scoped.
 | POST   | `/admin/llm/settings/check`                 | Connection test (model list fetch)   |
 | POST   | `/admin/llm/models`                         | Scan the site backend for models     |
 
-* `GET /user/llm-settings` — legacy link/bookmark redirect into Account
-  Settings (the BYO table lives there).
+* `GET /user/llm-settings` — dedicated BYO settings page (provider table,
+  Test/Model scan, Add/edit). Linked from the Account menu.
+* Admin settings UI: **Manage Site → “LLM Configuration” tab**
+  (`/admin`), served by the standalone page `GET /admin/llm/settings`.
+  There is intentionally **no separate navbar entry** (reviewer requirement).
 
 ## Environment variables
 
@@ -99,12 +102,44 @@ settings are user- or admin-scoped.
 - Review jobs are capped: per-user in-flight limit, global queue limit, and a
   hard pass budget per job.
 
+## Legacy import (upgrade path)
+
+Users of the previous single-backend design stored `llmApiUrl`/`llmApiKey`/
+`llmModelName` (+ `llmApiType`) on the user document. On the first
+`loadProviders()` call, that configuration is **materialized once** into
+`llmProviders[0]` — an `id: 'legacy'` row named **“Imported settings”**
+(`enabled: true`) with the key **encrypted at rest** — and served under its
+`legacy` id from then on. The legacy fields are left untouched, so a rollback
+deep-links the same data. Users who already have provider rows are not
+affected.
+
+## Error surfacing for failed connections
+
+`check`/`scan` and admin saves surface *specific* failures:
+
+- Provider 401/403 → `HTTP 401` with a human message ("provider rejected
+  the key / no key provided", provider detail included when the backend
+  returns one). The UI shows that message in the connection notice.
+- Admin settings save → `400 {ok:false, error, errors:[{field,message}]}`
+  (all zod issues), shown as a banner next to the Save button.
+- Rubric scan regexes are validated by `safeRubricRegex` (rejects recursive
+  groups and repeated-quantifier patterns) to keep reviews from hanging.
+
 ## Tests
 
 ```bash
 node --test services/web/modules/llm/app/test/llm-client.test.mjs   # offline unit tests
+node --test services/web/modules/llm/app/test/llm-crypto.test.mjs   # key-encrypt roundtrip + legacy plaintext
 node services/web/modules/llm/app/test/LLMClient.live.mjs           # live smoke (needs a reachable backend)
+
+# Frontend render regressions (jsdom; needs the standalone harness config):
+cd services/web
+NODE_ENV=development <node_modules>/.bin/vitest run --config vitest.llm-frontend.config.js
 ```
+
+Deployed-container verification (bash/curl driver) covers login, site/user
+lanes, BYO CRUD + check/scan, rate-guard burst, compliance job lifecycle,
+and the settings pages: 12/12 passing on the latest build.
 
 ## Layout
 
