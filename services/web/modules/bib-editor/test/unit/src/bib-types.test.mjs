@@ -7,6 +7,7 @@ import {
   getMissingRequiredFields,
   hasAllRequiredFields,
   ENTRY_TYPES,
+  getNewEntryInitialType,
 } from '../../../frontend/js/utils/bib-types.ts'
 import bibtexSchema from '../../../frontend/js/utils/bibtex-schema.json'
 
@@ -21,6 +22,21 @@ describe('bib-types (schema + display rules)', () => {
       expect(f).not.toBe('authoreditor')
       expect(f).not.toBe('chapterpages')
     }
+  })
+
+  describe('getNewEntryInitialType (W1 New-Entry preset)', () => {
+    it('falls back to article when there is no preset', () => {
+      expect(getNewEntryInitialType(null)).toBe('article')
+    })
+
+    it('reuses a supported preset', () => {
+      expect(getNewEntryInitialType('incollection')).toBe('incollection')
+      expect(getNewEntryInitialType('manual')).toBe('manual')
+    })
+
+    it('rejects an unsupported preset (defensive) and falls back to article', () => {
+      expect(getNewEntryInitialType('not-a-bibtex-type')).toBe('article')
+    })
   })
 
   it('requiredStarMembers: stars show on every empty member of an empty group', () => {

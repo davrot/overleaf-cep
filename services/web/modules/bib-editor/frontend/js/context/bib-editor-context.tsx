@@ -32,6 +32,7 @@ import {
   useState,
 } from 'react'
 import type { BibEntry } from '../utils/bib-types'
+import { getNewEntryInitialType } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 
 export type BibSelection =
@@ -76,6 +77,10 @@ export type BibEditorActions = {
   selectExisting: (entryId: string) => void
   /** Start a new (not yet materialized) entry */
   selectNew: (draft?: BibEntry) => void
+  /** Last type used on a new-entry form (W1 type preset); `null` = unset */
+  newEntryTypePreset: string | null
+  /** Record the type the user chose on a new-entry form (W1) */
+  updateNewEntryTypePreset: (type: string) => void
   /** Back to the list (the panel flushes before calling this) */
   deselect: () => void
   /** Ask the editor to write a flushed entry into the document */
@@ -112,6 +117,9 @@ const BibEditorContext = createContext<BibEditorContextValue | undefined>(
 export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => {
   const [isBibFile, setIsBibFile] = useState(false) // tracked; unused by consumers (§12 lint pass)
   const [entries, setEntries] = useState<ParsedBibEntry[]>([])
+  const [newEntryTypePreset, setNewEntryTypePreset] = useState<string | null>(
+    null
+  )
   const [source, setSource] = useState('')
   const [selection, setSelection] = useState<BibSelection>(null)
   const [writeFailure, setWriteFailureState] = useState<string | null>(null)
@@ -179,8 +187,16 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
   const selectNew = useCallback((draft?: BibEntry) => {
     setSelection({
       kind: 'new',
-      draft: draft ?? { type: 'article', id: '', fields: {} },
+      draft: draft ?? {
+        type: getNewEntryInitialType(newEntryTypePreset),
+        id: '',
+        fields: {},
+      },
     })
+  }, [newEntryTypePreset])
+
+  const updateNewEntryTypePreset = useCallback((type: string) => {
+    setNewEntryTypePreset(type)
   }, [])
 
   const deselect = useCallback(() => {
@@ -212,6 +228,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       selectEntry,
       selectExisting,
       selectNew,
+      newEntryTypePreset,
+      updateNewEntryTypePreset,
       deselect,
       writeEntry,
       deleteEntry,
@@ -229,6 +247,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       selectEntry,
       selectExisting,
       selectNew,
+      newEntryTypePreset,
+      updateNewEntryTypePreset,
       deselect,
       writeEntry,
       deleteEntry,

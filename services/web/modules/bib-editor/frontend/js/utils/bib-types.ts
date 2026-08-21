@@ -73,6 +73,19 @@ export const ENTRY_TYPES: BibEntryType[] = schema.supportedPublicationTypes.map(
 /** All known BibTeX field names */
 export const ALL_FIELDS: readonly string[] = schema.allKnownFields
 
+/**
+ * Initial type for the “New Entry” form. The last type used on a new-entry
+ * form (Phase B W1) is stored as the preset; when there is none (or the
+ * preset is not a supported type — defensive) it falls back to `article`
+ * (the upstream default).
+ */
+export function getNewEntryInitialType(preset: string | null): string {
+  if (preset !== null && schema.supportedPublicationTypes.includes(preset)) {
+    return preset
+  }
+  return 'article'
+}
+
 export function getEntryType(name: string): BibEntryType | undefined {
   return ENTRY_TYPES.find(t => t.name === name.toLowerCase())
 }

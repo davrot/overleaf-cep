@@ -51,6 +51,7 @@ function BibEditorPanel() {
     writeFailure,
     selectEntry,
     selectNew,
+    updateNewEntryTypePreset,
     deselect,
     writeEntry,
     deleteEntry,
@@ -202,6 +203,12 @@ function BibEditorPanel() {
 
   const handleFormChange = useCallback(
     (entry: BibEntry, originalId: string | null) => {
+      // W1: remember the type chosen on a new-entry form (the preset).
+      // Existing entries: the type is bound to the parsed entry — don't
+      // pollute the preset from an edit.
+      if (originalId === null) {
+        updateNewEntryTypePreset(entry.type)
+      }
       formRef.current = {
         entry: {
           type: entry.type,
@@ -212,7 +219,7 @@ function BibEditorPanel() {
         originalId,
       }
     },
-    []
+    [updateNewEntryTypePreset]
   )
 
   const handleChecked = useCallback(
