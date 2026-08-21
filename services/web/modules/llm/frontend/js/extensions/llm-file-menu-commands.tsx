@@ -19,11 +19,11 @@ type GenerateKind = 'title' | 'abstract' | 'keywords'
 
 const KINDS: GenerateKind[] = ['title', 'abstract', 'keywords']
 
-// Menu labels — short, File-menu style (reviewer #13: "on the Overleaf site").
+// Submenu item labels — short, Download-style ("AI Generate → Title/Abstract/Keywords").
 const MENU_LABEL: Record<GenerateKind, string> = {
-    title: 'Generate title',
-    abstract: 'Generate abstract',
-    keywords: 'Generate keywords',
+    title: 'Title',
+    abstract: 'Abstract',
+    keywords: 'Keywords',
 }
 
 // Modal headings — descriptive.

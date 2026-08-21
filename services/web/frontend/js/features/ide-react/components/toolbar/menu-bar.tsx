@@ -99,9 +99,15 @@ export const ToolbarMenuBar = () => {
       {
         id: 'file-ai-generate',
         children: [
-          'llm_generate_title',
-          'llm_generate_abstract',
-          'llm_generate_keywords',
+          {
+            id: 'ai-generate-group',
+            title: t('llm_ai_generate', 'AI Generate'),
+            children: [
+              'llm_generate_title',
+              'llm_generate_abstract',
+              'llm_generate_keywords',
+            ],
+          },
         ],
       },
       { id: 'file-tools', children: ['show_version_history', 'word_count'] },
