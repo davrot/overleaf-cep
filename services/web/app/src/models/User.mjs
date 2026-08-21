@@ -255,6 +255,15 @@ export const UserSchema = new Schema(
     llmModelName: { type: String, default: '' },
     llmApiUrl: { type: String, default: '' },
     llmCompletionModel: { type: String, default: '' },
+    // overleaf-lab: LLM module (services/web/modules/llm). Extra legacy fields for the
+    // single-connection migration, plus the bring-your-own provider rows.
+    llmApiType: { type: String, default: '' },
+    llmModels: { type: [String], default: [] },
+    llmModelNames: { type: [String], default: [] },
+    llmCompletionModels: { type: [String], default: [] },
+    // Each row is a free-form document shaped by the module's row schema
+    // (id/name/providerType/baseUrl/apiKey[encrypted]/models/completionModel/enabled).
+    llmProviders: { type: [Object], default: [] },
   },
   { minimize: false }
 )
