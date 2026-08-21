@@ -8,6 +8,9 @@ import OLPageContentCard from '@/shared/components/ol/ol-page-content-card'
 import { UserProvider } from '@/shared/context/user-context'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import useScrollToIdOnLoad from '@/shared/hooks/use-scroll-to-id-on-load'
+// overleaf-lab: BYO table/editor styles were only imported by the admin page,
+// so this page shipped with zero module CSS — import the shared stylesheet here too.
+import '../../stylesheets/llm-settings.scss'
 
 export default function LLMSettingsPage() {
     const { t } = useTranslation()
