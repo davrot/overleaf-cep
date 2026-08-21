@@ -328,6 +328,29 @@
   border-top: 1px solid var(--border-primary);
 }
 
+/* R2 write failure — surfaces when a guarded write is rejected */
+.bib-write-failure-banner {
+  background: var(--content-danger);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--bs-border-radius);
+  font-size: var(--font-size-02);
+  cursor: pointer;
+}
+
+/* Inline hint (e.g. "Leave empty to generate on Check") */
+.bib-form-hint {
+  color: var(--bib-panel-secondary-color);
+  font-size: var(--font-size-01);
+  margin-top: 0.2rem;
+}
+
+.bib-form-footer-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .bib-form-toggle-opt-fields {
   padding: 0;
   width: fit-content;

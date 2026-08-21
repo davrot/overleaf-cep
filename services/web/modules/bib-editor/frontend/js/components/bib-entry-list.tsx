@@ -1,11 +1,14 @@
 /**
  * List of BibTeX entries shown in the visual editor.
- * Each entry card is clickable — clicking opens the entry editor.
+ *
+ * Keyboard (REDESIGN_PLAN.md §2.7):
+ *  - the search box is focused on mount (when entries exist),
+ *  - ArrowUp/ArrowDown move through the entry cards (Enter opens),
+ *  - Escape / clear search resets the filter.
+ * Bulk selection is Phase B (plan §8) — no selection UI here yet.
  */
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/shared/components/ol/ol-button'
-import SearchForm from './search-form.tsx'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import {
   getEntryType,
@@ -17,14 +20,13 @@ type Props = {
   onSelect: (entry: ParsedBibEntry) => void
 }
 
-export default function BibEntryList({
-  entries,
-  onSelect,
-}: Props) {
+export default function BibEntryList({ entries, onSelect }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
+  const [active, setActive] = useState(0)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  const filteredEntries = useMemo(() => {
+  const filtered = useMemo(() => {
     if (!search.trim()) return entries
     const q = search.toLowerCase()
     return entries.filter(e => {
@@ -32,47 +34,119 @@ export default function BibEntryList({
       const author = (e.fields.author || '').toLowerCase()
       const id = e.id.toLowerCase()
       const year = (e.fields.year || '').toLowerCase()
-      const journal = (e.fields.journal || e.fields.booktitle || '').toLowerCase()
+      const venue =
+        (e.fields.journal || e.fields.booktitle || '').toLowerCase()
       return (
         title.includes(q) ||
         author.includes(q) ||
         id.includes(q) ||
         year.includes(q) ||
-        journal.includes(q)
+        venue.includes(q)
       )
     })
   }, [entries, search])
 
+  // Focus the search box when the list mounts (reviewer: on opening a bib
+  // file in list mode, focus goes to the search box).
+  useEffect(() => {
+    if (entries.length > 0) {
+      const raf = requestAnimationFrame(() => {
+        searchRef.current?.focus()
+      })
+      return () => cancelAnimationFrame(raf)
+    }
+  }, [entries.length])
+
+  const focusCard = useCallback((i: number) => {
+    setActive(i)
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`bib-card-${i}`)
+        ?.focus()
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const handleListKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (filtered.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        focusCard(Math.min(active + 1, filtered.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        focusCard(Math.max(active - 1, 0))
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        focusCard(0)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        focusCard(filtered.length - 1)
+      } else if (e.key === 'Enter' && e.target === searchRef.current) {
+        e.preventDefault()
+        focusCard(active)
+      }
+    },
+    [filtered.length, active, focusCard]
+  )
+
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent, i: number) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        focusCard(Math.min(i + 1, filtered.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        focusCard(Math.max(i - 1, 0))
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onSelect(filtered[i])
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+    },
+    [filtered, onSelect, focusCard]
+  )
+
   return (
-    <div className="bib-entry-list">
-      {/* Search bar */}
-      <SearchForm
-        inputValue={search}
-        setInputValue={setSearch}
-        className={"bib-list-search"}
+    <div className="bib-entry-list" onKeyDown={handleListKeyDown}>
+      {/* Inline search (module-local; the upstream SearchForm is project-
+          list specific — REDESIGN_PLAN §2.8) */}
+      <input
+        id="bib-list-search"
+        ref={searchRef}
+        type="search"
+        className="bib-list-search-input"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder={t('Search for entries')}
+        aria-label={t('Search for entries')}
       />
 
       {/* Entry count */}
       <div className="bib-list-count">
-        {filteredEntries.length === entries.length
+        {filtered.length === entries.length
           ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`
-          : `${filteredEntries.length} of ${entries.length} entries`}
+          : `${filtered.length} of ${entries.length} entries`}
       </div>
 
       {/* Entry list */}
       <div className="bib-list-entries">
-        {filteredEntries.length === 0 && (
+        {filtered.length === 0 && (
           <div className="bib-list-empty">
             {entries.length === 0
               ? t('No bibliography entries yet. Click "Add new entry" to create one.')
               : t('No entries match your search.')}
           </div>
         )}
-        {filteredEntries.map(entry => (
+        {filtered.map((entry, i) => (
           <BibEntryCard
             key={`${entry.id}-${entry.sourceStart}`}
             entry={entry}
+            index={i}
             onSelect={onSelect}
+            onCardKeyDown={handleCardKeyDown}
           />
         ))}
       </div>
@@ -82,12 +156,16 @@ export default function BibEntryList({
 
 function BibEntryCard({
   entry,
+  index,
   onSelect,
+  onCardKeyDown,
 }: {
   entry: ParsedBibEntry
-  onSelect: (e: ParsedBibEntry) => void
+  index: number
+  onSelect: (entry: ParsedBibEntry) => void
+  onCardKeyDown: (e: React.KeyboardEvent, i: number) => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslation().t
   const typeDef = getEntryType(entry.type)
   const missingFields = typeDef
     ? getMissingRequiredFields(typeDef.requiredFields, entry.fields)
@@ -108,15 +186,14 @@ function BibEntryCard({
 
   return (
     <div
+      id={`bib-card-${index}`}
       className={['bib-entry-card', invalid ? 'bib-entry-card-invalid' : '']
         .filter(Boolean)
         .join(' ')}
       role="button"
       tabIndex={0}
       onClick={() => onSelect(entry)}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') onSelect(entry)
-      }}
+      onKeyDown={e => onCardKeyDown(e, index)}
     >
       <div className="bib-entry-card-header">
         <span className="bib-entry-card-type">@{entry.type}</span>

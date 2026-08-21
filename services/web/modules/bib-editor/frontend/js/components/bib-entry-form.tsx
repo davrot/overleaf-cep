@@ -1,7 +1,18 @@
 /**
- * Form component for editing a single BibTeX entry's fields.
- * Adapted from the old bib-importer manual editor, cleaned up
- * for the new sidebar-panel style.
+ * Form component for editing a single BibTeX entry.
+ *
+ * One form for both "existing" and "new" entries (REDESIGN_PLAN.md §2.3):
+ *  - The primary button is always **Check** (validate only — for a new form
+ *    it also materializes the entry into the file).
+ *  - **Stars** follow the reviewer rule: a standalone required field shows a
+ *    star while empty; every member of an OR-group shows a star while all of
+ *    its members are empty. `requiredStarMembers` computes the live stars.
+ *  - **Check messages** come from `validateEntry` (pure): standalone →
+ *    "X is required"; OR-group → "Either A or B is required" under each empty
+ *    member.
+ *  - No pseudo-field rows: OR-groups are flattened; `displayFieldsFor` decides
+ *    which fields are visible (existing: required + optional + valued;
+ *    new: required + common optional; `showAll` reveals everything by type).
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -21,65 +32,45 @@ import { fetchEntryFromDoi } from '../utils/doi-fetcher'
 import {
   ENTRY_TYPES,
   getEntryType,
-  getFieldsForType,
-  getMissingRequiredFields,
+  displayFieldsFor,
+  requiredStarMembers,
+  flattenRequired,
 } from '../utils/bib-types'
+import { validateEntry } from '../utils/bib-validate'
 import type { BibEntry } from '../utils/bib-types'
 
 type Props = {
+  /** The entry values the form starts from */
   entry: BibEntry
-  onSave: (entry: BibEntry) => void
-  onCancel: () => void
-  onDelete?: () => void
-  isNew?: boolean
-  /** IDs of all existing entries (to detect citation key collisions) */
+  kind: 'existing' | 'new'
+  /** For 'existing': the citation key as parsed from the document */
+  originalId: string | null
+  /** IDs of all existing entries (citation-key collision hints) */
   existingIds?: string[]
-  /** Called on every form-state change so the parent can persist a draft */
-  onDraftChange?: (entry: BibEntry) => void
+  /** Called on every form-state change (panel flush bookkeeping) */
+  onFormChange: (entry: BibEntry, originalId: string | null) => void
+  /** Called when Check is pressed (new: also materializes) */
+  onChecked: (entry: BibEntry, kind: 'existing' | 'new', originalId: string | null) => void
+  onDelete?: () => void
+  onBack?: () => void
 }
 
-/** Human-readable labels for field names */
-const FIELD_LABELS: Record<string, string> = {
-  author: 'Author(s)',
-  title: 'title',
-  journal: 'Journal',
-  booktitle: 'Book Title',
-  year: 'Year',
-  month: 'Month',
-  volume: 'Volume',
-  number: 'Number / Issue',
-  pages: 'Pages',
-  publisher: 'Publisher',
-  editor: 'Editor',
-  school: 'School',
-  institution: 'Institution',
-  organization: 'Organization',
-  series: 'Series',
-  edition: 'Edition',
-  chapter: 'Chapter',
-  address: 'Address',
-  howpublished: 'How Published',
-  doi: 'DOI',
-  url: 'URL',
-  isbn: 'ISBN',
-  issn: 'ISSN',
-  keywords: 'Keywords',
-  abstract: 'Abstract',
-  note: 'Note',
-  language: 'language',
-  file: 'file',
+/** Human-readable (untranslated) field labels for messages/tooltips */
+function fieldLabel(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
 const LARGE_FIELDS = new Set(['abstract', 'note', 'keywords'])
 
 export default function BibEntryForm({
   entry,
-  onSave,
-  onCancel,
-  onDelete,
-  isNew = false,
+  kind,
+  originalId,
   existingIds = [],
-  onDraftChange,
+  onFormChange,
+  onChecked,
+  onDelete,
+  onBack,
 }: Props) {
   const { t } = useTranslation()
   const [type, setType] = useState(entry.type || 'article')
@@ -88,12 +79,28 @@ export default function BibEntryForm({
     ...entry.fields,
   })
   const [showAllFields, setShowAllFields] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Report form-state changes for draft persistence across file-tree navigation
+  const [checked, setChecked] = useState(false)
+  // Notify the panel on every form change (flush bookkeeping).
   useEffect(() => {
-    onDraftChange?.({ type, id, fields })
-  }, [type, id, fields, onDraftChange])
+    onFormChange({ type, id, fields }, kind === 'existing' ? originalId : null)
+  }, [type, id, fields, kind, originalId, onFormChange])
+
+  // Re-sync from the parsed entry when a different entry is opened
+  // (selection change remounts the form — this effect covers it).
+  const [entrySig, setEntrySig] = useState(
+    () => `${kind}:${originalId ?? ''}:${JSON.stringify(entry)}`
+  )
+  useEffect(() => {
+    const sig = `${kind}:${originalId ?? ''}:${JSON.stringify(entry)}`
+    if (sig !== entrySig) {
+      setEntrySig(sig)
+      setType(entry.type || 'article')
+      setId(entry.id || '')
+      setFields({ ...entry.fields })
+      setShowAllFields(false)
+      setChecked(false)
+    }
+  }, [entry, kind, originalId, entrySig])
 
   // DOI fetch state
   const [doiInput, setDoiInput] = useState(entry.fields.doi || '')
@@ -113,33 +120,44 @@ export default function BibEntryForm({
       setFields(prev => ({
         ...prev,
         ...fetched.fields,
-        // keep existing DOI field consistent with what was typed
         doi: fetched.fields.doi || rawDoi,
       }))
       setDoiFetchSuccess(true)
     } catch (err) {
       setDoiFetchError(
-        err instanceof Error ? err.message : 'Failed to fetch DOI'
+        err instanceof Error ? err.message : t('Failed to fetch DOI')
       )
     } finally {
       setDoiFetching(false)
     }
-  }, [doiInput])
+  }, [doiInput, t])
 
   const entryTypeDef = getEntryType(type)
-  const requiredFields = entryTypeDef?.requiredFields || []
-  const optionalFields = entryTypeDef?.optionalFields || []
 
-  // Show required fields + optional fields that have values, plus optionally all
-  const visibleFields = showAllFields
-    ? getFieldsForType(type)
-    : [
-      ...requiredFields,
-      ...optionalFields.filter(f => fields[f]?.trim()),
-    ]
+  // Live validation (pure): stars + per-field Check messages.
+  const starMembers = entryTypeDef
+    ? new Set(requiredStarMembers(entryTypeDef.requiredFields, fields))
+    : new Set<string>()
 
-  // Deduplicate
-  const uniqueVisible = [...new Set(visibleFields)]
+  const checkResult = checked
+    ? validateEntry({ type, id, fields }, kind)
+    : null
+
+  const visibleFields = displayFieldsFor(
+    entryTypeDef,
+    kind,
+    fields,
+    showAllFields
+  )
+
+  // Focus anchor: D3 — first empty required (flattened) field, fallback key.
+  const focusableRequired = entryTypeDef
+    ? flattenRequired(entryTypeDef.requiredFields).filter(
+        f => !fields[f]?.trim()
+      )
+    : []
+
+  const requiredStarSet = starMembers
 
   const handleFieldChange = useCallback((name: string, value: string) => {
     setFields(prev => ({ ...prev, [name]: value }))
@@ -149,22 +167,21 @@ export default function BibEntryForm({
     const base = generateCitationKey(fields)
     // When editing, the current entry's own ID is not a collision
     const otherIds = new Set(
-      isNew ? existingIds : existingIds.filter(eid => eid !== entry.id)
+      kind === 'new'
+        ? existingIds
+        : existingIds.filter(eid => eid !== originalId)
     )
     if (!otherIds.has(base)) {
       setId(base)
       return
     }
-    // Append 'b', 'c', ... until we find a free key
-    const suffixes = 'bcdefghijklmnopqrstuvwxyz'
-    for (const ch of suffixes) {
+    for (const ch of 'bcdefghijklmnopqrstuvwxyz') {
       const candidate = `${base}${ch}`
       if (!otherIds.has(candidate)) {
         setId(candidate)
         return
       }
     }
-    // Fallback: numeric suffix
     for (let n = 2; n < 1000; n++) {
       const candidate = `${base}${n}`
       if (!otherIds.has(candidate)) {
@@ -172,55 +189,79 @@ export default function BibEntryForm({
         return
       }
     }
-    setId(base) // give up, use base
-  }, [fields, existingIds, isNew, entry.id])
+    setId(base)
+  }, [fields, existingIds, kind, originalId])
 
-  const validate = useCallback((): boolean => {
-    const errs: Record<string, string> = {}
+  const handleCheck = useCallback(() => {
+    setChecked(true)
+    onChecked({ type, id: id.trim(), fields }, kind, originalId)
+  }, [type, id, fields, kind, originalId, onChecked])
 
-    if (!id.trim()) {
-      errs.id = t('Citation key is required')
-    } else if (!/^[A-Za-z0-9_:.\-/]+$/.test(id)) {
-      errs.id = t('Citation key contains invalid characters')
-    }
-
-    for (const field of requiredFields) {
-      if (Array.isArray(field)) {
-        if (!field.some(f => fields[f]?.trim())) {
-          const label = field.map(f => FIELD_LABELS[f] || f).join(' or ')
-          errs[field.join('|')] = `${label} ${t('is required')}`
-        }
-      } else if (!fields[field]?.trim()) {
-        errs[field] = t(FIELD_LABELS[field] || field) + ' ' + t('is required')
-      }
-    }
-
-    if (fields.year && !/^\d{4}$/.test(fields.year.trim())) {
-      errs.year = t('Year should be a 4-digit number')
-    }
-
-    if (fields.doi && !/^10\.\d{4,9}\/\S+$/.test(fields.doi.trim())) {
-      errs.doi = t('DOI format looks invalid')
-    }
-
-    if (fields.url) {
-      try {
-        new URL(fields.url.trim())
-      } catch {
-        errs.url = t('URL looks invalid')
-      }
-    }
-
-    setErrors(errs)
-    return Object.keys(errs).length === 0
-  }, [id, fields, requiredFields, t])
-
-  const handleSave = useCallback(() => {
-    if (!validate()) return
-    onSave({ type, id: id.trim(), fields })
-  }, [type, id, fields, validate, onSave])
+  const handleTypeChange = useCallback((name: string) => {
+    setType(name)
+    setChecked(false)
+  }, [])
 
   const selectedType = ENTRY_TYPES.find(et => et.name === type)
+
+  // Field message after Check.
+  //   standalone missing → "<Label> is required"
+  //   OR-group missing   → "Either A or B is required" (one message per empty member)
+  const messageFor = (fieldName: string): string | null => {
+    if (!checkResult) {
+      return null
+    }
+    const msg = checkResult.byField[fieldName]
+    if (!msg) {
+      return null
+    }
+    switch (msg.kind) {
+      case 'required-missing': {
+        const a = msg.labelFields[0]
+        const b = msg.labelFields[1]
+        if (msg.group && a && b !== undefined) {
+          return t('Either __a__ or __b__ is required', {
+            a: fieldLabel(a),
+            b: fieldLabel(b),
+          })
+        }
+        return t('__a__ is required', { a: fieldLabel(fieldName) })
+      }
+      case 'id-required':
+        return t('Citation key is required')
+      case 'id-invalid':
+        return t('Citation key contains invalid characters')
+      case 'year-format':
+        return t('Year should be a 4-digit number')
+      case 'doi-format':
+        return t('DOI format looks invalid')
+      case 'url-invalid':
+        return t('URL looks invalid')
+      default:
+        return null
+    }
+  }
+
+  // Focus D3: on opening an entry, focus the first empty required field,
+  // falling back to the citation key.
+  const focusOnceRef = useRef(false)
+  useEffect(() => {
+    if (focusOnceRef.current) return
+    focusOnceRef.current = true
+    const firstEmpty = flattenRequired(
+      getEntryType(type)?.requiredFields || []
+    ).find(f => !fields[f]?.trim())
+    const targetId =
+      firstEmpty === 'author'
+        ? 'bib-field-author-0'
+        : firstEmpty
+        ? `bib-field-${firstEmpty}`
+        : 'bib-key'
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(targetId)?.focus()
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [type, fields])
 
   return (
     <div className="bib-entry-form">
@@ -253,8 +294,7 @@ export default function BibEntryForm({
             variant="secondary"
             size="sm"
             disabled={doiFetching || !doiInput.trim()}
-            onClick={handleFetchDoi}
-            form="clone-project-form"
+            onClick={() => void handleFetchDoi()}
           >
             {doiFetching ? '…' : t('Fetch')}
           </OLButton>
@@ -278,7 +318,7 @@ export default function BibEntryForm({
           <DropdownToggle
             id="bib-type-dropdown"
             className="btn-secondary"
-            aria-label="Select bibliography entry type"
+            aria-label={t('Choose entry type')}
           >
             <span className="text-truncate" aria-hidden>
               @{selectedType?.name} — {selectedType?.label}
@@ -290,7 +330,7 @@ export default function BibEntryForm({
               <DropdownItem
                 key={et.name}
                 active={et.name === type}
-                onClick={() => setType(et.name)}
+                onClick={() => handleTypeChange(et.name)}
               >
                 @{et.name} — {et.label}
               </DropdownItem>
@@ -303,14 +343,15 @@ export default function BibEntryForm({
       <div className="bib-form-row">
         <OLFormLabel className="bib-form-label" htmlFor="bib-key">
           {t('Citation Key')}
-          <span className="bib-form-required"> *</span>
-          {errors.id && (
-            <span className="bib-form-error"> — {errors.id}</span>
+          {kind === 'existing' && (
+            <span className="bib-form-required"> *</span>
           )}
         </OLFormLabel>
         <div className="bib-form-key-row">
           <OLFormControl
-            className={`bib-form-input ${errors.id ? 'bib-form-input-error' : ''}`}
+            className={`bib-form-input ${
+              checkResult?.byField['id'] ? 'bib-form-input-error' : ''
+            }`}
             maxLength="128"
             autoComplete="off"
             type="text"
@@ -320,8 +361,8 @@ export default function BibEntryForm({
             placeholder="e.g. smith2024"
           />
           <OLTooltip
-            key={'tooltip-generate'}
-            id={'tooltip-generate'}
+            key="tooltip-generate"
+            id="tooltip-generate"
             description={t('Auto-generate from author/year')}
             overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
           >
@@ -334,53 +375,69 @@ export default function BibEntryForm({
             </OLButton>
           </OLTooltip>
         </div>
+        {kind === 'new' && (
+          <span className="bib-form-hint">{t('Leave empty to generate on Check')}</span>
+        )}
+        {kind === 'existing' && checkResult?.byField['id'] && (
+          <span className="bib-form-error">
+            {messageFor('id')}
+          </span>
+        )}
       </div>
 
       {/* Entry fields */}
-      {uniqueVisible.map(fieldName => (
-        <div className="bib-form-row" key={fieldName}>
-          <OLFormLabel
-            className="bib-form-label"
-            htmlFor={`bib-field-${fieldName}`}
-          >
-            {t(FIELD_LABELS[fieldName]) || fieldName}
-            {requiredFields.includes(fieldName) && (
-              <span className="bib-form-required"> *</span>
+      {visibleFields.map(fieldName => {
+        const isStarred = requiredStarSet.has(fieldName)
+        const message = messageFor(fieldName)
+        return (
+          <div className="bib-form-row" key={fieldName}>
+            <OLFormLabel
+              className="bib-form-label"
+              htmlFor={`bib-field-${fieldName}`}
+            >
+              {fieldLabel(fieldName)}
+              {isStarred && (
+                <span className="bib-form-required"> *</span>
+              )}
+            </OLFormLabel>
+            {LARGE_FIELDS.has(fieldName) ? (
+              <OLFormControl
+                as="textarea"
+                id={`bib-field-${fieldName}`}
+                className={`bib-form-textarea ${
+                  message ? 'bib-form-input-error' : ''
+                }`}
+                maxLength="4096"
+                autoComplete="off"
+                type="text"
+                value={fields[fieldName] || ''}
+                onChange={e => handleFieldChange(fieldName, e.target.value)}
+                rows={3}
+              />
+            ) : fieldName === 'author' ? (
+              <BibAuthorField
+                value={fields[fieldName] || ''}
+                onChange={val => handleFieldChange(fieldName, val)}
+                error={!!message}
+              />
+            ) : (
+              <OLFormControl
+                id={`bib-field-${fieldName}`}
+                className={`bib-form-input ${
+                  message ? 'bib-form-input-error' : ''
+                }`}
+                maxLength="512"
+                type="text"
+                value={fields[fieldName] || ''}
+                onChange={e => handleFieldChange(fieldName, e.target.value)}
+              />
             )}
-            {errors[fieldName] && (
-              <span className="bib-form-error"> — {errors[fieldName]}</span>
+            {message && (
+              <span className="bib-form-error">{message}</span>
             )}
-          </OLFormLabel>
-          {LARGE_FIELDS.has(fieldName) ? (
-            <OLFormControl
-              as="textarea"
-              id={`bib-field-${fieldName}`}
-              className={`bib-form-textarea ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
-              maxLength="4096"
-              autoComplete="off"
-              type="text"
-              value={fields[fieldName] || ''}
-              onChange={e => handleFieldChange(fieldName, e.target.value)}
-              rows={3}
-            />
-          ) : fieldName === 'author' ? (
-            <AuthorField
-              value={fields[fieldName] || ''}
-              onChange={val => handleFieldChange(fieldName, val)}
-              error={errors[fieldName]}
-            />
-          ) : (
-            <OLFormControl
-              id={`bib-field-${fieldName}`}
-              className={`bib-form-input ${errors[fieldName] ? 'bib-form-input-error' : ''}`}
-              maxLength="512"
-              type="text"
-              value={fields[fieldName] || ''}
-              onChange={e => handleFieldChange(fieldName, e.target.value)}
-            />
-          )}
-        </div>
-      ))}
+          </div>
+        )
+      })}
 
       {/* Toggle optional fields */}
       <div className="bib-form-row">
@@ -396,10 +453,10 @@ export default function BibEntryForm({
         </OLButton>
       </div>
 
-      {/* Footer: Delete on left, Cancel/Save on right */}
+      {/* Footer: Delete (existing only) on left, Back + Check on right */}
       <div className="bib-form-footer">
         <div className="bib-form-footer-left">
-          {!isNew && onDelete && (
+          {kind === 'existing' && onDelete && (
             <OLButton
               variant="danger"
               size="sm"
@@ -413,16 +470,16 @@ export default function BibEntryForm({
           <OLButton
             variant="secondary"
             size="sm"
-            onClick={onCancel}
+            onClick={onBack}
           >
-            {t('cancel')}
+            {t('back')}
           </OLButton>
           <OLButton
             variant="primary"
             size="sm"
-            onClick={handleSave}
+            onClick={handleCheck}
           >
-            {isNew ? t('add') : t('save')}
+            {t('Check')}
           </OLButton>
         </div>
       </div>
@@ -435,24 +492,22 @@ export default function BibEntryForm({
  * Internal state handles empty rows; only serializes non-empty authors to onChange.
  * Supports reordering via up/down buttons.
  */
-function AuthorField({
+function BibAuthorField({
   value,
   onChange,
   error,
 }: {
   value: string
   onChange: (v: string) => void
-  error?: string
+  error?: boolean
 }) {
   const { t } = useTranslation()
 
   const parseAuthors = (v: string) =>
     v ? v.split(/\s+and\s+/i).map(a => a.trim()) : ['']
 
-  // Maintain internal list (including empty in-progress rows)
   const [authors, setAuthors] = useState<string[]>(() => parseAuthors(value))
 
-  // Sync when value changes from outside (e.g. DOI fetch, field reset)
   const prevValueRef = useRef(value)
   useEffect(() => {
     if (value !== prevValueRef.current) {
@@ -461,10 +516,8 @@ function AuthorField({
     }
   }, [value])
 
-  // Serialize non-empty authors back to the parent
   const commit = (list: string[]) => {
-    const serialized = list.filter(a => a.trim()).join(' and ')
-    onChange(serialized)
+    onChange(list.filter(a => a.trim()).join(' and '))
   }
 
   const setAuthorAt = (idx: number, val: string) => {
@@ -474,7 +527,6 @@ function AuthorField({
   }
 
   const addAuthor = () => {
-    // Just extend the internal list; don't commit (empty row has no content yet)
     setAuthors(prev => [...prev, ''])
   }
 
@@ -488,7 +540,7 @@ function AuthorField({
     const to = idx + dir
     if (to < 0 || to >= authors.length) return
     const next = [...authors]
-      ;[next[idx], next[to]] = [next[to], next[idx]]
+    ;[next[idx], next[to]] = [next[to], next[idx]]
     setAuthors(next)
     commit(next)
   }
@@ -504,7 +556,7 @@ function AuthorField({
             id={`bib-field-author-${i}`}
             value={a}
             onChange={e => setAuthorAt(i, e.target.value)}
-            placeholder={t('Last, First') || 'Last, First'}
+            placeholder={t('Last, First')}
           />
           <div className="bib-author-actions">
             <OLIconButton
