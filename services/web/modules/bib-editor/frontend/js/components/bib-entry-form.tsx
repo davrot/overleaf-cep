@@ -256,8 +256,38 @@ export default function BibEntryForm({
     return () => cancelAnimationFrame(raf)
   }, [type, fields])
 
+  // W2 (§2.7): Esc while typing in a form FIELD = back to the list (Back
+  // flushes per R2; focus lands on the list's search box via its mount
+  // effect). Scoped to text inputs only — Esc on the Check button, the type
+  // dropdown toggle, or any other control does nothing (no interference
+  // with the UI-kit dropdown's own Esc handling).
+  const handleFormKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Escape') return
+      const el = e.target
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      if (onBack) onBack()
+    },
+    [onBack]
+  )
+
   return (
-    <div className="bib-entry-form">
+    // W2 (§2.7): Esc while typing in a form FIELD = back to the list (Back
+    // flushes per R2; focus lands on the list's search box via its mount
+    // effect). Scoped to text inputs: Esc on the Check button, the type
+    // dropdown toggle, or any other control does nothing (no interference
+    // with the UI-kit dropdown's own Esc handling). The form div is the
+    // bubbling target (repo pattern for onKeyDown-on-div, e.g.
+    // file-tree-inner, pdf-js-viewer).
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      className="bib-entry-form"
+      onKeyDown={handleFormKeyDown}
+    >
       {/* DOI import row */}
       <div className="bib-form-row">
         <OLFormLabel className="bib-form-label" htmlFor="bib-doi-import">

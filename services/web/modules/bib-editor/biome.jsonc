@@ -20,7 +20,12 @@
       "a11y": {
         // Repo pattern for keyboard-driven rows: div + role + tabIndex +
         // onKeyDown (see modules that do this already).
-        "useSemanticElements": "off"
+        "useSemanticElements": "off",
+        // W2: the form root div is a KEYDOWN BUBBLING TARGET for Esc-back
+        // (scoped to text inputs; not itself interactive — the repo ESLint
+        // rule is disable-commented on the element, Biome can't take a
+        // per-line override here).
+        "noStaticElementInteractions": "off"
       },
       "suspicious": {
         // `while ((m = re.exec(s)) !== null)` idiom.
