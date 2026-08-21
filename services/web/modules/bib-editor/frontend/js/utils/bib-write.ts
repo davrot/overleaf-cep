@@ -38,7 +38,6 @@ export type BibWriteGuard =
 export { serializeBibEntry } from './bib-parser'
 
 export const KEY_TAKEN_REASON = 'key-taken'
-const CLAMP_REASON = 'range-out-of-doc'
 const NOT_A_BIB_REASON = 'not-a-bib-file'
 const ENTRY_GONE_REASON = 'entry-gone'
 
