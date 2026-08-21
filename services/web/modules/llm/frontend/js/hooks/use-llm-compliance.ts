@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import getMeta from '@/utils/meta'
+import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 
 // overleaf-lab: shapes for the document compliance review feature. The backend is
 // now a job queue: start enqueues a review and returns a jobId, the client polls
@@ -242,16 +243,10 @@ export const useLLMCompliance = () => {
                 return
             }
             try {
-                const response = await fetch(
-                    `/project/${projectId}/llm/compliance/rubrics`,
-                    { credentials: 'same-origin' }
+                // F14: shared fetch utility (CSRF/JSON handling + typed FetchError).
+                const data: RubricsResponse = await getJSON(
+                    `/project/${projectId}/llm/compliance/rubrics`
                 )
-                if (!response.ok) {
-                    throw new Error(
-                        `[LLMCompliance] Rubrics endpoint returned ${response.status}`
-                    )
-                }
-                const data: RubricsResponse = await response.json()
                 if (cancelled) return
 
                 const loadedRubrics = data.rubrics || []
@@ -277,11 +272,12 @@ export const useLLMCompliance = () => {
     const pollOnce = useCallback(
         async (jobId: string) => {
             try {
-                const response = await fetch(
-                    `/project/${projectId}/llm/compliance/status/${jobId}`,
-                    { credentials: 'same-origin' }
+                // F14: shared fetch utility. The endpoint reports unknown/expired
+                // jobs as 200 + {ok:false}, so getJSON resolves and the json.ok
+                // branch below still handles them exactly as before.
+                const json = await getJSON(
+                    `/project/${projectId}/llm/compliance/status/${jobId}`
                 )
-                const json = await response.json()
                 if (!mountedRef.current) return
 
                 if (!json.ok) {
@@ -393,21 +389,11 @@ export const useLLMCompliance = () => {
         setProgress(null)
 
         try {
-            const csrfToken = getMeta('ol-csrfToken')
-            const response = await fetch(
+            // F14: postJSON adds the CSRF header + JSON content type itself.
+            const json = await postJSON(
                 `/project/${projectId}/llm/compliance/start`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken,
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ rubricId: selectedRubricId }),
-                }
+                { body: { rubricId: selectedRubricId } }
             )
-
-            const json = await response.json()
             if (!mountedRef.current) return
 
             if (json.ok) {
@@ -438,12 +424,8 @@ export const useLLMCompliance = () => {
         if (!jobId) return
 
         try {
-            const csrfToken = getMeta('ol-csrfToken')
-            await fetch(`/project/${projectId}/llm/compliance/cancel/${jobId}`, {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': csrfToken },
-                credentials: 'same-origin',
-            })
+            // F14: shared fetch utility (CSRF/JSON handled by the wrapper).
+            await postJSON(`/project/${projectId}/llm/compliance/cancel/${jobId}`)
         } catch (err) {
                     }
     }, [projectId, stopPolling])
@@ -459,13 +441,16 @@ export const useLLMCompliance = () => {
                 jobId &&
                 (currentPhase === 'queued' || currentPhase === 'running')
             ) {
-                const csrfToken = getMeta('ol-csrfToken')
-                fetch(`/project/${projectId}/llm/compliance/cancel/${jobId}`, {
-                    method: 'POST',
-                    keepalive: true,
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRF-Token': csrfToken },
-                })
+                // F14 + keepalive: the helper forwards config to fetch, so the
+                // best-effort cancel still survives the page unload.
+                postJSON(
+                    `/project/${projectId}/llm/compliance/cancel/${jobId}`,
+                    { keepalive: true }
+                )
+                    .then(
+                        () => undefined,
+                        () => undefined
+                    )
             }
         }
 

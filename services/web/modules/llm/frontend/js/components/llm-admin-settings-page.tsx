@@ -86,33 +86,10 @@ function ToggleSwitch({
             aria-checked={checked}
             aria-label={label}
             onClick={() => onChange(!checked)}
-            style={{
-                position: 'relative',
-                width: 42,
-                height: 24,
-                flexShrink: 0,
-                borderRadius: 999,
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                transition: 'background-color 0.15s',
-                backgroundColor: checked
-                    ? 'var(--bg-accent-01, #0d6efd)'
-                    : 'var(--border-color-02, #adb5bd)',
-            }}
+            className={`ol-llm-admin-settings__switch${checked ? ' is-on' : ''}`}
         >
             <span
-                style={{
-                    position: 'absolute',
-                    top: 3,
-                    left: checked ? 21 : 3,
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    backgroundColor: '#fff',
-                    transition: 'left 0.15s',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-                }}
+                className="ol-llm-admin-settings__switch-knob"
             />
         </OLButton>
     )
@@ -324,7 +301,7 @@ export default function LLMAdminSettingsPage() {
     const allModels = Array.from(new Set([...knownModels, ...availableModels, ...allowedModels]))
 
     return (
-        <div className="container llm-settings">
+        <div className="container llm-settings ol-llm-admin-settings">
           {/* Page header */}
           <div className="llm-settings-header">
               <h1 className="llm-settings-header-title">
@@ -361,21 +338,14 @@ export default function LLMAdminSettingsPage() {
                           { key: 'chat', on: chatEnabled, set: setChatEnabled, title: t('feature_chat', 'Chat'), help: t('feature_chat_help', 'The AI chat panel and Ask AI on selection.') },
                           { key: 'completion', on: completionEnabled, set: setCompletionEnabled, title: t('feature_completion', 'Inline completion'), help: t('feature_completion_help', 'Autocomplete suggestions while typing.') },
                           { key: 'review', on: reviewEnabled, set: setReviewEnabled, title: t('feature_review', 'Compliance review'), help: t('feature_review_help', 'The whole-document review.') },
-                      ].map((f, i, arr) => (
+                      ].map(f => (
                           <div
                               key={f.key}
-                              style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: '1rem',
-                                  padding: '0.75rem 1rem',
-                                  borderBottom: i < arr.length - 1 ? '1px solid var(--border-color-01, #dee2e6)' : undefined,
-                              }}
+                              className="ol-llm-admin-settings__feature-row"
                           >
                               <div>
-                                  <span style={{ fontWeight: 500 }}>{f.title}</span>
-                                  <OLFormText style={{ margin: 0 }}>{f.help}</OLFormText>
+                                  <span className="ol-llm-admin-settings__feature-title">{f.title}</span>
+                                  <OLFormText className="ol-llm-admin-settings__no-margin">{f.help}</OLFormText>
                               </div>
                               <ToggleSwitch checked={f.on} onChange={f.set} label={f.title} />
                           </div>
@@ -390,7 +360,7 @@ export default function LLMAdminSettingsPage() {
                       <MaterialIcon type="link" />
                       {t('api_connection', 'API Connection')}
                       {testStatus === 'success' && (
-                          <OLBadge bg="success" style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>
+                          <OLBadge bg="success" className="ol-llm-admin-settings__connected-badge">
                               {t('connected', 'Connected')}
                           </OLBadge>
                       )}
@@ -416,7 +386,7 @@ export default function LLMAdminSettingsPage() {
                       />
                       {apiUrlFromEnv && (
                           <OLFormText>
-                              <MaterialIcon type="info" className="me-1" style={{ fontSize: '0.875rem' }} />
+                              <MaterialIcon type="info" className="me-1 ol-llm-admin-settings__icon-sm"  />
                               {t('llm_admin_from_env', 'Inherited from the LLM_API_URL environment variable. Saving here stores it in the admin settings file.')}
                           </OLFormText>
                       )}
@@ -456,8 +426,7 @@ export default function LLMAdminSettingsPage() {
                           <OLFormText>
                             <MaterialIcon
                               type="info"
-                              className="me-1"
-                              style={{ fontSize: '0.875rem' }}
+                              className="me-1 ol-llm-admin-settings__icon-sm"
                             />
                             {t(
                               'llm_type_from_env',
@@ -467,7 +436,7 @@ export default function LLMAdminSettingsPage() {
                       )}
                   </OLFormGroup>
 
-                  <OLFormGroup controlId="llm-api-key" style={{ marginBottom: '1rem' }}>
+                  <OLFormGroup controlId="llm-api-key" className="ol-llm-admin-settings__mb-lg">
                       <OLFormLabel>
                           {t('llm_api_key', 'API Key')}
                       </OLFormLabel>
@@ -489,12 +458,12 @@ export default function LLMAdminSettingsPage() {
                       />
                       {hasStoredKey && !llmApiKey && (
                           <OLFormText>
-                              <MaterialIcon type="check_circle" className="me-1" style={{ fontSize: '0.875rem', color: 'var(--green-60, #198754)' }} />
+                              <MaterialIcon type="check_circle" className="me-1 ol-llm-admin-settings__ok-green"  />
                               {t('llm_api_key_stored', 'An API key is already stored. Leave blank to keep it.')}
                           </OLFormText>
                       )}
                       <OLFormText>
-                          <MaterialIcon type="info" className="me-1" style={{ fontSize: '0.875rem' }} />
+                          <MaterialIcon type="info" className="me-1 ol-llm-admin-settings__icon-sm"  />
                           {t('llm_api_key_optional_local', 'Leave blank for a local server with no auth (e.g. a llama.cpp server).')}
                       </OLFormText>
                       {hasStoredKey && (
@@ -510,7 +479,7 @@ export default function LLMAdminSettingsPage() {
                       )}
                   </OLFormGroup>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div className="ol-llm-admin-settings__row-inline">
                       <OLButton
                           variant="secondary"
                           size="sm"
@@ -519,7 +488,7 @@ export default function LLMAdminSettingsPage() {
                           disabled={!canConnect}
                           isLoading={testStatus === 'testing'}
                       >
-                          <MaterialIcon type="cable" className="me-1" style={{ fontSize: '1rem' }} />
+                          <MaterialIcon type="cable" className="me-1 ol-llm-admin-settings__icon-base"  />
                           {t('test_connection', 'Test Connection')}
                       </OLButton>
                       {testStatus === 'success' && (
@@ -544,7 +513,7 @@ export default function LLMAdminSettingsPage() {
                       <MaterialIcon type="model_training" />
                       {t('model_selection', 'Model Selection')}
                       {allModels.length > 0 && (
-                          <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--content-secondary, #6c757d)' }}>
+                          <span className="ol-llm-admin-settings__model-count">
                               {allowedModels.filter(m => allModels.includes(m)).length}/{allModels.length} {t('selected', 'selected')}
                           </span>
                       )}
@@ -556,7 +525,9 @@ export default function LLMAdminSettingsPage() {
                       )}
                   </p>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: allModels.length > 0 ? '1rem' : 0 }}>
+                  <div
+                      className={`ol-llm-admin-settings__row-inline${allModels.length > 0 ? ' ol-llm-admin-settings__mt-lg' : ''}`}
+                  >
                       <OLButton
                           variant="secondary"
                           size="sm"
@@ -565,7 +536,7 @@ export default function LLMAdminSettingsPage() {
                           disabled={!canConnect}
                           isLoading={scanStatus === 'scanning'}
                       >
-                          <MaterialIcon type="radar" className="me-1" style={{ fontSize: '1rem' }} />
+                          <MaterialIcon type="radar" className="me-1 ol-llm-admin-settings__icon-base"  />
                           {t('scan_for_models', 'Scan for Models')}
                       </OLButton>
                       {scanStatus === 'success' && (
@@ -581,7 +552,7 @@ export default function LLMAdminSettingsPage() {
                           </span>
                       )}
                       {!canConnect && scanStatus === null && (
-                          <span style={{ fontSize: '0.8125rem', color: 'var(--content-secondary, #6c757d)' }}>
+                          <span className="ol-llm-admin-settings__small">
                               {t('configure_api_first', 'Configure the API connection above first')}
                           </span>
                       )}
@@ -589,26 +560,11 @@ export default function LLMAdminSettingsPage() {
 
                   {allModels.length > 0 && (
                       <>
-                          <div style={{
-                              border: '1px solid var(--border-color-01, #dee2e6)',
-                              borderRadius: '6px',
-                              overflow: 'hidden',
-                          }}>
-                              {allModels.map((model, idx) => (
+                          <div className="ol-llm-admin-settings__model-list">
+                              {allModels.map((model) => (
                                   <label
                                       key={model}
-                                      style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '0.75rem',
-                                          padding: '0.625rem 1rem',
-                                          borderBottom: idx < allModels.length - 1
-                                              ? '1px solid var(--border-color-01, #dee2e6)'
-                                              : undefined,
-                                          cursor: 'pointer',
-                                          margin: 0,
-                                          transition: 'background-color 0.15s',
-                                      }}
+                                      className="ol-llm-admin-settings__model-row"
                                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--bg-light-secondary, #f8f9fa)' }}
                                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '' }}
                                   >
@@ -616,31 +572,31 @@ export default function LLMAdminSettingsPage() {
                                           type="checkbox"
                                           checked={allowedModels.includes(model)}
                                           onChange={() => toggleAllowedModel(model)}
-                                          style={{ width: '1rem', height: '1rem', accentColor: 'var(--bg-accent-01, #0d6efd)' }}
+                                          className="ol-llm-admin-settings__model-checkbox"
                                       />
-                                      <span style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                                      <span className="ol-llm-admin-settings__mono-lg">
                                           {model}
                                       </span>
                                   </label>
                               ))}
                           </div>
-                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                          <div className="ol-llm-admin-settings__models-actions">
                               <OLButton
                                   variant="link"
                                   size="sm"
                                   type="button"
                                   onClick={() => setAllowedModels([...allModels])}
-                                  style={{ padding: 0, fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__link-btn"
                               >
                                   {t('select_all', 'Select all')}
                               </OLButton>
-                              <span style={{ color: 'var(--content-secondary, #6c757d)' }}>|</span>
+                              <span className="ol-llm-admin-settings__muted">|</span>
                               <OLButton
                                   variant="link"
                                   size="sm"
                                   type="button"
                                   onClick={() => setAllowedModels([])}
-                                  style={{ padding: 0, fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__link-btn"
                               >
                                   {t('unselect_all', 'Unselect all')}
                               </OLButton>
@@ -649,7 +605,10 @@ export default function LLMAdminSettingsPage() {
                   )}
 
                   {/* overleaf-lab: admin picks the single shared inline-completion model */}
-                  <OLFormGroup controlId="llm-completion-model" style={{ marginTop: allModels.length > 0 ? '1rem' : 0 }}>
+                  <OLFormGroup
+                      controlId="llm-completion-model"
+                      className={allModels.length > 0 ? 'ol-llm-admin-settings__mt-lg' : undefined}
+                  >
                       <OLFormLabel>
                           {t('inline_completion_model', 'Inline completion model')}
                       </OLFormLabel>
@@ -724,7 +683,7 @@ export default function LLMAdminSettingsPage() {
                       )}
                   </p>
 
-                  <OLFormGroup controlId="llm-system-prompt" style={{ marginBottom: '0.5rem' }}>
+                  <OLFormGroup controlId="llm-system-prompt" className="ol-llm-admin-settings__mb-sm">
                       <OLFormControl
                           as="textarea"
                           rows={12}
@@ -737,11 +696,11 @@ export default function LLMAdminSettingsPage() {
                               'You are a helpful LaTeX assistant...'
                           )}
                           maxLength={4000}
-                          style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                          className="ol-llm-admin-settings__mono"
                       />
                   </OLFormGroup>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <OLFormText style={{ margin: 0 }}>
+                  <div className="ol-llm-admin-settings__row-between">
+                      <OLFormText className="ol-llm-admin-settings__no-margin">
                           {systemPrompt.length}/4000 {t('characters', 'characters')}
                       </OLFormText>
                       <OLButton
@@ -749,9 +708,9 @@ export default function LLMAdminSettingsPage() {
                           size="sm"
                           type="button"
                           onClick={() => setSystemPrompt(DEFAULT_SYSTEM_PROMPT)}
-                          style={{ padding: 0, fontSize: '0.8125rem' }}
+                          className="ol-llm-admin-settings__link-btn"
                       >
-                          <MaterialIcon type="restart_alt" className="me-1" style={{ fontSize: '1rem' }} />
+                          <MaterialIcon type="restart_alt" className="me-1 ol-llm-admin-settings__icon-base"  />
                           {t('reset_to_default', 'Reset to default')}
                       </OLButton>
                   </div>
@@ -773,19 +732,14 @@ export default function LLMAdminSettingsPage() {
 
                   {/* overleaf-lab: (a) rubrics editor */}
                   {complianceRubrics.length === 0 && (
-                      <p style={{ color: 'var(--content-secondary, #6c757d)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                      <p className="ol-llm-admin-settings__muted-md">
                           {t('no_rubrics_yet', 'No rubrics yet. Add one to enable the compliance review for users.')}
                       </p>
                   )}
                   {complianceRubrics.map(rubric => (
                       <div
                           key={rubric.id}
-                          style={{
-                              border: '1px solid var(--border-color-01, #dee2e6)',
-                              borderRadius: '6px',
-                              padding: '1rem',
-                              marginBottom: '0.75rem',
-                          }}
+                          className="ol-llm-admin-settings__rubric-card"
                       >
                           <OLFormGroup controlId={`rubric-name-${rubric.id}`}>
                               <OLFormLabel>
@@ -800,7 +754,7 @@ export default function LLMAdminSettingsPage() {
                                   placeholder={t('rubric_name_placeholder', 'e.g. Thesis writing guidelines')}
                               />
                           </OLFormGroup>
-                          <OLFormGroup controlId={`rubric-guidelines-${rubric.id}`} style={{ marginBottom: '0.5rem' }}>
+                          <OLFormGroup controlId={`rubric-guidelines-${rubric.id}`} className="ol-llm-admin-settings__mb-sm">
                               <OLFormLabel>
                                   {t('rubric_guidelines', 'Guidelines')}
                               </OLFormLabel>
@@ -811,12 +765,12 @@ export default function LLMAdminSettingsPage() {
                                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                                       updateRubric(rubric.id, 'guidelines', e.target.value)
                                   }
-                                  style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__mono"
                               />
                           </OLFormGroup>
                           {/* overleaf-lab: per-rubric mechanical scans; policy
                               patterns live next to the guidelines they verify */}
-                          <OLFormGroup controlId={`rubric-scans-${rubric.id}`} style={{ marginBottom: '0.5rem' }}>
+                          <OLFormGroup controlId={`rubric-scans-${rubric.id}`} className="ol-llm-admin-settings__mb-sm">
                               <OLFormLabel>
                                   {t('rubric_scan_patterns', 'Scan patterns (optional, one per line)')}
                               </OLFormLabel>
@@ -828,7 +782,7 @@ export default function LLMAdminSettingsPage() {
                                       updateRubric(rubric.id, 'scanPatterns', e.target.value)
                                   }
                                   placeholder={'First person :: (?<![\\w.@/])(io|noi|ho)\\b\nWikipedia :: wikipedia'}
-                                  style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__mono"
                               />
                               <OLFormText>
                                   {t(
@@ -837,27 +791,27 @@ export default function LLMAdminSettingsPage() {
                                   )}
                               </OLFormText>
                           </OLFormGroup>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <div className="ol-llm-admin-settings__row-end">
                               <OLButton
                                   variant="danger"
                                   size="sm"
                                   type="button"
                                   onClick={() => removeRubric(rubric.id)}
                               >
-                                  <MaterialIcon type="delete" className="me-1" style={{ fontSize: '1rem' }} />
+                                  <MaterialIcon type="delete" className="me-1 ol-llm-admin-settings__icon-base"  />
                                   {t('remove', 'Remove')}
                               </OLButton>
                           </div>
                       </div>
                   ))}
-                  <div style={{ marginBottom: '0.5rem' }}>
+                  <div className="ol-llm-admin-settings__mb-sm">
                       <OLButton
                           variant="secondary"
                           size="sm"
                           type="button"
                           onClick={addRubric}
                       >
-                          <MaterialIcon type="add" className="me-1" style={{ fontSize: '1rem' }} />
+                          <MaterialIcon type="add" className="me-1 ol-llm-admin-settings__icon-base"  />
                           {t('add_rubric', 'Add rubric')}
                       </OLButton>
                   </div>
@@ -869,7 +823,7 @@ export default function LLMAdminSettingsPage() {
                   </OLFormText>
 
                   {/* overleaf-lab: (b) review model selector */}
-                  <OLFormGroup controlId="llm-review-model" style={{ marginTop: '1.25rem' }}>
+                  <OLFormGroup controlId="llm-review-model" className="ol-llm-admin-settings__mt-xl">
                       <OLFormLabel>
                           {t('review_model', 'Review model')}
                       </OLFormLabel>
@@ -914,7 +868,7 @@ export default function LLMAdminSettingsPage() {
                   </OLFormGroup>
 
                   {/* overleaf-lab: (c) max context tokens */}
-                  <OLFormGroup controlId="llm-max-context-tokens" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                  <OLFormGroup controlId="llm-max-context-tokens" className="ol-llm-admin-settings__mt-lg-mb-0">
                       <OLFormLabel>
                           {t('max_context_tokens', 'Max context tokens')}
                       </OLFormLabel>
@@ -937,7 +891,7 @@ export default function LLMAdminSettingsPage() {
                   </OLFormGroup>
 
                   {/* overleaf-lab: budget for the review answer itself */}
-                  <OLFormGroup controlId="llm-review-max-tokens" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                  <OLFormGroup controlId="llm-review-max-tokens" className="ol-llm-admin-settings__mt-lg-mb-0">
                       <OLFormLabel>
                           {t('review_max_tokens', 'Review answer budget (tokens)')}
                       </OLFormLabel>
@@ -1003,8 +957,8 @@ export default function LLMAdminSettingsPage() {
                           help: t('review_system_prompt_help', 'System prompt for the whole-document compliance review.'),
                       },
                   ].map(field => (
-                      <div key={field.key} style={{ marginBottom: '1.25rem' }}>
-                          <OLFormGroup controlId={`llm-${field.key}`} style={{ marginBottom: '0.25rem' }}>
+                      <div key={field.key} className="ol-llm-admin-settings__mb-xl">
+                          <OLFormGroup controlId={`llm-${field.key}`} className="ol-llm-admin-settings__mb-xs">
                               <OLFormLabel>
                                   {field.label}
                               </OLFormLabel>
@@ -1015,11 +969,11 @@ export default function LLMAdminSettingsPage() {
                                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                                       field.set(e.target.value)
                                   }
-                                  style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__mono"
                               />
                           </OLFormGroup>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <OLFormText style={{ margin: 0 }}>
+                          <div className="ol-llm-admin-settings__row-between">
+                              <OLFormText className="ol-llm-admin-settings__no-margin">
                                   {field.help}
                               </OLFormText>
                               <OLButton
@@ -1027,9 +981,9 @@ export default function LLMAdminSettingsPage() {
                                   size="sm"
                                   type="button"
                                   onClick={() => field.set(field.def || '')}
-                                  style={{ padding: 0, fontSize: '0.8125rem' }}
+                                  className="ol-llm-admin-settings__link-btn"
                               >
-                                  <MaterialIcon type="restart_alt" className="me-1" style={{ fontSize: '1rem' }} />
+                                  <MaterialIcon type="restart_alt" className="me-1 ol-llm-admin-settings__icon-base"  />
                                   {t('reset_to_default', 'Reset to default')}
                               </OLButton>
                           </div>
@@ -1037,29 +991,29 @@ export default function LLMAdminSettingsPage() {
                   ))}
 
                   {/* overleaf-lab: (b) collapsible Ask AI action templates, one textarea per action */}
-                  <div style={{ marginTop: '0.5rem' }}>
+                  <div className="ol-llm-admin-settings__mt-sm">
                       <OLButton
                           variant="link"
                           size="sm"
                           type="button"
                           onClick={() => setShowActions(v => !v)}
-                          style={{ padding: 0, fontSize: '0.875rem' }}
+                          className="ol-llm-admin-settings__small-md"
                       >
-                          <MaterialIcon type={showActions ? 'expand_less' : 'expand_more'} className="me-1" style={{ fontSize: '1.125rem' }} />
+                          <MaterialIcon type={showActions ? 'expand_less' : 'expand_more'} className="me-1 ol-llm-admin-settings__icon-lg"  />
                           {t('ask_ai_action_templates', 'Ask AI action templates')}
                       </OLButton>
 
                       {showActions && (
-                          <div style={{ marginTop: '0.75rem' }}>
-                              <OLFormText style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+                          <div className="ol-llm-admin-settings__mt-md">
+                              <OLFormText className="ol-llm-admin-settings__help-before">
                                   {t(
                                       'ask_ai_action_help',
                                       'Each template runs on the selected text. Use {{selection}} where the selected text should be inserted; if omitted, it is appended.'
                                   )}
                               </OLFormText>
                               {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'mathFix', 'title', 'abstract'].map(key => (
-                                  <div key={key} style={{ marginBottom: '1rem' }}>
-                                      <OLFormGroup controlId={`llm-action-${key}`} style={{ marginBottom: '0.25rem' }}>
+                                  <div key={key} className="ol-llm-admin-settings__mb-lg">
+                                      <OLFormGroup controlId={`llm-action-${key}`} className="ol-llm-admin-settings__mb-xs">
                                           <OLFormLabel>
                                               {t(`ask_ai_action_${key}`, key.charAt(0).toUpperCase() + key.slice(1))}
                                           </OLFormLabel>
@@ -1071,10 +1025,10 @@ export default function LLMAdminSettingsPage() {
                                                   const value = e.target.value
                                                   setAskAiActionPrompts(prev => ({ ...prev, [key]: value }))
                                               }}
-                                              style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                                              className="ol-llm-admin-settings__mono"
                                           />
                                       </OLFormGroup>
-                                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                      <div className="ol-llm-admin-settings__row-end">
                                           <OLButton
                                               variant="link"
                                               size="sm"
@@ -1083,9 +1037,9 @@ export default function LLMAdminSettingsPage() {
                                                   const def = promptDefaults.askAiActionPrompts?.[key] || ''
                                                   setAskAiActionPrompts(prev => ({ ...prev, [key]: def }))
                                               }}
-                                              style={{ padding: 0, fontSize: '0.8125rem' }}
+                                              className="ol-llm-admin-settings__link-btn"
                                           >
-                                              <MaterialIcon type="restart_alt" className="me-1" style={{ fontSize: '1rem' }} />
+                                              <MaterialIcon type="restart_alt" className="me-1 ol-llm-admin-settings__icon-base"  />
                                               {t('reset_to_default', 'Reset to default')}
                                           </OLButton>
                                       </div>
@@ -1098,7 +1052,7 @@ export default function LLMAdminSettingsPage() {
 
               {/* ── Notifications ── */}
               {showSuccess && (
-                  <div style={{ marginBottom: '1rem' }}>
+                  <div className="ol-llm-admin-settings__mb-lg">
                       <OLNotification
                           type="success"
                           content={t('llm_settings_saved', 'LLM settings saved successfully.')}
@@ -1106,7 +1060,7 @@ export default function LLMAdminSettingsPage() {
                   </div>
               )}
               {isError && (
-                  <div style={{ marginBottom: '1rem' }}>
+                  <div className="ol-llm-admin-settings__mb-lg">
                       <OLNotification
                           type="error"
                           content={
@@ -1129,9 +1083,9 @@ export default function LLMAdminSettingsPage() {
                   disabled={isSaving}
                   isLoading={isSaving}
                   loadingLabel={t('saving') + '…'}
-                  style={{ minWidth: '160px' }}
+                  className="ol-llm-admin-settings__save-btn"
               >
-                  <MaterialIcon type="save" className="me-1" style={{ fontSize: '1.125rem' }} />
+                  <MaterialIcon type="save" className="me-1 ol-llm-admin-settings__icon-lg"  />
                   {t('save_settings', 'Save Settings')}
               </OLButton>
           </form>

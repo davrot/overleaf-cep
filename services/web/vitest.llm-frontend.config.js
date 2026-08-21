@@ -19,7 +19,7 @@ module.exports = {
     environment: 'jsdom',
     setupFiles: ['./test/unit/src/llm-vitest-setup.mjs'],
     globals: true,
-    include: ['test/unit/src/llm-byo-draft-render.test.mjs'],
+    include: ['test/unit/src/llm-*-render.test.mjs'],
     hookTimeout: 30000,
     testTimeout: 30000,
   },

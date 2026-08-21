@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
+import { getJSON } from '@/infrastructure/fetch-json'
 import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import { useLLMChat } from '../hooks/use-llm-chat'
@@ -42,11 +43,11 @@ function PdfLogEntryAskAIButton({ logEntry }: AskAIButtonProps) {
                         file: String(logEntry.file),
                         line: String(logEntry.line),
                     })
-                    const resp = await fetch(
-                        `/project/${projectId}/llm/source-context?${params.toString()}`,
-                        { credentials: 'same-origin' }
+                    // F14: shared fetch utility (throws FetchError on non-ok;
+                    // caught below — we simply proceed without source context).
+                    const json: any = await getJSON(
+                        `/project/${projectId}/llm/source-context?${params.toString()}`
                     )
-                    const json = await resp.json()
                     if (json?.ok && json.snippet) {
                         sourceSnippet = json.snippet
                     }

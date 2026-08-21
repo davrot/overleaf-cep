@@ -240,3 +240,246 @@
     }
   }
 }
+
+/* overleaf-lab: admin LLM settings page — styles extracted from inline
+   styles (F13). Rules are scoped under the page container for specificity
+   over the OL/bootstrap component base classes they override. */
+.ol-llm-admin-settings {
+  /* ── toggle switch (Features section) ── */
+  .ol-llm-admin-settings__switch {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    background-color: var(--border-color-02, #adb5bd);
+
+    &.is-on {
+      background-color: var(--bg-accent-01, #0d6efd);
+
+      .ol-llm-admin-settings__switch-knob {
+        left: 21px;
+      }
+    }
+  }
+
+  .ol-llm-admin-settings__switch-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #fff;
+    transition: left 0.15s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ── shared text helpers ── */
+  .ol-llm-admin-settings__icon-sm {
+    font-size: 0.875rem;
+  }
+
+  .ol-llm-admin-settings__icon-base {
+    font-size: 1rem;
+  }
+
+  .ol-llm-admin-settings__icon-lg {
+    font-size: 1.125rem;
+  }
+
+  .ol-llm-admin-settings__icon-green {
+    color: var(--green-60, #198754);
+  }
+
+  .ol-llm-admin-settings__mono {
+    font-family: monospace;
+    font-size: 0.8125rem;
+  }
+
+  .ol-llm-admin-settings__muted {
+    color: var(--content-secondary, #6c757d);
+  }
+
+  .ol-llm-admin-settings__small {
+    font-size: 0.8125rem;
+    color: var(--content-secondary, #6c757d);
+  }
+
+  .ol-llm-admin-settings__model-count {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    color: var(--content-secondary, #6c757d);
+  }
+
+  .ol-llm-admin-settings__connected-badge {
+    margin-left: auto;
+    font-size: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__link-btn {
+    padding: 0;
+    font-size: 0.8125rem;
+  }
+
+  .ol-llm-admin-settings__link-btn-lg {
+    padding: 0;
+    font-size: 0.875rem;
+  }
+
+  .ol-llm-admin-settings__no-margin {
+    margin: 0;
+  }
+
+  .ol-llm-admin-settings__help-before {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__no-rubrics {
+    color: var(--content-secondary, #6c757d);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  /* ── layout rows ── */
+  .ol-llm-admin-settings__row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ol-llm-admin-settings__row-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__row-end {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .ol-llm-admin-settings__feature-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .ol-llm-admin-settings__feature-row + .ol-llm-admin-settings__feature-row {
+    border-top: 1px solid var(--border-color-01, #dee2e6);
+  }
+
+  .ol-llm-admin-settings__feature-title {
+    font-weight: 500;
+  }
+
+  .ol-llm-admin-settings__model-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    cursor: pointer;
+    margin: 0;
+    transition: background-color 0.15s;
+  }
+
+  .ol-llm-admin-settings__model-row + .ol-llm-admin-settings__model-row {
+    border-top: 1px solid var(--border-color-01, #dee2e6);
+  }
+
+  .ol-llm-admin-settings__model-checkbox {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--bg-accent-01, #0d6efd);
+  }
+
+  .ol-llm-admin-settings__models-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__rubric-card {
+    border: 1px solid var(--border-color-01, #dee2e6);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__save-btn {
+    min-width: 160px;
+  }
+
+  /* ── text + state colors ── */
+  .ol-llm-admin-settings__ok-green {
+    color: var(--green-60, #198754);
+    font-size: 0.875rem;
+  }
+
+  .ol-llm-admin-settings__muted-md {
+    color: var(--content-secondary, #6c757d);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .ol-llm-admin-settings__mono-lg {
+    font-family: monospace;
+    font-size: 0.875rem;
+  }
+
+  .ol-llm-admin-settings__small-md {
+    font-size: 0.875rem;
+    padding: 0;
+  }
+
+  .ol-llm-admin-settings__model-list {
+    border: 1px solid var(--border-color-01, #dee2e6);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* ── margin utilities (this page only) ── */
+  .ol-llm-admin-settings__mb-xs {
+    margin-bottom: 0.25rem;
+  }
+
+  .ol-llm-admin-settings__mb-sm {
+    margin-bottom: 0.5rem;
+  }
+
+  .ol-llm-admin-settings__mb-lg {
+    margin-bottom: 1rem;
+  }
+
+  .ol-llm-admin-settings__mb-xl {
+    margin-bottom: 1.25rem;
+  }
+
+  .ol-llm-admin-settings__mt-sm {
+    margin-top: 0.5rem;
+  }
+
+  .ol-llm-admin-settings__mt-md {
+    margin-top: 0.75rem;
+  }
+
+  .ol-llm-admin-settings__mt-lg {
+    margin-top: 1rem;
+  }
+
+  .ol-llm-admin-settings__mt-xl {
+    margin-top: 1.25rem;
+  }
+
+  .ol-llm-admin-settings__mt-lg-mb-0 {
+    margin-top: 1rem;
+    margin-bottom: 0;
+  }
+}
