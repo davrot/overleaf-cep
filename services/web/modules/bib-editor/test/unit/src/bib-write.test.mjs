@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   planBibWrite,
   planBibDelete,
+  planBibBulkDelete,
   isBibDocument,
   serializeBibEntry,
 } from '../../../frontend/js/utils/bib-write.ts'
@@ -122,5 +123,65 @@ describe('bib-write (R2 plan, pure)', () => {
     expect(isBibDocument('% a comment with @article{fake}\nreal text\n')).toBe(true)
     // a genuinely entry-less document stays non-bib
     expect(isBibDocument('just prose, no entry markers\n')).toBe(false)
+  })
+})
+
+describe('planBibBulkDelete (W5, pure)', () => {
+  const src =
+    '@article{k1,\n  title = {One},\n  year = {2020},\n}\n' +
+    '@book{k2, title = {Two}, year = {2021}}\n' +
+    '@misc{k3}\n' +
+    '@inproceedings{k4, title = {Four}}\n'
+
+  it('plans N non-adjacent deletes as ascending ranges (one dispatch)', () => {
+    const g = planBibBulkDelete(src, ['k2', 'k4'])
+    expect(g.ok).toBe(true)
+    const { changes } = g
+    // ascending + non-overlapping
+    for (let i = 1; i < changes.length; i++) {
+      expect(changes[i].from).toBeGreaterThanOrEqual(changes[i - 1].to)
+    }
+    // applying the changes (from the BACK, so offsets stay valid for the
+    // earlier ranges) deletes both entries, keeps the rest
+    const applied = [...changes]
+      .sort((a, b) => b.from - a.from)
+      .reduce((acc, c) => acc.slice(0, c.from) + acc.slice(c.to), src)
+    const ids = parseBibFile(applied).flatMap(e => e.id)
+    expect(ids).not.toContain('k2')
+    expect(ids).not.toContain('k4')
+    expect(ids).toContain('k1')
+    expect(ids).toContain('k3')
+  })
+
+  it('rejects the WHOLE op when one id is missing (no partial)', () => {
+    const g = planBibBulkDelete(src, ['k1', 'nope'])
+    expect(g.ok).toBe(false)
+    expect(g.reason).toBe('entry-gone')
+  })
+
+  it('deduplicates ids (double-pick is a no-op on the second)', () => {
+    const g = planBibBulkDelete(src, ['k1', 'k1'])
+    expect(g.ok).toBe(true)
+    expect(g.changes).toHaveLength(1)
+  })
+
+  it('an empty selection plans ZERO changes (no-op dispatch)', () => {
+    const g = planBibBulkDelete(src, [])
+    expect(g.ok).toBe(true)
+    expect(g.changes).toHaveLength(0)
+  })
+
+  it('rejects a non-bib document', () => {
+    expect(planBibBulkDelete('just text\n', ['k1']).ok).toBe(false)
+  })
+
+  it('consumes trailing newlines like the single planner (no blank lines)', () => {
+    const s = '@misc{only}\n'
+    const g = planBibBulkDelete(s, ['only'])
+    expect(g.ok).toBe(true)
+    const [c] = g.changes
+    const applied = s.slice(0, c.from) + s.slice(c.to)
+    // the whole entry, incl. its trailing newline, is removed (no blank line)
+    expect(applied).toBe('')
   })
 })

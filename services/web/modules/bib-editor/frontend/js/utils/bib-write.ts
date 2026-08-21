@@ -158,3 +158,60 @@ export function planBibDelete(
     },
   }
 }
+
+export type BibBulkDeleteGuard =
+  | { ok: true; changes: { from: number; to: number; insert: string }[] }
+  | { ok: false; reason: string }
+
+/**
+ * Plan a bulk delete of several entries against the *current* source (Phase
+ * B W5). The guard is ALL-OR-NOTHING: when ANY id is missing from the
+ * fresh parse, the WHOLE op is rejected (no partial deletes). On success the
+ * changes are sorted ascending and applied as a single CodeMirror dispatch.
+ * Duplicate ids in `entryIds` are deduplicated (a card can't be picked
+ * twice, but the planner must stay pure+safe).
+ */
+export function planBibBulkDelete(
+  source: string,
+  entryIds: string[]
+): BibBulkDeleteGuard {
+  if (!isBibDocument(source)) {
+    return { ok: false, reason: NOT_A_BIB_REASON }
+  }
+  const unique = [...new Set(entryIds)]
+  if (unique.length === 0) {
+    // An empty selection is a no-op (zero changes); the caller simply
+    // doesn't dispatch.
+    return { ok: true, changes: [] }
+  }
+  const entries = parseBibFile(source)
+  const ranges: { from: number; to: number }[] = []
+  for (const id of unique) {
+    const match = entries.filter(e => e.id === id)
+    if (match.length !== 1) {
+      return { ok: false, reason: ENTRY_GONE_REASON }
+    }
+    const { sourceStart, sourceEnd } = match[0]
+    // consume trailing newlines so we don't leave blank lines (same as the
+    // single planner)
+    let end = sourceEnd
+    while (
+      end < source.length &&
+      (source[end] === '\n' || source[end] === '\r')
+    ) {
+      end++
+    }
+    ranges.push({ from: sourceStart, to: end })
+  }
+  ranges.sort((a, b) => a.from - b.from)
+  // Defensive: distinct ids have distinct, non-overlapping parser ranges.
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i].from < ranges[i - 1].to) {
+      return { ok: false, reason: ENTRY_GONE_REASON }
+    }
+  }
+  return {
+    ok: true,
+    changes: ranges.map(r => ({ from: r.from, to: r.to, insert: '' })),
+  }
+}

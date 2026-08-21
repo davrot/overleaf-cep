@@ -26,7 +26,12 @@ import { Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
 import { parseBibFile, serializeBibEntry } from '../utils/bib-parser'
 import type { ParsedBibEntry } from '../utils/bib-parser'
-import { planBibWrite, planBibDelete, isBibDocument } from '../utils/bib-write'
+import {
+  planBibWrite,
+  planBibDelete,
+  planBibBulkDelete,
+  isBibDocument,
+} from '../utils/bib-write'
 import type { BibEntry } from '../utils/bib-types'
 
 /**
@@ -142,7 +147,7 @@ class BibEditorPlugin {
         mode: 'existing' | 'new'
         originalId?: string
         expectedSource?: string
-      } & { entryId?: string }
+      } & { entryId?: string; entryIds?: string[] }
 
       if (ev.type === BIB_DELETE_EVENT && !isBibDocument(source)) {
         this.emitWriteFailed('not-a-bib-file')
@@ -181,7 +186,25 @@ class BibEditorPlugin {
         // banner shows and the form stays for a fix (§2.3 / §12 P1a).
         this.emitState({ id: entry.id as string, mode, originalId })
       } else if (ev.type === BIB_DELETE_EVENT) {
-        const entryId = (detail as { entryId: string }).entryId
+        const { entryId, entryIds } = detail as {
+          entryId?: string
+          entryIds?: string[]
+        }
+        // Bulk delete (W5): one guarded write, all-or-nothing; a zero-
+        // change plan (empty selection) is a deliberate no-op.
+        if (entryIds !== undefined) {
+          const guard = planBibBulkDelete(source, entryIds)
+          if (!guard.ok) {
+            this.emitWriteFailed(guard.reason)
+            return
+          }
+          if (guard.changes.length === 0) {
+            return
+          }
+          this.view.dispatch({ changes: guard.changes })
+          this.emitState()
+          return
+        }
         const guard = planBibDelete(source, entryId)
         if (!guard.ok) {
           this.emitWriteFailed(guard.reason)

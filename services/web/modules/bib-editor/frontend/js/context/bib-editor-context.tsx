@@ -50,7 +50,10 @@ export type BibWriteRequest = {
 }
 
 export type BibDeleteRequest = {
-  entryId: string
+  /** Single entry (one delete). Use this XOR `entryIds`. */
+  entryId?: string
+  /** Bulk delete (W5): all-or-nothing guarded write. */
+  entryIds?: string[]
   expectedSource: string
 }
 
