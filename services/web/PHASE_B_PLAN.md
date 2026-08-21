@@ -104,6 +104,48 @@ context lives under `features/ide-react/context`):
 W6 gate: only after outcomes 1+2 are recorded. W1–W5 do NOT depend on Step 0
 outcomes 1/2 (only W6 does).
 
+### Step 0 outcomes (recorded 2026-08-21, pre-W1)
+
+1. **Files context: no frontend write path to closed files (fork (b)).**
+   - There is no `useFilesContext`/files slice in this fork
+     (`frontend/js/states/` does not exist; `useFilesContext` is
+     nowhere in `frontend/js`). No `contentForFile`/`getContent(fileId)`/
+     dirty-file save API on the frontend (`dirtyFileIds`/`saveDirtyFiles`
+     absent). The sync layer (ot) is server-side; the frontend only holds
+     content for *open* documents through `DocumentContainer`
+     (`features/ide-react/context/editor-open-doc-context.tsx`:
+     `currentDocumentId: DocId | null` + `openDocName` + `currentDocument`).
+   - A reference-picker write path exists (`references-context.tsx`,
+     Zotero module router) but is for writing into the *current* open
+     document, not for a user-chosen file → not a move primitive.
+   => **Fork (b) chosen: W6 (Move) is deferred** as a sync-layer
+     follow-up (Phase B1). Bulk **Delete (W5) ships on its own**. No
+     destination picker, no move code, **no module endpoint** (per plan in
+     both forks). The deferred W6 design + investigation findings live in
+     this plan; the follow-up (any machine) must be built against the
+     sync/document service layer, not the frontend context.
+2. **Open-doc context**: `useEditorOpenDocContext` exposes
+   `currentDocumentId` (DocId, exposed/persisted), `openDocName` (exposed),
+   `currentDocument` (local state). The module already uses `openDocName`
+   (panel `bib-editor-panel.tsx:61`) → file-switch watcher works today.
+3. **New Entry anchor**: `bib-editor-panel.tsx:200` `handleNewEntry` →
+   `selectNew()` (no type arg); `selectNew(draft?: BibEntry)` at
+   `bib-editor-context.tsx:179`. W1 wires preset through here.
+4. **Delete flow anchor**: `planBibDelete(source: string, entryId: string):
+   BibWriteGuard` (`bib-write.ts:129`); rejects `NOT_A_BIB_REASON` /
+   `ENTRY_GONE_REASON`; `BIB_DELETE_EVENT` detail `{ entryId, expectedSource }`;
+   extension gates delete on `isBibDocument(source)` + `expectedSource`
+   equality (`bib-editor-extension.ts:147-158`). W5 reuses this path;
+   bulk planner = per-id `planBibDelete` + range merge + one dispatch.
+5. **i18n plural convention** (repo `en.json`): pairs
+   `<key>` (singular text) + `<key>_plural` (text with `__count__`),
+   i18next plural suffix (matches e.g. `confirm_accept_selected_changes`
+   / `_plural`). W4/W5 keys follow: singular + `_plural` pair, `__count__`
+   interpolation (repo-standard; the module test's `__var__` rule covers
+   module-only interpolation and accepts `__count__` per repo convention —
+   verified by mirroring existing plural keys).
+   Baseline at step: `biome lint` exit 0, `vitest run` exit 0.
+
 ---
 
 ## W1 — New-Entry type preset (P2 close-out)
@@ -360,105 +402,48 @@ backward-compat preserved).
 
 ---
 
-## W6 — Move selected to another `.bib` file (Step 0 gate)
+## W6 — Move selected to another `.bib` file — **DEFERRED (fork (b), 2026-08-21)**
 
-**Gate (Step 0, outcomes 1+2):**
-- (a) frontend-side feasible → implement as below (no endpoint).
-- (b) infeasible → do NOT build; update this plan: W6 = "deferred (Phase
-  B1, sync-layer follow-up)"; skip its keys/tests; note in the PR reply
-  (delete ships now; move needs follow-up). **This plan was written for fork
-  (a) scope, fork (b) is recorded here, W6 section not touched.**
+**Decision (Step 0 outcomes 1+2, recorded above): no implementation in this
+cycle.** The repo frontend has no files context / files slice (no per-closed-
+file content store, no dirty/save API); open-document content lives in a
+`DocumentContainer` behind the open-doc context, and the sync layer is
+server-side, so appending to a *closed, user-chosen* `.bib` file is not
+expressible from frontend context without touching the sync/document-service
+layer. Per the written plan: W6 commits **no code** in this cycle; the
+follow-up is built against the sync/document service layer (NOT a module
+endpoint — "no module endpoint in either fork" stays), and W5 (bulk delete)
+ships on its own.
 
-**Goal (fork a):** selection bar `Move…` → modal (list of project `.bib`
-files **excluding the current open doc**? — Decision: **exclude current doc**
-(moving into the same file is a no-op and confusing; "all *other* bib
-files" in the project); select one → move writes selected entries
-(**verbatim** source slices, from the fresh parse offsets — NOT
-re-serialized: preserves whitespace/comments exactly) to the target file
-(appended to its end with a trailing-newline-normalization guard),
-marks the target dirty/save via the files context (Step 0 path),
-**source delete in the same transaction** (bulk-delete path of W5 against
-the source, expectedSource snapshot **before** write… ordering:
-**read target + plan source delete + plan target append** → one source
-dispatch (delete) + one server-side target setContent (files context) —
-the append is NOT a CodeMirror dispatch (not this document) — that's the
-Step 0 path). **Guard:** source unchanged (expectedSource); target is a
-`.bib` (name) AND parse-able or empty; target content **refreshed from the
-files context at confirm time** (race: if target was closed and edited
-elsewhere — out of scope; document).
-- On source-delete guard fail → **nothing written to target**, banner
-  (source is the transaction's source of truth; target only written after
-  source dispatch confirmed… but the extension's dispatch is local +
-  sync-layer — "confirmed" local = the parse re-emit (existing
-  `emitState` pattern). Sequence: dispatch source delete (parse-emit,
-  rebind? no—bulk) → **then** files-context append on target (separate
-  save); target-append failure = files-context state (dirty/save error
-  handling is the repo's — we surface "not saved" via files context? —
-  Decision: source delete first (parse-confirmed), then append; append is
-  repo-standard dirty → repo save path takes over (its error UI).
-- Selection cleared after move (all ids gone from source).
+**Consequences in this plan:**
+- Selection bar (W4) shows counts + **Delete** only — **no Move button**.
+- Fork (a) design sketch is retained below as the follow-up record (NOT
+  built). Fork (b) note: picker source was "files context"; per Step 0 the
+  list of project `.bib` files still needs a source (the follow-up must
+  resolve it — likely via the file-tree open context that the panel's host
+  provides, or a project files list from the sync layer) — this is a
+  FOLLOW-UP investigation, not a Phase B blocker.
+- Live matrix: **L14/L15 removed** (no move scenarios).
+- PR reply (W7): "Move is parked as a sync-layer follow-up; delete ships
+  now; no endpoint to fake it."
 
-**Change (fork a):**
-- new util `frontend/js/utils/bib-move.ts`:
-  `planBibMove(sourceEntries: ParsedBibEntry[], targetSource: string):
-  { insert: string }`: serialize the *exact source slices* (offsets from
-  `ParsedBibEntry.from/to`, parser offsets), ensure each ends with `\n\n`
-  before concat (append to target: if target empty → the slice is the content
-  (no leading-newline guard: empty append = first byte); else ensure the
-  target ends with a newline (if not, +`'\n'` before appending) + one
-  trailing newline (no double-newline accumulation).
-  Pure + tested.
-- context: `moveEntries(ids, targetFileId)` → extension does source
-  (bulk-delete plan, same guard) + files context `setContent(target,
-  currentTarget + plan.insert)` + `markDirty(target)` (Step 0 path names).
-- panel: destination modal (files from files context (`.bib` names only,
-  current open doc excluded); `GenericConfirmModal`-like — a
-  `GenericSelectModal`? does one exist? grep `Generic` modal (decision
-  Step 0: if a select modal exists (`GenericSelectModal`? verify) → reuse;
-  else build a local minimal one (scoped CSS, no new locale beyond 2 keys).
-- extension: new event `BIB_MOVE_EVENT` (detail: `{ entryIds, targetFileId,
-  expectedSource }`) → plan source delete (bulk) → dispatch → `emitState()` →
-  **then** the context/provider does the target append (files context
-  lives outside the CodeMirror extension? the extension has no file context
-  → the provider (`bib-editor-provider.tsx`) or panel effect does the target
-  write (provider: it's the bridge). Decision: **provider** (it has access
-  to files context (verify it resolves there — rootProvider mounts; Step 0:
-  does `BibEditorProvider` (rootContext) have a files context ancestor?
-  If no: panel does (panel is under `EditorPanelProvider`? panel is a
-  `visualEditorProviders` — its tree includes files context? Step 0:
-  resolve the mount point that has **both** files context + open-doc).
-  If the provider mount has no files context → move logic in a **thin
-  child** of the panel (a `BibMoveHandler` subcomponent rendered into the
-  panel tree (where files context IS available) — the panel already
-  accesses files context? no (it uses open-doc + editor properties).
-  Step 0 must identify the mount point with files context (the file-tree /
-  file context wrapper tree).
+**Deferred-design sketch** (for the follow-up, NOT built):
+- Verbatim source slices from the fresh parse (`ParsedBibEntry` offsets) →
+  appended to destination file, each terminated by a blank line (no double
+  newline accumulation); destination read via the sync/document service
+  layer (not from an open editor); source deleted via the W5 bulk planner
+  (source `expectedSource` guard runs first); destination write scheduled
+  via the service-layer append+save (not a CodeMirror dispatch).
+- Destination picker = project `.bib` filenames minus the open doc; confirm
+  modal; i18n keys follow the repo plural convention (Step 0 outcome 5).
+- No per-entry move, no drag-drop, no cross-project move (unchanged).
+- Fork (a) (the earlier "implement as below") is **void** — fork (b) is the
+  recorded decision.
 
-**Tests:**
-- `bib-write.test.mjs`? no — `bib-move.ts` tests:
-  - move 1 entry to empty target → exact slice at start.
-  - move 1 (verbatim: includes trailing comment line + internal whitespace
-    round-trip: parse target → identical entry text (offsets equal source
-    offset range).
-  - move N non-adjacent → concatenated in source order, each terminated.
-  - move N (with last entry in source: no trailing newline in source) →
-    append adds separator, no run-together.
-  - target ends without trailing newline (rare) → plan inserts a
-    separating newline before the slice.
-  - move 0 → `insert: ''` (no-op plan).
-- guard (source `expectedSource` mismatch → reject) = covered by the W5
-  bulk-delete path (same planner) — no new guard test.
-
-**I18N (fork a):** `move_selected` ("Move selected to another file"),
-`move_destination` ("Destination"), `move_confirm`? (confirm button reuses
-existing `move`? does `en.json` have `move`? verify — decision: reuse
-existing `move` for confirm label, `move_destination` for the heading/
-select label, `move_to_bib_hint`? NO — keep 2-3 keys max).
-Final W6 keys (fork a): `move_selected`, `move_destination` + existing
-`delete`? no. 2 keys (`move_selected`, `move_destination`) + reuse existing
-generic confirm words. If `move` **is** an existing key → confirm label is
-`t('Move')` (existing) → 2 keys. If not → add `Move` too (3 keys).
-**Accept:** L-move matrix (fork a). Rollback: revert (fork b: no commit).
+*(The earlier fork-(a) implementation sketch, including "Goal (fork a)" and
+the move util/extension/context changes, is superseded by the decision
+above and is NOT part of this cycle. The follow-up reuses the verbatim-slice
+approach; the fork-(b) investigation notes are in Step 0.)*
 
 ---
 
@@ -509,7 +494,7 @@ after W6 (or W5 if fork b) all gates green).
 | W1–W3 | 1–4 + live L16/L17/L18 (W1/W2/W3 map). No `make`. |
 | W4 | 1–4 (selection is React state: no unit tests; live L11/L12). CSS additive-only. |
 | W5 | 1–4 + new `planBibBulkDelete` unit tests (pure, planner shared with W5/W6). |
-| W6 | 1–4 + `bib-move.ts` unit tests (fork a) OR plan update commit (fork b). |
+| W6 | **Deferred (fork (b), Step 0)** — no gate to run; no commit of code. |
 | Final | Gate 5: `make all` (build only, label == HEAD sha, no webpack ERROR blocks) + push + PR comment drafted. |
 
 **Revert policy:** each W is one commit, revertible alone; W5/W6 planner is
