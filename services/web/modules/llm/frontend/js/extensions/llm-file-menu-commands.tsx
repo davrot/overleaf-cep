@@ -19,6 +19,14 @@ type GenerateKind = 'title' | 'abstract' | 'keywords'
 
 const KINDS: GenerateKind[] = ['title', 'abstract', 'keywords']
 
+// Menu labels — short, File-menu style (reviewer #13: "on the Overleaf site").
+const MENU_LABEL: Record<GenerateKind, string> = {
+    title: 'Generate title',
+    abstract: 'Generate abstract',
+    keywords: 'Generate keywords',
+}
+
+// Modal headings — descriptive.
 const KIND_LABEL: Record<GenerateKind, string> = {
     title: 'Generate title for this document',
     abstract: 'Generate an abstract for this document',
@@ -80,7 +88,7 @@ export default function LLMFileMenuCommands() {
                 ? KINDS.map(k => ({
                       type: 'command' as const,
                       id: `llm_generate_${k}`,
-                      label: t(`llm_file_generate_${k}`, KIND_LABEL[k]),
+                      label: t(`llm_file_generate_${k}`, MENU_LABEL[k]),
                       handler: () => run(k),
                   }))
                 : undefined,

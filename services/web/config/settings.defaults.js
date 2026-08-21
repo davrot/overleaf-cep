@@ -1143,13 +1143,7 @@ module.exports = {
         '../modules/llm/frontend/js/extensions/llm-file-menu-commands'
       ),
     ],
-    // overleaf-lab: File-menu sections contributed by modules (reviewer #13).
-    insertMenuSections: [
-      Path.resolve(
-        __dirname,
-        '../modules/llm/frontend/js/extensions/llm-file-menu-section'
-      ),
-    ],
+    insertMenuSections: [],
     // overleaf-lab: BYO LLM provider management embedded in Account Settings (reviewer #2);
     // the core section renders it when present, else falls back to a link card.
     llmUserSettingsSection: [

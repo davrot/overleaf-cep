@@ -91,6 +91,19 @@ export const ToolbarMenuBar = () => {
         id: 'file-file-tree',
         children: ['new_file', 'new_folder', 'upload_file', 'copy_project'],
       },
+      // overleaf-lab (reviewer #13): whole-document LLM generators belong in the
+      // File menu (they need the entire project, not a selection). Same pattern
+      // as 'manage-template' above: the command IDs are registered by a module
+      // (modules/llm via menubarExtraComponents); CommandDropdown filters out
+      // unregistered commands, so non-LLM deployments never see this section.
+      {
+        id: 'file-ai-generate',
+        children: [
+          'llm_generate_title',
+          'llm_generate_abstract',
+          'llm_generate_keywords',
+        ],
+      },
       { id: 'file-tools', children: ['show_version_history', 'word_count'] },
       { id: 'submit', children: ['submit-project', 'manage-template'] },
       {
