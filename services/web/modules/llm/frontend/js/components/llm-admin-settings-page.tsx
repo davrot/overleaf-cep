@@ -18,6 +18,8 @@ import {
   DropdownItem,
 } from '@/shared/components/dropdown/dropdown-menu'
 import '../../stylesheets/llm-settings.scss'
+// overleaf-lab: shared upstream-AI design tokens (--wf-*) used by the settings chrome
+import '../../stylesheets/llm-ui.scss'
 
 const LLM_API_TYPES = [
   { name: 'openai', label: 'OpenAI' },

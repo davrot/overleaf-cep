@@ -16,6 +16,7 @@ import DOMPurify from 'dompurify'
 import getMeta from '@/utils/meta'
 import { postJSON } from '@/infrastructure/fetch-json'
 import { readSelectedModel } from '../utils/llm-selected-model'
+import '../../stylesheets/llm-ui.scss'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 import { useLLMPrompts } from '../hooks/use-llm-prompts'
 
@@ -589,27 +590,34 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             }}
         >
             <style>{`@keyframes llm-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-        .llm-anchor{position:absolute;width:28px;height:28px;border-radius:999px;background:linear-gradient(180deg,#0b1220,#0f172a);color:#eef2ff;border:1px solid rgba(255,255,255,0.08);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(2,6,23,0.45);cursor:pointer;pointer-events:auto}
+        /* overleaf-lab: upstream-AI (writefull-style) palette — off-white card /
+           navy-slate dark panel, navy accent (tokens from llm-ui.scss) */
+        .llm-anchor{position:absolute;width:28px;height:28px;border-radius:999px;background:var(--wf-accent,#28518f);color:#fff;font-weight:700;font-size:12px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(2,6,23,0.35);cursor:pointer;pointer-events:auto}
+        .llm-anchor:hover{background:var(--wf-accent-hi,#214475)}
         .llm-panel{position:absolute;pointer-events:auto;user-select:none}
-        .llm-input-card{width:100%;background:linear-gradient(180deg,#071021,#071827);border-radius:14px;padding:12px 12px 12px 56px;position:relative;box-shadow:0 14px 40px rgba(3,8,22,0.55);border:1px solid rgba(255,255,255,0.04)}
-        .llm-badge{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;color:#e6eef8}
-        .llm-input{width:100%;min-height:40px;max-height:160px;padding:8px 84px 8px 10px;border-radius:10px;background:transparent;color:#e6eef8;border:1px solid rgba(255,255,255,0.06);outline:none;resize:none;line-height:20px;font-size:14px;box-sizing:border-box}
-        .llm-send{position:absolute;right:44px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.4);color:#eafff5;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
-        .llm-send:hover{background:rgba(16,185,129,0.3)}
-        .llm-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:#e6eef8;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
-        .llm-close:hover{background:rgba(255,255,255,0.16)}
-        .llm-menu{margin-top:0;background:linear-gradient(180deg,#071021,#071827);border-radius:12px;padding:10px 8px;color:#dfe7ee;border:1px solid rgba(255,255,255,0.04);box-shadow:0 14px 40px rgba(3,8,22,0.55)}
-        .llm-item{height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:10px;cursor:pointer}
-        .llm-item:hover{background:rgba(255,255,255,0.04)}
-        .llm-paraphrase-card{pointer-events:auto;width:100%;background:#071223;border-radius:12px;padding:12px;box-shadow:0 14px 40px rgba(3,8,22,0.55);border:1px solid rgba(255,255,255,0.06);color:#e6eef8}
+        .llm-input-card{width:100%;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:12px 12px 12px 56px;position:relative;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
+        .llm-badge{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;background:var(--wf-accent-soft,rgba(40,81,143,0.08));display:flex;align-items:center;justify-content:center;color:var(--wf-accent,#28518f)}
+        .llm-input{width:100%;min-height:40px;max-height:160px;padding:8px 84px 8px 10px;border-radius:8px;background:transparent;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-border-in,#dfe5ec);outline:none;resize:none;line-height:20px;font-size:14px;box-sizing:border-box}
+        .llm-input:focus{border-color:var(--wf-accent,#28518f)}
+        .llm-send{position:absolute;right:44px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:8px;background:var(--wf-accent,#28518f);border:1px solid var(--wf-accent,#28518f);color:#fff;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-send:hover{background:var(--wf-accent-hi,#214475)}
+        .llm-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:8px;background:transparent;border:1px solid var(--wf-border-in,#dfe5ec);color:var(--wf-panel-text,#1e293b);font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-close:hover{background:var(--wf-row-hover,#eef1f5)}
+        .llm-menu{margin-top:0;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:8px;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-panel-border,#e3e8ef);box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12))}
+        .llm-item{height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;cursor:pointer;color:var(--wf-panel-text,#1e293b)}
+        .llm-item:hover{background:var(--wf-row-hover,#eef1f5)}
+        .llm-paraphrase-card{pointer-events:auto;width:100%;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:12px;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
         .llm-paraphrase-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
-        .llm-btn{padding:8px 12px;border-radius:10px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));color:#e6eef8}
-        .llm-btn.llm-primary{background:linear-gradient(180deg, rgba(16,185,129,0.14), rgba(16,185,129,0.08));border:1px solid rgba(16,185,129,0.22)}
-        .llm-result-html{overflow-x:hidden;word-wrap:break-word;word-break:break-word;overflow-wrap:anywhere}
-        .llm-result-html h1,.llm-result-html h2,.llm-result-html h3{color:#e6eef8;margin:6px 0}
-        .llm-result-html p,.llm-result-html li{color:#dfe7ee;margin:4px 0}
-        .llm-result-html pre{background:rgba(0,0,0,0.45);padding:8px;border-radius:6px;overflow-x:auto;color:#e6eef8;white-space:pre-wrap;word-wrap:break-word;max-width:100%}
+        .llm-btn{padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--wf-border-in,#dfe5ec);background:var(--wf-row-hi,#fff);color:var(--wf-panel-text,#1e293b)}
+        .llm-btn:hover{background:var(--wf-row-hover,#eef1f5)}
+        .llm-btn.llm-primary{background:var(--wf-accent,#28518f);border:1px solid var(--wf-accent,#28518f);color:#fff}
+        .llm-btn.llm-primary:hover{background:var(--wf-accent-hi,#214475)}
+        .llm-result-html{overflow-x:hidden;word-wrap:break-word;word-break:break-word;overflow-wrap:anywhere;color:var(--wf-panel-text,#1e293b)}
+        .llm-result-html h1,.llm-result-html h2,.llm-result-html h3{color:var(--wf-panel-text,#1e293b);margin:6px 0}
+        .llm-result-html p,.llm-result-html li{color:var(--wf-panel-text,#1e293b);margin:4px 0}
+        .llm-result-html pre{background:var(--wf-code-bg,#f1f4f8);padding:8px;border-radius:6px;overflow-x:auto;color:var(--wf-panel-text,#1e293b);white-space:pre-wrap;word-wrap:break-word;max-width:100%}
         .llm-result-html code{word-wrap:break-word;white-space:pre-wrap}
+        .llm-result-html code{background:var(--wf-code-bg,#f1f4f8);padding:1px 4px;border-radius:4px}
       `}</style>
 
             {/* Circular AI anchor button - visible after selection */}

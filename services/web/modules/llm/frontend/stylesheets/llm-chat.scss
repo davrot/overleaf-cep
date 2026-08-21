@@ -7,32 +7,67 @@
 // read well on both light and dark. Fallbacks keep it safe if a token is missing:
 // none of them forces a dark background.
 :root {
-    --llm-chat-bg: transparent;
-    --llm-chat-color: var(--content-primary-themed, inherit);
-    --llm-chat-text-color: var(--content-primary-themed, inherit);
-    --llm-chat-instructions-color: var(--content-secondary, #6c757d);
+    // overleaf-lab: upstream-AI (writefull-style) restyle — values from the
+    // shared token layer (frontend/stylesheets/llm-ui.scss, --wf-*).
+    // Fallbacks keep the previous themed behavior if a token is missing.
+    --wf-panel-bg: #fafafa;
+    --wf-panel-text: #1e293b;
+    --wf-panel-border: #e3e8ef;
+    --wf-panel-shadow: 0 10px 30px rgba(2, 8, 20, 0.1);
+    --wf-row-hi: #ffffff;
+    --wf-row-hover: #eef1f5;
+    --wf-border-in: #dfe5ec;
+    --wf-muted: #475569;
+    --wf-code-bg: #f1f4f8;
+    --wf-accent: #28518f;
+    --wf-accent-hi: #214475;
+    --wf-accent-soft: rgba(40, 81, 143, 0.08);
+
+    --llm-chat-bg: var(--wf-panel-bg, var(--bg-primary, transparent));
+    --llm-chat-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-chat-text-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-chat-instructions-color: var(--wf-muted, var(--content-secondary, #6c757d));
     --llm-chat-new-message-bg: transparent;
-    --llm-chat-new-message-textarea-color: var(--content-primary-themed, inherit);
-    --llm-chat-new-message-textarea-bg: var(--bg-primary, transparent);
-    --llm-chat-new-message-textarea-border: var(--border-primary, rgba(125, 125, 125, 0.35));
-    --llm-chat-new-message-border: var(--border-primary, rgba(125, 125, 125, 0.2));
-    --llm-chat-message-user-bg: var(--green-70, #2b8a5f);
+    --llm-chat-new-message-textarea-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-chat-new-message-textarea-bg: var(--wf-row-hi, var(--bg-primary, transparent));
+    --llm-chat-new-message-textarea-border: var(--wf-border-in, var(--border-primary, rgba(125, 125, 125, 0.35)));
+    --llm-chat-new-message-border: var(--wf-panel-border, var(--border-primary, rgba(125, 125, 125, 0.2)));
+    /* user chip = brand accent (upstream navy), assistant bubble = raised card */
+    --llm-chat-message-user-bg: var(--wf-accent, var(--green-70, #2b8a5f));
     --llm-chat-message-user-text: var(--white, #fff);
-    --llm-chat-message-assistant-bg: rgba(125, 125, 125, 0.14);
-    --llm-chat-message-assistant-text: var(--content-primary-themed, inherit);
-    --llm-chat-code-bg: rgba(125, 125, 125, 0.18);
-    --llm-chat-code-text: var(--content-primary-themed, inherit);
+    --llm-chat-message-assistant-bg: var(--wf-row-hi, rgba(125, 125, 125, 0.14));
+    --llm-chat-message-assistant-text: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-chat-code-bg: var(--wf-code-bg, rgba(125, 125, 125, 0.18));
+    --llm-chat-code-text: var(--wf-panel-text, var(--content-primary-themed, inherit));
 
     /* LLM-specific fallbacks for suggestion items and selector */
-    --llm-chat-suggestions-bg: rgba(125, 125, 125, 0.1);
-    --llm-chat-suggestions-color: var(--content-primary-themed, inherit);
-    --llm-chat-suggestions-title-color: var(--content-primary-themed, inherit);
-    --llm-chat-suggestion-item-bg: var(--bg-primary, transparent);
-    --llm-chat-suggestion-item-color: var(--content-primary-themed, inherit);
-    --llm-model-selector-label-color: var(--content-primary-themed, inherit);
-    --llm-model-selector-select-color: var(--content-primary-themed, inherit);
+    --llm-chat-suggestions-bg: var(--wf-row-hi, rgba(125, 125, 125, 0.1));
+    --llm-chat-suggestions-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-chat-suggestions-title-color: var(--wf-muted, var(--content-primary-themed, inherit));
+    --llm-chat-suggestion-item-bg: var(--wf-row-hi, var(--bg-primary, transparent));
+    --llm-chat-suggestion-item-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
+    --llm-model-selector-label-color: var(--wf-muted, var(--content-primary-themed, inherit));
+    --llm-model-selector-select-color: var(--wf-panel-text, var(--content-primary-themed, inherit));
     /* Max width used by suggestions and model selector */
     --llm-suggestions-max-width: 350px;
+}
+
+// overleaf-lab: dark-theme values for the --wf-* tokens. Top-level
+// [data-bs-theme=dark] (attribute on <html>, the same selector shape the app
+// itself uses) so the variables flip in place and everything below inherits.
+[data-bs-theme='dark'] {
+    --wf-panel-bg: #1b222c;
+    --wf-panel-text: #e2e8f0;
+    --wf-panel-border: #2f3a4d;
+    --wf-panel-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+    --wf-row-hi: #212a36;
+    --wf-row-hover: #26303d;
+    --wf-border-in: #2f3a4d;
+    --wf-muted: #94a3b8;
+    --wf-code-bg: #141a22;
+    --wf-accent: #6597e0;
+    --wf-accent-hi: #7dabec;
+    --wf-accent-soft: rgba(101, 151, 224, 0.14);
 }
 
 .llm-rail-panel {
@@ -230,8 +265,9 @@
         width: 80px;
         height: 80px;
         border-radius: 50%;
-        background-color: var(--bg-secondary-themed);
-        color: var(--content-primary-themed);
+        background-color: var(--wf-row-hi, var(--bg-secondary-themed));
+        box-shadow: 0 0 0 1px var(--wf-panel-border, rgba(125, 125, 125, 0.2));
+        color: var(--wf-accent, var(--content-primary-themed));
         font-size: 36px;
         margin-bottom: 20px;
         animation: float 3s ease-in-out infinite;
@@ -600,7 +636,7 @@
 
     .llm-chat-send-button {
         padding: var(--spacing-03) var(--spacing-05);
-        background-color: var(--bg-accent-01);
+        background-color: var(--wf-accent, var(--bg-accent-01));
         color: var(--white);
         border: none;
         border-radius: var(--border-radius-base);
@@ -613,7 +649,7 @@
         transition: background-color 0.2s ease;
 
         &:hover:not(:disabled) {
-            background-color: var(--bg-accent-02);
+            background-color: var(--wf-accent-hi, var(--bg-accent-02));
         }
 
         &:disabled {

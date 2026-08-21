@@ -6,6 +6,7 @@ import LLMCompliancePane from './llm-compliance-pane'
 import { RailElement } from '@/features/ide-react/util/rail-types'
 import getMeta from '@/utils/meta'
 import { useLLMFeatures } from '../hooks/use-llm-features'
+import '../../stylesheets/llm-ui.scss'
 
 function LLMRailPane() {
     const { t } = useTranslation()
@@ -46,7 +47,7 @@ function LLMRailPane() {
         opacity: active ? 1 : 0.6,
         fontWeight: active ? 600 : 400,
         borderBottom: active
-            ? '2px solid var(--bg-accent-01, #3265b5)'
+            ? '2px solid var(--wf-accent, var(--bg-accent-01, #3265b5))'
             : '2px solid transparent',
     })
 

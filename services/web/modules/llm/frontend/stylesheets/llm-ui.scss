@@ -1,0 +1,57 @@
+// overleaf-lab: shared "upstream AI" design tokens for the LLM module restyle.
+//
+// The upstream AI surfaces (context menu, AI assistant workbench, generator
+// card) share one visual language: an off-white card on light themes
+// ("almost-white"), a deep navy-slate panel on dark themes, soft slate
+// borders, rounded-lg corners, a single navy accent for primary actions, and
+// icon + label rows with rounded hover fills. We do NOT have access to the
+// upstream design-system bundle, so this file defines the same values locally
+// (palette reconstructed from the confirmed "almost-white" = #fafafa token,
+// the brand navy scale, and the upstream dark surfaces); consumers reference
+// the --wf-* variables only.
+//
+// Theme switching follows the app's own mechanism: Bootstrap's
+// [data-bs-theme="dark"] on <html> (core flips --content-primary-themed & co.
+// under the same attribute, so these fixed values stay in sync with the IDE).
+:root {
+    // surface
+    --wf-panel-bg: #fafafa;
+    --wf-panel-text: #1e293b;
+    --wf-panel-border: #e3e8ef;
+    --wf-panel-shadow: 0 10px 30px rgba(2, 8, 20, 0.1);
+    --wf-row-hi: #ffffff;
+    --wf-row-hover: #eef1f5;
+    --wf-border-in: #dfe5ec;
+    --wf-muted: #475569;
+    --wf-code-bg: #f1f4f8;
+    // accent (brand navy)
+    --wf-accent: #28518f;
+    --wf-accent-hi: #214475;
+    --wf-accent-soft: rgba(40, 81, 143, 0.08);
+}
+
+[data-bs-theme='dark'] {
+    --wf-panel-bg: #1b222c;
+    --wf-panel-text: #e2e8f0;
+    --wf-panel-border: #2f3a4d;
+    --wf-panel-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+    --wf-row-hi: #212a36;
+    --wf-row-hover: #26303d;
+    --wf-border-in: #2f3a4d;
+    --wf-muted: #94a3b8;
+    --wf-code-bg: #141a22;
+    --wf-accent: #6597e0;
+    --wf-accent-hi: #7dabec;
+    --wf-accent-soft: rgba(101, 151, 224, 0.14);
+}
+
+// Generator-modal result surface (upstream result-panel language: a raised,
+// bordered code-style surface for the generated text, readable in both themes)
+.llm-gen-result {
+    background-color: var(--wf-code-bg, #f1f4f8);
+    color: var(--wf-panel-text, #1e293b);
+    border: 1px solid var(--wf-border-in, #dfe5ec);
+    border-radius: 8px;
+    font-family: inherit;
+    line-height: 1.5;
+}

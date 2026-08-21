@@ -11,6 +11,8 @@ import useScrollToIdOnLoad from '@/shared/hooks/use-scroll-to-id-on-load'
 // overleaf-lab: BYO table/editor styles were only imported by the admin page,
 // so this page shipped with zero module CSS — import the shared stylesheet here too.
 import '../../stylesheets/llm-settings.scss'
+// overleaf-lab: shared upstream-AI design tokens (--wf-*) used by the settings chrome
+import '../../stylesheets/llm-ui.scss'
 
 export default function LLMSettingsPage() {
     const { t } = useTranslation()

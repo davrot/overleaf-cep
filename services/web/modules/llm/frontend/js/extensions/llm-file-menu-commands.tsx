@@ -16,6 +16,8 @@ import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provi
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import { OLModal } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
+// overleaf-lab: upstream-AI design tokens for the generator modal's result surface
+import '../../stylesheets/llm-ui.scss'
 
 type GenerateKind = 'title' | 'abstract' | 'keywords'
 type Phase = 'pick' | 'busy' | 'result' | 'error'
@@ -171,7 +173,7 @@ export default function LLMFileMenuCommands() {
                     <div>
                         <p className="muted">{t('llm_generate_hint', 'From the full content of this project:')}</p>
                         <textarea
-                            className="form-control"
+                            className="form-control llm-gen-result"
                             rows={10}
                             readOnly
                             value={output}
