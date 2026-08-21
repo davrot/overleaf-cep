@@ -156,6 +156,7 @@ export default {
         // (Account menu 'AI Settings' and the Account Settings card link here).
         webRouter.get(
             '/user/llm-settings',
+            AuthenticationController.requireLogin(),
             LLMSettingsController.llmSettingsPage
         )
         logger.debug({}, '[LLM] Route registered: GET /user/llm-settings (settings page)')

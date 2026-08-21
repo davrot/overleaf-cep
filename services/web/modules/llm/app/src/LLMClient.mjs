@@ -124,9 +124,11 @@ function wrapError(err, fallbackMessage) {
     if (err.statusCode === 429) {
       return Object.assign(new Error('Rate limited by LLM backend (429)'), { code: 'llm-rate-limited' });
     }
-    const body = String(err.responseBody || '').slice(0, 400);
+    // WS5 review: do not echo arbitrary backend response bodies to the client
+    // (possible internal hostname/fragment leakage); status + code is enough.
+    // The 401/403 branch above intentionally keeps a generic key-rejection hint.
     return Object.assign(
-      new Error(`LLM backend error (HTTP ${err.statusCode})${body ? `: ${body}` : ''}`),
+      new Error(`LLM backend error (HTTP ${err.statusCode})`),
       { code: 'llm-error' }
     );
   }

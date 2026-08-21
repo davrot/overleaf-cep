@@ -190,7 +190,20 @@ async function addProvider(req, res) {
             ? (await loadProviders(userId)).map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id, apiKey: normalizeStoredSecret(r.apiKey) }))
             : []
     const merged = [...migrated, ...existing, row]
-    await User.updateOne({ _id: userId }, { $set: { llmProviders: merged } })
+    // WS5: atomic cap guard — the condition lives in the update itself so two
+    // concurrent adds cannot both pass the >=MAX check (last writer gets 400).
+    const capGuard = await User.updateOne(
+        {
+            _id: userId,
+            $expr: {
+                $lt: [{ $size: { $ifNull: ['$llmProviders', []] } }, MAX_PROVIDERS_PER_USER],
+            },
+        },
+        { $set: { llmProviders: merged } }
+    )
+    if (!capGuard.modifiedCount) {
+        return res.status(400).json({ ok: false, error: 'limit', message: `Maximum of ${MAX_PROVIDERS_PER_USER} providers` })
+    }
     logger.info({ userId, rowId: row.id, name: row.name }, '[LLM] addProvider: row added')
     res.status(201).json({ ok: true, provider: publicRow(row) })
 }
@@ -324,6 +337,11 @@ async function llmSettingsPage(req, res) {
     // and the Account Settings card both link here; it used to be a redirect to
     // the generic settings page, which showed no LLM UI at all).
     const allowUser = !!(Settings.llm && Settings.llm.allowUserSettings)
+    // WS5: keep the page-level surface consistent with the API — disabled BYO
+    // deployments answer 403 for the page as well (not just the JSON routes).
+    if (!allowUser) {
+        return res.status(403).json({ ok: false, error: 'disabled', message: 'BYO provider settings are disabled on this deployment (LLM_ALLOW_USER_SETTINGS). Use the site backend.' })
+    }
     const userId = SessionManager.getLoggedInUserId(req.session)
     const userDoc = userId ? await User.findOne({ _id: userId }).lean() : null
     const context = {
