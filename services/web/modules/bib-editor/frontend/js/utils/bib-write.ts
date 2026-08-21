@@ -115,9 +115,7 @@ export function planBibWrite(
   // 'new': append at the end, surrounded by newlines so entries stay on
   // their own lines.
   const insert =
-    source.endsWith('\n') || source.length === 0
-      ? serialize(entry)
-      : '\n' + serialize(entry)
+    source.endsWith('\n') || source.length === 0 ? serialize(entry) : `\n${serialize(entry)}`
   return {
     ok: true,
     plan: { kind: 'append', from: source.length, to: source.length, insert, clamped: false },

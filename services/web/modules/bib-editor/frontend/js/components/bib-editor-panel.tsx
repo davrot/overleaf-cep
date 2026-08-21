@@ -260,12 +260,21 @@ function BibEditorPanel() {
   return (
     <div className="bib-editor-panel">
       {writeFailure !== null && (
-        <div
-          className="bib-write-failure-banner"
-          role="alert"
-          onClick={() => clearWriteFailure()}
-        >
-          {t('Could not save: the file changed or is no longer a bibliography.')}
+        <div className="bib-write-failure-banner" role="alert">
+          <span className="bib-write-failure-banner-text">
+            {t('Could not save: the file changed or is no longer a bibliography.')}
+          </span>
+          <button
+            type="button"
+            className="bib-write-failure-dismiss"
+            aria-label={t('Dismiss')}
+            onClick={(e) => {
+              e.stopPropagation()
+              clearWriteFailure()
+            }}
+          >
+            {t('Dismiss')}
+          </button>
         </div>
       )}
 

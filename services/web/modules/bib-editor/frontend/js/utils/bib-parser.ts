@@ -132,7 +132,7 @@ function parseFields(fieldsStr: string): Record<string, string> {
     if (i >= n) break
 
     // field name (letters, digits, minus)
-    let nameStart = i
+    const nameStart = i
     while (i < n && /[\w-]/.test(fieldsStr[i])) i++
     const name = fieldsStr.slice(nameStart, i)
     if (name === '') {
@@ -225,7 +225,7 @@ export function escapeBibValue(value: string): string {
 export function serializeBibEntry(entry: BibEntry): string {
   const lines: string[] = []
   for (const [key, value] of Object.entries(entry.fields)) {
-    if (value && value.trim()) {
+    if (value.trim()) {
       lines.push(`  ${key} = {${escapeBibValue(value.trim())}}`)
     }
   }
@@ -236,7 +236,9 @@ export function serializeBibEntry(entry: BibEntry): string {
       ? `@${entry.type}{${entry.id},\n${linesText}\n}`
       : `@${entry.type}{${entry.id}}\n`
   }
-  return linesText ? `@${entry.type}{\n${linesText}\n}` : '@' + entry.type + '{}\n'
+  return linesText
+    ? `@${entry.type}{\n${linesText}\n}`
+    : `@${entry.type}{}\n`
 }
 
 /**

@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateEntry } from '../../../frontend/js/utils/bib-validate'
-
-const article = { type: 'article', id: 'k1', fields: {} }
+import { validateEntry } from '../../../frontend/js/utils/bib-validate.ts'
 
 describe('bib-validate (Check button, pure)', () => {
   it('flags every empty standalone required field (existing entry)', () => {

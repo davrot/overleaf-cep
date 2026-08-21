@@ -114,6 +114,34 @@ formats), and i18n sanity (every module literal exists in both shared JSONs;
 Live-test matrix (needs a running Overleaf instance — run on the machine
 with the container) is in `REDESIGN_PLAN.md` §6 (L1–L10).
 
+### Lint
+
+The repo lint gate is ESLint (`services/web/eslint.config.mjs`, `yarn lint`
+= whole `services/web` with `--max-warnings 0`). Scoped runs over this
+module only (same engine/config):
+
+```bash
+cd services/web
+../../node_modules/.bin/eslint --no-cache --max-warnings 0 \
+  'modules/bib-editor/**/*.ts' 'modules/bib-editor/**/*.tsx' \
+  'modules/bib-editor/**/*.mjs' 'modules/bib-editor/test/unit/src/*.test.mjs'
+```
+
+Notes:
+
+- `.mjs` tests import `.ts` utils **with the extension** (repo `import/*`
+rules); `bibtex-schema.json` is imported without one. Works in both vitest
+runners (esbuild).
+- The module `package.json` declares `react` / `react-i18next` /
+  `@codemirror/*` as **peerDependencies** (provided by the web app) so
+  `import/no-extraneous-dependencies` stays green — ESLint resolves that
+  rule against the nearest `package.json`.
+- `biome.jsonc` (module-local) is the config behind the fast Biome/LSP
+  check for single-file diagnostics (Pi `lsp_diagnostics`). It runs
+  **`biome lint` only** — never `biome check` (the formatter is not
+  wired to repo style). Every rule off there is a documented repo
+  convention, not a hole: ESLint remains the gate.
+
 ## Upstream-merge hygiene
 
 All behavior lives in this module. The only shared-file touches are the

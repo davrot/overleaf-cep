@@ -7,7 +7,7 @@ import {
   getMissingRequiredFields,
   hasAllRequiredFields,
   ENTRY_TYPES,
-} from '../../../frontend/js/utils/bib-types'
+} from '../../../frontend/js/utils/bib-types.ts'
 import bibtexSchema from '../../../frontend/js/utils/bibtex-schema.json'
 
 describe('bib-types (schema + display rules)', () => {

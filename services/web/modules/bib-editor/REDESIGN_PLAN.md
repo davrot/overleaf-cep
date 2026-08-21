@@ -578,3 +578,37 @@ write path):
   re-bind re-syncs the form and clears `checked` (re-Check re-shows messages);
   no `Esc` = back-from-form (§2.7);
   no explicit `:focus-visible` outlines (cards/inputs have `:focus`).
+
+## 13. Housekeeping: scoped lint infra (2026-08-21, compaction cycle 2)
+
+The repo lint gate for this module is **ESLint** under
+`services/web/eslint.config.mjs` (the flat config covers `modules/**`). To
+make local iteration cheap and the Pi LSP useful without weakening the gate:
+
+- `biome.jsonc` (module dir, committed): Biome 2.x linter preset
+  `recommended` with five documented overrides (each = repo convention ESLint
+  does not enforce: classic React import, named type imports, div+role
+  keyboard rows, `(m = re.exec)` idiom, `!important` error border). Drives
+  Pi `lsp_diagnostics` via `biome lsp-proxy`. **`biome lint` only** — the
+  formatter is intentionally not wired.
+- Module `package.json`: `react`, `react-i18next`, `@codemirror/state`,
+  `@codemirror/view` as **peerDependencies** (provided by the web app).
+  Needed because `import/no-extraneous-dependencies` resolves against the
+  nearest manifest and modules have no other local manifest.
+- Module `.gitignore` (committed): `node_modules`, `package-lock.json`.
+- Test files: explicit `.ts` import extensions (repo `import/no-unresolved`
+  + `import/extensions`), `node:` protocols (repo `unicorn` rule). Run green
+  in BOTH the standalone runner (module `vitest.config.mjs`) and the repo
+  runner (`services/web/vitest.config.js` includes `modules/*/test/unit/**`).
+- Real a11y fixes this cycle (not suppressions): banner is an `alert`
+  container with a dismiss `<button>` (locale key `Dismiss`, both shared
+  JSONs); list Arrow/Home/End handling moved onto the focused search input
+  (wrapper-div keydown was dead for the card row).
+- Code findings fixed instead of turned off: `useConst` / `useTemplate` /
+  `useOptionalChain` / `useLiteralKeys` on `byField.id` / hook-deps for the
+  author field.
+- Skill: `~/.pi/agent/skills/overleaf-module-lint/SKILL.md` — the exact
+  scoped ESLint/vitest/biome commands.
+
+Status: module ESLint green (zero), 46/46 tests both runners, `biome lint`
+green.

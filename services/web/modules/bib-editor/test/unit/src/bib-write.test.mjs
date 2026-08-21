@@ -4,8 +4,8 @@ import {
   planBibDelete,
   isBibDocument,
   serializeBibEntry,
-} from '../../../frontend/js/utils/bib-write'
-import { parseBibFile } from '../../../frontend/js/utils/bib-parser'
+} from '../../../frontend/js/utils/bib-write.ts'
+import { parseBibFile } from '../../../frontend/js/utils/bib-parser.ts'
 
 describe('bib-write (R2 plan, pure)', () => {
   const src =

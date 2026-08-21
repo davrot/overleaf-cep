@@ -110,7 +110,7 @@ export default function BibEntryList({ entries, onSelect }: Props) {
   )
 
   return (
-    <div className="bib-entry-list" onKeyDown={handleListKeyDown}>
+    <div className="bib-entry-list">
       {/* Inline search (module-local; the upstream SearchForm is project-
           list specific — REDESIGN_PLAN §2.8) */}
       <input
@@ -120,6 +120,7 @@ export default function BibEntryList({ entries, onSelect }: Props) {
         className="bib-list-search-input"
         value={search}
         onChange={e => setSearch(e.target.value)}
+        onKeyDown={handleListKeyDown}
         placeholder={t('Search for entries')}
         aria-label={t('Search for entries')}
       />

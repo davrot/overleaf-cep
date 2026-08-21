@@ -1,0 +1,39 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // Biome is the module-local fast check for the Pi LSP. The repo's
+      // authoritative lint is ESLint (services/web/eslint.config.mjs). Rules
+      // turned off below are repo conventions that ESLint does not enforce:
+      "correctness": {
+        // Repo uses the classic React JSX runtime; Biome (automatic runtime)
+        // flags the default `React` import as unused.
+        "noUnusedImports": "off"
+      },
+      "style": {
+        // Repo convention: named type imports (e.g. `import { Extension }`)
+        // over `import type`.
+        "useImportType": "off"
+      },
+      "a11y": {
+        // Repo pattern for keyboard-driven rows: div + role + tabIndex +
+        // onKeyDown (see modules that do this already).
+        "useSemanticElements": "off"
+      },
+      "suspicious": {
+        // `while ((m = re.exec(s)) !== null)` idiom.
+        "noAssignInExpressions": "off",
+        // Author rows are editable and may hold duplicate/empty values, so
+        // the index is the pragmatic React key.
+        "noArrayIndexKey": "off"
+      },
+      "complexity": {
+        // The error border must override OL component styles (same as the
+        // upstream `file-tree` error styles).
+        "noImportantStyles": "off"
+      }
+    }
+  }
+}

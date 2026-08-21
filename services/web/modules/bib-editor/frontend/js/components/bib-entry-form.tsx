@@ -150,13 +150,6 @@ export default function BibEntryForm({
     showAllFields
   )
 
-  // Focus anchor: D3 — first empty required (flattened) field, fallback key.
-  const focusableRequired = entryTypeDef
-    ? flattenRequired(entryTypeDef.requiredFields).filter(
-        f => !fields[f]?.trim()
-      )
-    : []
-
   const requiredStarSet = starMembers
 
   const handleFieldChange = useCallback((name: string, value: string) => {
@@ -350,7 +343,7 @@ export default function BibEntryForm({
         <div className="bib-form-key-row">
           <OLFormControl
             className={`bib-form-input ${
-              checkResult?.byField['id'] ? 'bib-form-input-error' : ''
+              checkResult?.byField.id ? 'bib-form-input-error' : ''
             }`}
             maxLength="128"
             autoComplete="off"
@@ -378,7 +371,7 @@ export default function BibEntryForm({
         {kind === 'new' && (
           <span className="bib-form-hint">{t('Leave empty to generate on Check')}</span>
         )}
-        {kind === 'existing' && checkResult?.byField['id'] && (
+        {kind === 'existing' && checkResult?.byField.id && (
           <span className="bib-form-error">
             {messageFor('id')}
           </span>
@@ -503,8 +496,10 @@ function BibAuthorField({
 }) {
   const { t } = useTranslation()
 
-  const parseAuthors = (v: string) =>
-    v ? v.split(/\s+and\s+/i).map(a => a.trim()) : ['']
+  const parseAuthors = useCallback(
+    (v: string) => (v ? v.split(/\s+and\s+/i).map(a => a.trim()) : ['']),
+    []
+  )
 
   const [authors, setAuthors] = useState<string[]>(() => parseAuthors(value))
 
@@ -514,7 +509,7 @@ function BibAuthorField({
       prevValueRef.current = value
       setAuthors(parseAuthors(value))
     }
-  }, [value])
+  }, [value, parseAuthors])
 
   const commit = (list: string[]) => {
     onChange(list.filter(a => a.trim()).join(' and '))

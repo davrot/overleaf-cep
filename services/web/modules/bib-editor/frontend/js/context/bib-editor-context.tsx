@@ -59,6 +59,10 @@ export type BibEditorActions = {
    * `written` (from a guarded write that just succeeded) carries the id the
    * write targeted; the selection is re-bound to it only when it resolves in
    * the fresh `entries` parse.
+   *
+   * NOTE: `isBibFile` is kept in the signature for bridge compatibility;
+   * consumers must NOT rely on it (the panel only mounts for .bib filenames
+   * per its visual provider — see §12 lint pass).
    */
   setEditorState: (
     isBibFile: boolean,
@@ -88,7 +92,7 @@ export type BibEditorActions = {
 
 export type BibEditorState = {
   /** Whether the current document is a .bib file */
-  isBibFile: boolean
+  isBibFile: boolean;
   /** Parsed entries from the current document */
   entries: ParsedBibEntry[]
   /** The full source text of the current document */
@@ -106,7 +110,7 @@ const BibEditorContext = createContext<BibEditorContextValue | undefined>(
 )
 
 export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => {
-  const [isBibFile, setIsBibFile] = useState(false)
+  const [isBibFile, setIsBibFile] = useState(false) // tracked; unused by consumers (§12 lint pass)
   const [entries, setEntries] = useState<ParsedBibEntry[]>([])
   const [source, setSource] = useState('')
   const [selection, setSelection] = useState<BibSelection>(null)

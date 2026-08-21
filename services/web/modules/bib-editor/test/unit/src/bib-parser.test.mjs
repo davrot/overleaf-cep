@@ -7,7 +7,7 @@ import {
   removeEntryFromSource,
   generateCitationKey,
   escapeBibValue,
-} from '../../../frontend/js/utils/bib-parser'
+} from '../../../frontend/js/utils/bib-parser.ts'
 
 describe('bib-parser', () => {
   it('parses a simple article with correct offsets', () => {
