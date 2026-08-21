@@ -132,7 +132,7 @@ export async function loadProviders(userId) {
             apiKey: normalizeStoredSecret(user.llmApiKey || ''),
             models: models.slice(0, 100),
             completionModel: (completionModels[0] && models.includes(completionModels[0])) ? completionModels[0] : (models[0] || ''),
-            enabled: user.useOwnLLMSettings !== false,
+            enabled: true,
             createdAt: new Date(0).toISOString()
         }
         try {
