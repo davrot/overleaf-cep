@@ -48,6 +48,24 @@ describe('bib-write (R2 plan, pure)', () => {
     expect(guard.reason).toBe('entry-gone')
   })
 
+  it('plans a rename (new key) against the original key anchor, and rejects a collision', () => {
+    // k2 → k9 (free): anchored by the original id, range preserved
+    const ok = planBibWrite(src, { type: 'book', id: 'k9', fields: { title: 'Two', year: '2021' } }, 'existing', serializeBibEntry, 'k2')
+    expect(ok.ok).toBe(true)
+    const k2 = parseBibFile(src).find(e => e.id === 'k2')
+    expect(ok.plan.from).toBe(k2.sourceStart)
+    expect(ok.plan.to).toBe(k2.sourceEnd)
+    expect(ok.plan.insert).toContain('k9')
+    const applied = src.slice(0, ok.plan.from) + ok.plan.insert + src.slice(ok.plan.to)
+    const entries = parseBibFile(applied)
+    expect(entries.find(e => e.id === 'k9')).toBeDefined()
+    expect(entries.find(e => e.id === 'k1')).toBeDefined()
+    // k2 → k1 (a DIFFERENT entry owns k1): collision guard
+    const clash = planBibWrite(src, { type: 'book', id: 'k1', fields: {} }, 'existing', serializeBibEntry, 'k2')
+    expect(clash.ok).toBe(false)
+    expect(clash.reason).toBe('key-taken')
+  })
+
   it('appends a new entry at the end of the document', () => {
     const guard = planBibWrite(src, { type: 'misc', id: 'k3', fields: { title: 'New' } }, 'new', serializeBibEntry)
     expect(guard.ok).toBe(true)

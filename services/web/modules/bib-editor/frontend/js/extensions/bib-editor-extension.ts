@@ -1,182 +1,248 @@
 /**
  * CodeMirror extension for the bib-editor module.
- * Detects when a .bib file is open:
- *   1. Parses BibTeX entries from the document
- *   2. Posts them to a global event bus so the React sidebar can read them
- *   3. Listens for dispatch requests from the sidebar
  *
- * Registered via overleafModuleImports.sourceEditorExtensions in settings.
+ * Registered via overleafModuleImports.sourceEditorExtensions (settings).
+ *
+ * Responsibilities:
+ *  1. Detect when the current document is a .bib file
+ *  2. Parse BibTeX entries (300 ms debounce) and emit them to the React
+ *     context via DOM CustomEvents — the document always stays the truth
+ *  3. Apply guarded write/delete requests from the React panel:
+ *       - ranges are resolved against the CURRENTLY SHOWN document (no
+ *         cached offsets → the "Invalid change range" crash class is gone)
+ *       - the event carries `expectedSource` (the source snapshot the panel
+ *         flushed from); a mismatch means the view already switched to
+ *         another file, so the write is REJECTED (surfaced via a
+ *         "write-failed" event) instead of corrupting the new document
+ *       - after a SUCCESSFUL guarded write the fresh parse is re-emitted with
+ *         `written: { id, mode, originalId }`, so the context re-binds the
+ *         form to the written entry only when it actually landed; on
+ *         rejection nothing changes (the banner shows and the form stays)
+ *
+ * This extension holds no React state; all bridging is event-based, which is
+ * the sanctioned module pattern (see REDESIGN_PLAN.md §2.9).
  */
-import { Extension, StateField, StateEffect, Transaction } from '@codemirror/state'
+import { Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
-import { parseBibFile, ParsedBibEntry } from '../utils/bib-parser'
+import { parseBibFile, serializeBibEntry } from '../utils/bib-parser'
+import type { ParsedBibEntry } from '../utils/bib-parser'
+import { planBibWrite, planBibDelete, isBibDocument } from '../utils/bib-write'
+import type { BibEntry } from '../utils/bib-types'
 
 /**
- * Custom event types for communication between CodeMirror and React.
+ * Module-internal event names. The React side (bib-editor-context.tsx /
+ * bib-editor-provider.tsx) listens and dispatches using these names.
  */
-const BIB_ENTRIES_EVENT = 'bib-editor:entries-updated'
-const BIB_DISPATCH_EVENT = 'bib-editor:dispatch'
-const BIB_DOC_CHANGE_EVENT = 'bib-editor:doc-changed'
-const BIB_SCROLL_TO_EVENT = 'bib-editor:scroll-to'
+export const BIB_ENTRIES_EVENT = 'bib-editor:entries-updated'
+export const BIB_WRITE_EVENT = 'bib-editor:write'
+export const BIB_DELETE_EVENT = 'bib-editor:delete'
+export const BIB_SCROLL_TO_EVENT = 'bib-editor:scroll-to'
+export const BIB_WRITE_FAILED_EVENT = 'bib-editor:write-failed'
 
-/**
- * StateField to track whether the current document is a .bib file.
- * Updated by the ViewPlugin when the document name changes.
- */
-const isBibFileField = StateField.define<boolean>({
-  create() {
-    return false
-  },
-  update(value, tr) {
-    for (const effect of tr.effects) {
-      if (effect.is(setBibFileEffect)) {
-        return effect.value
-      }
-    }
-    return value
-  },
-})
+class BibEditorPlugin {
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private dispatchHandler: ((ev: Event) => void) | null = null
+  private scrollHandler: ((ev: Event) => void) | null = null
 
-const setBibFileEffect = StateEffect.define<boolean>()
+  constructor(private view: EditorView) {
+    this.setupDispatchListener()
+    this.setupScrollListener()
+    this.emitState()
+  }
 
-/**
- * ViewPlugin that watches for document changes and parses BibTeX entries.
- */
-const bibEditorPlugin = ViewPlugin.fromClass(
-  class {
-    private isBibFile = false
-    private debounceTimer: ReturnType<typeof setTimeout> | null = null
-    private dispatchHandler: ((ev: Event) => void) | null = null
-    private scrollHandler: ((ev: Event) => void) | null = null
-
-    constructor(private view: EditorView) {
-      this.checkAndParse()
-      this.setupDispatchListener()
-      this.setupScrollListener()
-    }
-
-    update(update: ViewUpdate) {
-      // Re-check on document changes
-      if (update.docChanged) {
-        this.debouncedParse()
-      }
-    }
-
-    destroy() {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer)
-      if (this.dispatchHandler) {
-        document.removeEventListener(BIB_DISPATCH_EVENT, this.dispatchHandler)
-      }
-      if (this.scrollHandler) {
-        document.removeEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
-      }
-    }
-
-    private checkAndParse() {
-      this.isBibFile = this.detectBibFile()
-      if (this.isBibFile) {
-        this.parseAndEmit()
-      }
-      // Always emit doc change event so the sidebar knows the file type
-      this.emitDocChange()
-    }
-
-    private debouncedParse() {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer)
-      this.debounceTimer = setTimeout(() => {
-        this.isBibFile = this.detectBibFile()
-        if (this.isBibFile) {
-          this.parseAndEmit()
-        }
-        this.emitDocChange()
-      }, 300)
-    }
-
-    private detectBibFile(): boolean {
-      // Scan the beginning of the document for a BibTeX entry marker.
-      // Checking the full content (not just the first line) handles files that
-      // start with a blank line or a comment, and empty .bib files that later
-      // receive their first entry.
-      const doc = this.view.state.doc
-      const sample = doc.sliceString(0, Math.min(doc.length, 2000))
-      return /@\s*[\w-]+\s*\{/i.test(sample)
-    }
-
-    private parseAndEmit() {
-      const source = this.view.state.doc.toString()
-      try {
-        const entries = parseBibFile(source)
-        document.dispatchEvent(
-          new CustomEvent(BIB_ENTRIES_EVENT, {
-            detail: { entries, source, isBibFile: true },
-          })
-        )
-      } catch {
-        // parsing failed, emit empty
-        document.dispatchEvent(
-          new CustomEvent(BIB_ENTRIES_EVENT, {
-            detail: { entries: [], source, isBibFile: true },
-          })
-        )
-      }
-    }
-
-    private emitDocChange() {
-      const source = this.view.state.doc.toString()
-      document.dispatchEvent(
-        new CustomEvent(BIB_DOC_CHANGE_EVENT, {
-          detail: { isBibFile: this.isBibFile, source },
-        })
-      )
-    }
-
-    /**
-     * Listen for scroll-to requests from the React panel.
-     * The panel sends {position: number} to focus an entry in code mode.
-     */
-    private setupScrollListener() {
-      this.scrollHandler = (ev: Event) => {
-        const detail = (ev as CustomEvent).detail
-        if (!detail) return
-        const { position } = detail as { position: number }
-        if (typeof position !== 'number') return
-        const pos = Math.min(Math.max(0, position), this.view.state.doc.length)
-        this.view.dispatch({
-          selection: { anchor: pos },
-          effects: EditorView.scrollIntoView(pos, { y: 'center' }),
-        })
-        this.view.focus()
-      }
-      document.addEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
-    }
-
-    /**
-     * Listen for dispatch requests from the React sidebar.
-     * The sidebar sends {from, to, insert} objects.
-     */
-    private setupDispatchListener() {
-      this.dispatchHandler = (ev: Event) => {
-        const detail = (ev as CustomEvent).detail
-        if (!detail) return
-        const { from, to, insert } = detail
-        if (typeof from !== 'number' || typeof to !== 'number') return
-        this.view.dispatch({
-          changes: { from, to, insert: insert ?? '' },
-        })
-      }
-      document.addEventListener(BIB_DISPATCH_EVENT, this.dispatchHandler)
+  update(update: ViewUpdate) {
+    if (update.docChanged) {
+      this.debouncedParse()
     }
   }
-)
 
-/**
- * The extension to export for the sourceEditorExtensions module hook.
- */
-export const extension = (): Extension => {
-  return [bibEditorPlugin]
+  destroy() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+    }
+    if (this.dispatchHandler) {
+      document.removeEventListener(BIB_WRITE_EVENT, this.dispatchHandler)
+      document.removeEventListener(BIB_DELETE_EVENT, this.dispatchHandler)
+      this.dispatchHandler = null
+    }
+    if (this.scrollHandler) {
+      document.removeEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
+      this.scrollHandler = null
+    }
+  }
+
+  /**
+   * Whether the current document is a bibliography file (heuristic: an
+   * `@type{` marker within the first 2k characters).
+   */
+  private detectBibFile(): boolean {
+    // The `@type{` heuristic is module-internal (documented in the plan,
+    // pinned by a unit test). isBibDocument samples the first 2k chars.
+    return isBibDocument(this.view.state.doc.toString())
+  }
+
+  private emitState(
+    written?: { id: string; mode: 'existing' | 'new'; originalId?: string }
+  ) {
+    const isBibFile = this.detectBibFile()
+    const source = this.view.state.doc.toString()
+    document.dispatchEvent(
+      new CustomEvent(BIB_ENTRIES_EVENT, {
+        detail: {
+          entries: isBibFile ? this.parseEntries() : [],
+          source,
+          isBibFile,
+          written,
+        },
+      })
+    )
+  }
+
+  private parseEntries(): ParsedBibEntry[] {
+    try {
+      return parseBibFile(this.view.state.doc.toString())
+    } catch {
+      return []
+    }
+  }
+
+  private debouncedParse() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+    }
+    this.debounceTimer = setTimeout(() => this.emitState(), 300)
+  }
+
+  /**
+   * Guarded dispatch of write/delete requests from the panel.
+   *
+   * `expectedSource` is the source snapshot the panel read when it created
+   * the request. If the view no longer holds that exact source, the user has
+   * switched files (or the document changed externally) in the meantime →
+   * reject instead of write. This makes the "flush from file A while file B
+   * is becoming current" race unconditionally safe (REDESIGN_PLAN.md §2.2/R2)
+   * and — because the panel only exists in visual mode for `.bib` files —
+   * doubles as the "is this still my bib file" gate (plan §12 P1c).
+   */
+  private setupDispatchListener() {
+    this.dispatchHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail
+      if (!detail) {
+        return
+      }
+      const source = this.view.state.doc.toString()
+      const {
+        entry,
+        mode,
+        originalId,
+        expectedSource,
+      } = detail as {
+        entry?: BibEntry
+        mode: 'existing' | 'new'
+        originalId?: string
+        expectedSource?: string
+      } & { entryId?: string }
+
+      if (ev.type === BIB_DELETE_EVENT && !isBibDocument(source)) {
+        this.emitWriteFailed('not-a-bib-file')
+        return
+      }
+      if (typeof expectedSource === 'string' && source !== expectedSource) {
+        this.emitWriteFailed('doc-changed')
+        return
+      }
+
+      if (ev.type === BIB_WRITE_EVENT) {
+        if (!entry) {
+          return
+        }
+        const guard = planBibWrite(
+          source,
+          entry,
+          mode,
+          serializeBibEntry,
+          originalId
+        )
+        if (!guard.ok) {
+          this.emitWriteFailed(guard.reason)
+          return
+        }
+        this.view.dispatch({
+          changes: {
+            from: guard.plan.from,
+            to: guard.plan.to,
+            insert: guard.plan.insert,
+          },
+        })
+        // Fresh parse WITH the written id: the context re-binds the form to
+        // the written entry only when it resolves in that parse. On
+        // rejection (above) no re-emit happens → selection untouched, the
+        // banner shows and the form stays for a fix (§2.3 / §12 P1a).
+        this.emitState({ id: entry.id as string, mode, originalId })
+      } else if (ev.type === BIB_DELETE_EVENT) {
+        const entryId = (detail as { entryId: string }).entryId
+        const guard = planBibDelete(source, entryId)
+        if (!guard.ok) {
+          this.emitWriteFailed(guard.reason)
+          return
+        }
+        this.view.dispatch({
+          changes: {
+            from: guard.plan.from,
+            to: guard.plan.to,
+            insert: guard.plan.insert,
+          },
+        })
+        this.emitState()
+      }
+    }
+    document.addEventListener(BIB_WRITE_EVENT, this.dispatchHandler)
+    document.addEventListener(BIB_DELETE_EVENT, this.dispatchHandler)
+  }
+
+  private emitWriteFailed(reason: string) {
+    document.dispatchEvent(
+      new CustomEvent(BIB_WRITE_FAILED_EVENT, { detail: { reason } })
+    )
+  }
+
+  /**
+   * Scroll-to requests from the React panel (focus an entry in Code mode).
+   */
+  private setupScrollListener() {
+    this.scrollHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail
+      if (!detail) {
+        return
+      }
+      const { position } = detail as { position: number }
+      if (typeof position !== 'number') {
+        return
+      }
+      const pos = Math.min(
+        Math.max(0, position),
+        this.view.state.doc.length
+      )
+      this.view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+      })
+      this.view.focus()
+    }
+    document.addEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
+  }
 }
 
 /**
- * Event constants exported for use by the React context.
+ * The extension registered in sourceEditorExtensions.
+ *
+ * The import-overleaf-module macro compiles the registration into
+ * `createExtensions()`, which CALLS `moduleExtensions.map(e => e(options))`
+ * — so this must be a factory function, not an Extension value.
  */
-export { BIB_ENTRIES_EVENT, BIB_DISPATCH_EVENT, BIB_DOC_CHANGE_EVENT, BIB_SCROLL_TO_EVENT }
+export const extension = (
+  _options?: Record<string, unknown>
+): Extension => {
+  return [ViewPlugin.fromClass(BibEditorPlugin)]
+}

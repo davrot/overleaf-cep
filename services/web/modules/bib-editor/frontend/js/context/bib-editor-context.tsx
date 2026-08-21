@@ -1,216 +1,236 @@
 /**
- * BibEditor context - manages the state shared between the CodeMirror extension
- * and the React sidebar panel.
+ * BibEditor context.
  *
- * Communication flow:
- * 1. CodeMirror extension detects .bib file and parses entries
- * 2. It posts entries + view reference to this context via events
- * 3. The sidebar panel reads from this context and dispatches edits back
+ * Design (REDESIGN_PLAN.md §2):
+ *  - The .bib DOCUMENT is the single source of truth. `entries` + `source`
+ *    are re-derived from the CodeMirror view (300 ms debounce, extension),
+ *    so Code-mode edits appear in the visual UI automatically.
+ *  - WRITES go back through CodeMirror as BIB_WRITE_EVENT / BIB_DELETE_EVENT
+ *    (guarded in the extension via bib-write.ts); nothing in this context
+ *    caches offsets, so stale-offset writes are impossible.
+ *  - There is NO draft persistence: the open form is the draft; the panel
+ *    flushes it into the document on leaving visual mode.
+ *  - Re-binding to a written entry is PARSE-CONFIRMED: the extension emits
+ *    `written: { id, mode, originalId }` with the fresh parse ONLY after a
+ *    successful guarded write; this provider passes it to `setEditorState`,
+ *    which keeps the form bound only when the entry actually landed in the
+ *    document. On rejection nothing changes here — the banner shows
+ *    (writeFailure) and the form stays for a fix (§2.3 / §12 P1a).
+ *
+ * Selection:
+ *  - `null`                       → list mode
+ *  - `{ kind: 'existing', entryId }` → edit mode bound to a parsed entry
+ *  - `{ kind: 'new', draft }`      → edit mode with a not-yet-materialized
+ *                                     entry; "Check" appends it to the file
  */
 import {
   createContext,
   FC,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
-import {
-  serializeBibEntry,
-  replaceEntryInSource,
-  removeEntryFromSource,
-  generateCitationKey,
-} from '../utils/bib-parser'
 
-export type BibEditorMode = 'list' | 'edit' | 'add'
+export type BibSelection =
+  | null
+  | { kind: 'existing'; entryId: string }
+  | { kind: 'new'; draft: BibEntry }
+
+export type BibWriteRequest = {
+  entry: BibEntry
+  mode: 'existing' | 'new'
+  /** The source snapshot the panel read when it created this request */
+  expectedSource: string
+  /** For mode 'existing': the id of the entry BEFORE any rename (guard) */
+  originalId?: string
+}
+
+export type BibDeleteRequest = {
+  entryId: string
+  expectedSource: string
+}
+
+export type BibEditorActions = {
+  /**
+   * Update the parsed state from the editor (also clears writeFailure).
+   * `written` (from a guarded write that just succeeded) carries the id the
+   * write targeted; the selection is re-bound to it only when it resolves in
+   * the fresh `entries` parse.
+   */
+  setEditorState: (
+    isBibFile: boolean,
+    entries: ParsedBibEntry[],
+    source: string,
+    written?: { id: string; mode: 'existing' | 'new'; originalId?: string }
+  ) => void
+  /** Select an existing entry for editing */
+  selectEntry: (entry: ParsedBibEntry) => void
+  /** Bind the form to an existing entry by id (e.g. after materialization) */
+  selectExisting: (entryId: string) => void
+  /** Start a new (not yet materialized) entry */
+  selectNew: (draft?: BibEntry) => void
+  /** Back to the list (the panel flushes before calling this) */
+  deselect: () => void
+  /** Ask the editor to write a flushed entry into the document */
+  writeEntry: (request: BibWriteRequest) => void
+  /** Ask the editor to delete an entry from the document */
+  deleteEntry: (request: BibDeleteRequest) => void
+  /** Set the focus position (entry sourceStart) when returning to Code */
+  scrollTo: (position: number) => void
+  /** Record a rejected write (shown as a banner); cleared by a fresh parse */
+  setWriteFailure: (reason: string | null) => void
+  /** Dismiss the write-failure banner (e.g. user acknowledged) */
+  clearWriteFailure: () => void
+}
 
 export type BibEditorState = {
   /** Whether the current document is a .bib file */
   isBibFile: boolean
   /** Parsed entries from the current document */
   entries: ParsedBibEntry[]
-  /** Currently selected entry for editing */
-  selectedEntry: ParsedBibEntry | null
-  /** Current UI mode */
-  mode: BibEditorMode
-  /** The full source text of the .bib document */
+  /** The full source text of the current document */
   source: string
-  /** Unsaved add-form draft preserved across file-tree navigation */
-  pendingAddDraft: BibEntry | null
-  /** Unsaved edit-form draft preserved across file-tree navigation */
-  pendingEditDraft: { originalId: string; entry: BibEntry } | null
+  /** The current selection (list mode when null) */
+  selection: BibSelection
+  /** Set when the last write request was rejected by the editor guard */
+  writeFailure: string | null
 }
 
-export type BibEditorActions = {
-  /** Update the parsed state from the editor */
-  setEditorState: (isBibFile: boolean, entries: ParsedBibEntry[], source: string) => void
-  /** Select an entry for editing */
-  selectEntry: (entry: ParsedBibEntry | null) => void
-  /** Switch mode */
-  setMode: (mode: BibEditorMode) => void
-  /** Save an edited entry back to the document */
-  saveEntry: (original: ParsedBibEntry, updated: BibEntry) => void
-  /** Add a new entry to the document */
-  addEntry: (entry: BibEntry) => void
-  /** Delete an entry from the document */
-  deleteEntry: (entry: ParsedBibEntry) => void
-  /** Register a dispatch function to push changes to the editor */
-  registerDispatch: (fn: DispatchFn) => void
-  /** Persist/clear unsaved add-form draft (called by the panel on unmount/cancel) */
-  setPendingAddDraft: (draft: BibEntry | null) => void
-  /** Persist/clear unsaved edit-form draft (called by the panel on unmount/cancel) */
-  setPendingEditDraft: (draft: { originalId: string; entry: BibEntry } | null) => void
-}
+type BibEditorContextValue = BibEditorState & BibEditorActions
 
-type DispatchFn = (changes: { from: number; to: number; insert: string }) => void
-
-const BibEditorContext = createContext<
-  (BibEditorState & BibEditorActions) | undefined
->(undefined)
+const BibEditorContext = createContext<BibEditorContextValue | undefined>(
+  undefined
+)
 
 export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => {
   const [isBibFile, setIsBibFile] = useState(false)
   const [entries, setEntries] = useState<ParsedBibEntry[]>([])
-  const [selectedEntry, setSelectedEntry] = useState<ParsedBibEntry | null>(null)
-  const [mode, setMode] = useState<BibEditorMode>('list')
   const [source, setSource] = useState('')
-  const [dispatchFn, setDispatchFn] = useState<DispatchFn | null>(null)
-  const [pendingAddDraft, setPendingAddDraft] = useState<BibEntry | null>(null)
-  const [pendingEditDraft, setPendingEditDraft] = useState<{
-    originalId: string
-    entry: BibEntry
-  } | null>(null)
-
-  const registerDispatch = useCallback((fn: DispatchFn) => {
-    setDispatchFn(() => fn)
-  }, [])
+  const [selection, setSelection] = useState<BibSelection>(null)
+  const [writeFailure, setWriteFailureState] = useState<string | null>(null)
 
   const setEditorState = useCallback(
-    (newIsBibFile: boolean, newEntries: ParsedBibEntry[], newSource: string) => {
+    (
+      newIsBibFile: boolean,
+      newEntries: ParsedBibEntry[],
+      newSource: string,
+      written?: { id: string; mode: 'existing' | 'new'; originalId?: string }
+    ) => {
       setIsBibFile(newIsBibFile)
       setEntries(newEntries)
       setSource(newSource)
-      // If editing an entry, update the selected entry reference if it still exists
-      setSelectedEntry(prev => {
-        if (!prev) return null
-        const updated = newEntries.find(e => e.id === prev.id)
-        return updated || null
+      // A fresh parse means the UI is back in sync with the document.
+      setWriteFailureState(null)
+      // Selection handling, order matters:
+      // 1. a confirmed write just landed → bind to the written entry, but
+      //    only when the fresh parse actually contains it (parse-confirmed);
+      // 2. otherwise an existing entry that vanished from the document
+      //    (edited away in Code mode / file switched) → back to list.
+      setSelection(prev => {
+        if (prev && written) {
+          if (prev.kind === 'new' && written.mode === 'new') {
+            return newEntries.some(e => e.id === written.id)
+              ? { kind: 'existing', entryId: written.id }
+              : prev
+          }
+          if (
+            prev.kind === 'existing' &&
+            written.mode === 'existing' &&
+            written.originalId === prev.entryId &&
+            written.id !== prev.entryId
+          ) {
+            return newEntries.some(e => e.id === written.id)
+              ? { kind: 'existing', entryId: written.id }
+              : prev
+          }
+        }
+        if (prev && prev.kind === 'existing') {
+          return newEntries.some(e => e.id === prev.entryId) ? prev : null
+        }
+        return prev
       })
     },
     []
   )
 
-  const selectEntry = useCallback(
-    (entry: ParsedBibEntry | null) => {
-      setSelectedEntry(entry)
-      setMode(entry ? 'edit' : 'list')
-    },
-    []
-  )
+  const setWriteFailure = useCallback((reason: string | null) => {
+    setWriteFailureState(reason)
+  }, [])
 
-  const saveEntry = useCallback(
-    (original: ParsedBibEntry, updated: BibEntry) => {
-      if (!dispatchFn) return
-      const newText = serializeBibEntry(updated)
-      dispatchFn({
-        from: original.sourceStart,
-        to: original.sourceEnd,
-        insert: newText,
-      })
-      setMode('list')
-      setSelectedEntry(null)
-      setPendingEditDraft(null)
-    },
-    [dispatchFn]
-  )
+  const clearWriteFailure = useCallback(() => {
+    setWriteFailureState(null)
+  }, [])
 
-  const addEntry = useCallback(
-    (entry: BibEntry) => {
-      if (!dispatchFn) return
-      const newText = '\n' + serializeBibEntry(entry) + '\n'
-      // Insert at the end of the document
-      const insertPos = source.length
-      dispatchFn({
-        from: insertPos,
-        to: insertPos,
-        insert: newText,
-      })
-      setMode('list')
-      setPendingAddDraft(null)
-    },
-    [dispatchFn, source]
-  )
+  const selectEntry = useCallback((entry: ParsedBibEntry) => {
+    setSelection({ kind: 'existing', entryId: entry.id })
+  }, [])
 
-  const deleteEntry = useCallback(
-    (entry: ParsedBibEntry) => {
-      if (!dispatchFn) return
-      let end = entry.sourceEnd
-      // Consume trailing whitespace/newlines
-      while (
-        end < source.length &&
-        (source[end] === '\n' || source[end] === '\r')
-      ) {
-        end++
-      }
-      dispatchFn({
-        from: entry.sourceStart,
-        to: end,
-        insert: '',
-      })
-      setSelectedEntry(null)
-      setMode('list')
-    },
-    [dispatchFn, source]
-  )
+  const selectExisting = useCallback((entryId: string) => {
+    setSelection({ kind: 'existing', entryId })
+  }, [])
 
-  // Bug fix: if mode is 'edit' but selectedEntry became null (e.g. after
-  // file-tree navigation away and back), reset to list so the panel renders
-  // the entry list rather than a blank header.
-  useEffect(() => {
-    if (mode === 'edit' && selectedEntry === null) {
-      setMode('list')
-    }
-  }, [mode, selectedEntry])
+  const selectNew = useCallback((draft?: BibEntry) => {
+    setSelection({
+      kind: 'new',
+      draft: draft ?? { type: 'article', id: '', fields: {} },
+    })
+  }, [])
 
-  const value = useMemo(
+  const deselect = useCallback(() => {
+    setSelection(null)
+  }, [])
+
+  const writeEntry = useCallback((request: BibWriteRequest) => {
+    document.dispatchEvent(new CustomEvent('bib-editor:write', { detail: request }))
+  }, [])
+
+  const deleteEntry = useCallback((request: BibDeleteRequest) => {
+    document.dispatchEvent(new CustomEvent('bib-editor:delete', { detail: request }))
+  }, [])
+
+  const scrollTo = useCallback((position: number) => {
+    document.dispatchEvent(
+      new CustomEvent('bib-editor:scroll-to', { detail: { position } })
+    )
+  }, [])
+
+  const value = useMemo<BibEditorContextValue>(
     () => ({
       isBibFile,
       entries,
-      selectedEntry,
-      mode,
       source,
-      pendingAddDraft,
-      pendingEditDraft,
+      selection,
+      writeFailure,
       setEditorState,
       selectEntry,
-      setMode,
-      saveEntry,
-      addEntry,
+      selectExisting,
+      selectNew,
+      deselect,
+      writeEntry,
       deleteEntry,
-      registerDispatch,
-      setPendingAddDraft,
-      setPendingEditDraft,
+      scrollTo,
+      setWriteFailure,
+      clearWriteFailure,
     }),
     [
       isBibFile,
       entries,
-      selectedEntry,
-      mode,
       source,
-      pendingAddDraft,
-      pendingEditDraft,
+      selection,
+      writeFailure,
       setEditorState,
       selectEntry,
-      setMode,
-      saveEntry,
-      addEntry,
+      selectExisting,
+      selectNew,
+      deselect,
+      writeEntry,
       deleteEntry,
-      registerDispatch,
-      setPendingAddDraft,
-      setPendingEditDraft,
+      scrollTo,
+      setWriteFailure,
+      clearWriteFailure,
     ]
   )
 

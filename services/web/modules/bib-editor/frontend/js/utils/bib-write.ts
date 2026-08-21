@@ -37,6 +37,7 @@ export type BibWriteGuard =
  */
 export { serializeBibEntry } from './bib-parser'
 
+export const KEY_TAKEN_REASON = 'key-taken'
 const CLAMP_REASON = 'range-out-of-doc'
 const NOT_A_BIB_REASON = 'not-a-bib-file'
 const ENTRY_GONE_REASON = 'entry-gone'
@@ -57,9 +58,9 @@ export function isBibDocument(source: string): boolean {
  * Plan a write of a single entry against the *current* source.
  *
  * mode 'existing': the entry id must resolve to exactly one parsed entry; the
- * plan replaces that entry's range. If the id is missing from the source
- * (the user deleted it in Code mode while the panel was open) the guard is
- * 'entry-gone' and the view must surface a toast rather than write.
+ * plan replaces that entry's range. When the form renames the citation key
+ * (originalId differs from entry.id) the new id must not collide with a
+ * different entry ('key-taken').
  *
  * mode 'new': the entry is appended at the end of the source.
  *
@@ -71,7 +72,8 @@ export function planBibWrite(
   source: string,
   entry: BibEntry,
   mode: 'existing' | 'new',
-  serialize: (entry: BibEntry) => string
+  serialize: (entry: BibEntry) => string,
+  originalId?: string
 ): BibWriteGuard {
   if (!isBibDocument(source) && mode === 'existing') {
     return { ok: false, reason: NOT_A_BIB_REASON }
@@ -79,13 +81,24 @@ export function planBibWrite(
 
   if (mode === 'existing') {
     const entries = parseBibFile(source)
-    const match = entries.filter(
-      e => e.id === entry.id && e.type.toLowerCase() === (entry.type || '').toLowerCase()
+    // Anchor on the ORIGINAL key when given (a renamed entry is not resolved
+    // by its new key — the parsed doc does not contain it yet).
+    const anchorId = originalId ?? entry.id
+    const own = entries.filter(
+      e => e.id === anchorId && e.type.toLowerCase() === (entry.type || '').toLowerCase()
     )
-    if (match.length !== 1) {
+    if (own.length !== 1) {
       return { ok: false, reason: ENTRY_GONE_REASON }
     }
-    const { sourceStart, sourceEnd } = match[0]
+    // Renamed key: reject when the new key is already taken by a
+    // DIFFERENT entry (form collision guard, plan §2.2).
+    if (originalId && entry.id !== originalId) {
+      const clash = entries.find(e => e.id === entry.id && e !== own[0])
+      if (clash) {
+        return { ok: false, reason: KEY_TAKEN_REASON }
+      }
+    }
+    const { sourceStart, sourceEnd } = own[0]
     const from = Math.max(0, Math.min(sourceStart, source.length))
     const to = Math.max(0, Math.min(sourceEnd, source.length))
     return {

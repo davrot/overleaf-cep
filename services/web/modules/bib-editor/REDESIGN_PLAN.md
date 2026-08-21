@@ -3,9 +3,13 @@
 Addresses the reviewer requirements from yu-i-i (upstream, `yu-i-i/overleaf-cep:ext-ce`,
 see PR #183 discussion) for the `.bib` visual editor. Working branch: `bib-editor`.
 
-Status: **planning v1.1 — sources extracted & integrated** (see
-`docs/sources/bib-format-notes.md`; §2.4/§2.5/§2.6 finalized). Ready for
-implementation.
+Status: **implementation (v1.1, post-damage-assessment)** — A-1 committed
+(10a8caf781) together with this plan + sources (311f111e64). A-2..A-5 were
+destroyed mid-implementation (session lost) and found uncommitted; assessed
+2026-08-21 (§12): no committed work lost, working tree verified, three
+P1 guard defects identified & fixed. Commits 2–5 per §4 follow. Live matrix
+(§6 L1–L10) runs on the later machine. Sources extracted & integrated
+(`docs/sources/bib-format-notes.md`; §2.4/§2.5/§2.6 final).
 
 ---
 
@@ -42,7 +46,7 @@ Constraints (project):
   touchpoints are the existing `settings.defaults.js` registrations (unchanged)
   and the two i18n files (§5.3).
 - No live Overleaf container on this machine — all validation is static + unit
-  tests here; live verification matrix (§11) runs on the later machine.
+  tests here; live verification matrix (§6, L1–L10) runs on the later machine.
 
 ---
 
@@ -338,12 +342,18 @@ Everything in `services/web/modules/bib-editor/` unless marked **[SHARED]**.
 | `test/unit/**` | New — §6 suite |
 
 Commit shape (one per item, all on `bib-editor` branch; shared-file commit last):
-1. `parser/utils`: fixes + new pure functions + tests
-2. `context/extension`: R2 write path + delete draft machinery + tests
-3. `panel/form/list`: unified mode, Check, stars, keyboard + focus
-4. `schema/i18n`: trimmed schema + shared key files
-5. `README/tests infra`: README, package.json, vitest/eslint configs
-6. (later, live-machine) verification notes
+
+| Commit | Content | State (2026-08-21) |
+|---|---|---|
+| 1 | `parser/utils`: fixes + pure modules (bib-types/bib-validate/bib-write) + schema (misc/manual/defaultOptionalFields) + tests | committed (10a8caf781) |
+| 2 | `context/extension`: R2 write path (context/provider/extension) + draft machinery removed + tests | committed from the surviving working tree, **including the §12 P1 fixes** |
+| 3 | `panel/form/list`: unified mode, Check, stars, keyboard + focus | committed (as above) |
+| 4 | `schema/i18n`: shared i18n key files + i18n sanity test + package.json (the schema itself landed in commit 1) | committed (as above) |
+| 5 | `README/tests infra`: README | committed (as above) |
+| 6 | (later, live machine) verification notes | pending |
+
+The 2026-08-20 session died after committing 1 and before committing 2–5;
+commits 2–5 are reconstructed from the verified working tree (§12).
 
 ---
 
@@ -502,3 +512,69 @@ Plan v1.1 deltas applied: §2.6 final, §4 schema row, D6/D7 in §10.
 - **D7 Default optional list** (v1.1) → new `defaultOptionalFields` key per
   type (docs/sources/bib-format-notes.md §3), not a rewrite of
   `optionalFields` → zero upstream-merge impact.
+
+---
+
+## 12. Damage assessment & recovery (2026-08-21, post-compaction)
+
+The 2026-08-20 implementation session died mid-A-2/A-5 (todo
+`8aa5fbe2` “continuation plan v1.1 (post-compaction)”). On 2026-08-21 the tree
+was assessed: **no committed work lost** — commit §4.1 (10a8caf781) and the
+plan/sources commit (311f111e64) are intact, and the *full* uncommitted
+A-2..A-5 working tree survived (46/46 vitest green; LSP clean; i18n spot
+check: every module `t()` literal present in **both** shared JSONs, `__a__`
+style only, no `{{`).
+
+Uncommitted work found (maps to §4 commits 2–5):
+- `context/*` + `provider` + `extension` rewritten for R2; draft machinery
+  gone entirely (zero surviving references, per §2.8).
+- `panel`/`form`/`list` unified (Check-only, stars, OR-group messages, keys,
+  inline search); `search-form.tsx` deleted (kept inline, module-specific —
+  upstream `SearchForm` is project-list-specific, note in §2.8).
+- CSS: write-failure banner, key hints, focus styles (+1 block, purely
+  additive).
+- i18n keys in both shared JSONs (additive), plus one **legit de-dup**:
+  `continue_github_merge` existed **twice** at HEAD — removal of the second
+  occurrence is the only non-additive change and is safe.
+- Untracked: `README.md`, `test/unit/src/i18n.test.mjs` (both fold into
+  commit 4/5).
+- Scratch: repo-root `research.md` = dead-session notes, superseded by the
+  committed `docs/sources/bib-format-notes.md` → deleted. `.pi/` (session
+  todos) = tool state → never commit.
+
+Defects found & fixed in the working tree before commit (all in the guarded-
+write path):
+- **P1 (critical, 3 interlinked defects) — fixed:**
+  - (a) The panel called `selectExisting` **unconditionally** right after
+    `writeEntry` (Check + flush). The event chain is synchronous, so a
+    *rejected* guarded write (doc-changed / key-taken) still flipped the
+    selection to `existing` for an id that exists nowhere → `existingEntry`
+    undefined → panel rendered **empty**, and a typed-new draft became
+    unreachable — violating “on rejection the banner shows and the form stays
+    in new mode”. Fix: re-binding is now **parse-confirmed** — the extension
+    emits `written: { id, mode, originalId }` with the fresh `BIB_ENTRIES_EVENT`
+    only after a *successful* guarded write; the context re-binds
+    (`new`→`existing`, rename `existing`→new id) only when the id resolves in
+    that fresh parse. The panel no longer calls `selectExisting` anywhere.
+  - (b) The flush `existing`-branch “unchanged” comparison had a clause that
+    classified a **pure key rename** as a no-change (values equal, ids
+    normalized to `form.originalId`) and skipped the write → the rename was
+    silently lost. Fix: unchanged iff `original.id === entry.id` + value
+    equal; anchor for the lookup is `form.originalId ?? sel.entryId`
+    (covers a materialized-new draft whose form key is still empty).
+  - (c) The extension write-gate rejected any write the `isBibDocument`
+    heuristic didn’t classify — including an **empty** `.bib` — so adding the
+    *first* entry to a fresh empty file was rejected with “no longer a
+    bibliography”. Fix: writes are gated by `expectedSource` equality alone
+    (the panel only mounts in visual for `.bib` files, so the write can only
+    come from a bib context — this is exactly the “no longer the doc we are
+    editing” signal and makes empty-file appends work); `isBibDocument` is
+    kept as the delete-gate + as the pure-planner gate (no behavior change to
+    `bib-write.ts` itself).
+- **P2 (deferred, follow-up)** — D2 “back on a new form keeps the type
+  selection” is not implemented (next New Entry resets to `article`). Small
+  one-state addition to the context; not on the critical path.
+- **P3 (deferred, follow-up)** — cosmetics: after a successful Check the
+  re-bind re-syncs the form and clears `checked` (re-Check re-shows messages);
+  no `Esc` = back-from-form (§2.7);
+  no explicit `:focus-visible` outlines (cards/inputs have `:focus`).
