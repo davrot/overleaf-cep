@@ -29,7 +29,7 @@ import SessionManager from '../../../../app/src/Features/Authentication/SessionM
 import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, normalizeStoredSecret, storedToPlaintext } from './LLMCrypto.mjs'
-import { normalizeProviderSpec, chatText, listModels, detectProviderType } from './LLMClient.mjs'
+import { normalizeProviderSpec, chatText, listModels, detectProviderType, PROVIDER_TYPES } from './LLMClient.mjs'
 import OError from '@overleaf/o-error'
 
 // overleaf-lab: hard cap on rows per user - keeps the editor model list and
@@ -94,6 +94,8 @@ function publicRow(row) {
         models: row.models,
         completionModel: row.completionModel || '',
         enabled: row.enabled !== false,
+        lastModelsCheckedAt: row.lastModelsCheckedAt || null,
+        staleCompletionModel: !!row.staleCompletionModel,
         createdAt: row.createdAt || new Date(0).toISOString()
     }
 }
@@ -274,31 +276,66 @@ async function checkProviderConnection(req, res) {
         if (!apiKey && row.apiKey) apiKey = storedToPlaintext(row.apiKey)
     }
     if (!baseUrl && !providerType) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })
-    providerType = providerType || detectProviderType(baseUrl)
+    // overleaf-lab (reviewer #5): auto-detect the API type. Try the requested
+    // type first; if it fails, try every other supported type before giving
+    // up, so an endpoint that is OpenAI-compatible (or Anthropic) is detected
+    // automatically and the UI can persist the working type on the row.
+    const requestedType = providerType || detectProviderType(baseUrl)
+    const candidateTypes = [requestedType, ...PROVIDER_TYPES.filter(t => t !== requestedType)]
 
-    const spec = normalizeProviderSpec({ providerType, baseUrl, apiKey }, { model: model || 'qwen' })
     const started = Date.now()
-    try {
-        const { ids } = await listModels(spec, { timeoutMs: 60000 })
-        const models = ids.slice(0, MAX_ROWS_IN_LIST)
-        if (model && !models.includes(model)) {
-            logger.warn({ userId, model, count: models.length }, '[LLM] checkProviderConnection: model not in list')
-            return res.status(404).json({ ok: false, error: 'model-not-found', details: `Model "${model}" not available`, models, duration: `${Date.now() - started}ms` })
+    let lastError = null
+    for (const type of candidateTypes) {
+        let spec
+        try {
+            spec = normalizeProviderSpec({ providerType: type, baseUrl, apiKey }, { model: model || 'qwen' })
         }
-        // Lightweight chat probe (catches backends whose /models works but
-        // chat is misconfigured).
-        await chatText(
-            normalizeProviderSpec({ providerType, baseUrl, apiKey }, { model: model || models[0] || 'qwen' }),
-            [{ role: 'user', content: 'Reply with the single word OK.' }],
-            { maxOutputTokens: 16, temperature: 0, timeoutMs: 60000 }
-        )
-        res.json({ ok: true, message: 'Connection successful', models, duration: `${Date.now() - started}ms` })
+        catch (error) {
+            lastError = error
+            continue
+        }
+        try {
+            const { ids } = await listModels(spec, { timeoutMs: 60000 })
+            const models = ids.slice(0, MAX_ROWS_IN_LIST)
+            if (model && !models.includes(model)) {
+                // The model check is definitive for the requested type; do not
+                // fall through to other types just because the model is missing.
+                logger.warn({ userId, model, count: models.length }, '[LLM] checkProviderConnection: model not in list')
+                return res.status(404).json({ ok: false, error: 'model-not-found', details: `Model "${model}" not available`, models, duration: `${Date.now() - started}ms` })
+            }
+            // Lightweight chat probe (catches backends whose /models works but
+            // chat is misconfigured).
+            await chatText(
+                normalizeProviderSpec({ providerType: type, baseUrl, apiKey }, { model: model || models[0] || 'qwen' }),
+                [{ role: 'user', content: 'Reply with the single word OK.' }],
+                { maxOutputTokens: 16, temperature: 0, timeoutMs: 60000 }
+            )
+            if (type !== requestedType) {
+                logger.info(
+                    { userId, requestedType, detectedType: type, models: models.length },
+                    '[LLM] checkProviderConnection: API type auto-detected'
+                )
+            }
+            return res.json({
+                ok: true,
+                message: 'Connection successful',
+                models,
+                providerType: type,
+                detectedProviderType: type !== requestedType ? type : undefined,
+                duration: `${Date.now() - started}ms`
+            })
+        }
+        catch (error) {
+            lastError = error
+            logger.debug(
+                { userId, type, err: error?.message },
+                '[LLM] checkProviderConnection: type attempt failed, trying next'
+            )
+        }
     }
-    catch (error) {
-        const info = error?.code === 'auth' ? { status: 401 } : (error?.status || (OError.getFullInfo(error)?.status || 500))
-        logger.warn({ userId, providerType, err: error?.message }, '[LLM] checkProviderConnection: failed')
-        return res.status(info.status || 500).json({ ok: false, error: error.code || 'llm-error', message: error.message, duration: `${Date.now() - started}ms` })
-    }
+    const info = lastError?.code === 'auth' ? { status: 401 } : (lastError?.status || (OError.getFullInfo(lastError)?.status || 500))
+    logger.warn({ userId, providerType: requestedType, err: lastError?.message }, '[LLM] checkProviderConnection: failed')
+    return res.status(info.status || 500).json({ ok: false, error: lastError?.code || 'llm-error', message: lastError?.message, duration: `${Date.now() - started}ms` })
 }
 
 async function scanProviderModels(req, res) {
@@ -318,16 +355,29 @@ async function scanProviderModels(req, res) {
     providerType = providerType || detectProviderType(baseUrl)
     if (!baseUrl) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })
 
-    const spec = normalizeProviderSpec({ providerType, baseUrl, apiKey }, { model: 'scan' })
-    try {
-        const { ids } = await listModels(spec, { timeoutMs: 60000 })
-        res.json({ ok: true, models: ids.slice(0, MAX_ROWS_IN_LIST) })
+    // overleaf-lab (reviewer #5): same auto-detection as /check — try the
+    // requested API type first, then the others, so scanning also works when
+    // the type field was guessed wrong.
+    const requestedType = providerType
+    const candidateTypes = [requestedType, ...PROVIDER_TYPES.filter(t => t !== requestedType)]
+    let lastError = null
+    for (const type of candidateTypes) {
+        const spec = normalizeProviderSpec({ providerType: type, baseUrl, apiKey }, { model: 'scan' })
+        try {
+            const { ids } = await listModels(spec, { timeoutMs: 60000 })
+            if (type !== requestedType) {
+                logger.info({ userId, requestedType, detectedType: type, models: ids.length }, '[LLM] scanProviderModels: API type auto-detected')
+            }
+            return res.json({ ok: true, models: ids.slice(0, MAX_ROWS_IN_LIST), providerType: type, detectedProviderType: type !== requestedType ? type : undefined })
+        }
+        catch (error) {
+            lastError = error
+            logger.debug({ userId, type, err: error?.message }, '[LLM] scanProviderModels: type attempt failed, trying next')
+        }
     }
-    catch (error) {
-        const status = error?.code === 'auth' ? 401 : (error?.status || (OError.getFullInfo(error)?.status || 500))
-        logger.warn({ userId, providerType, err: error?.message }, '[LLM] scanProviderModels: failed')
-        return res.status(status || 500).json({ ok: false, error: error.code || 'llm-error', message: error.message })
-    }
+    const status = lastError?.code === 'auth' ? 401 : (lastError?.status || (OError.getFullInfo(lastError)?.status || 500))
+    logger.warn({ userId, providerType: requestedType, err: lastError?.message }, '[LLM] scanProviderModels: failed')
+    return res.status(status || 500).json({ ok: false, error: lastError?.code || 'llm-error', message: lastError?.message })
 }
 
 // Redirect: BYO rows live in Account Settings (core section). Kept as a

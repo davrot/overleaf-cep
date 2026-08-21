@@ -141,6 +141,38 @@ Deployed-container verification (bash/curl driver) covers login, site/user
 lanes, BYO CRUD + check/scan, rate-guard burst, compliance job lifecycle,
 and the settings pages: 12/12 passing on the latest build.
 
+## Reviewer compliance (issue #222, remaining items)
+
+- **#5 auto-detect API type** — `POST /user/llm-providers/check` and `/scan` try the
+  requested type first, then every supported type. A working type different from
+  the saved one is returned as `detectedProviderType`, the UI persists it on the
+  row (drafts are switched too), and the Test button says "API type auto-set to …".
+- **#9 daily model refresh** — `app/src/LLMModelSync.mjs` re-fetches the model
+  list of every enabled BYO row shortly after web startup and then every 24h
+  (`LLM_MODEL_SYNC_INTERVAL_MS` / `LLM_MODEL_SYNC_INITIAL_DELAY_MS`, '0' disables).
+  Synced rows carry `lastModelsCheckedAt` (+ `staleCompletionModel` when the
+  chosen model disappears); the table shows "Models updated …" and a warning
+  when the completion model is no longer served. Failures keep the previous
+  list and are logged in `web.log`.
+- **#11 split/join** — removed from the editor toolbar (type, labels, modes 5/6;
+  the admin prompt templates remain available if ever needed).
+- **#13 generators in the File menu** — title / abstract / keywords moved from the
+  selection toolbar into the core **File menu** (module extensions
+  `frontend/js/extensions/llm-file-menu-*`, core `insertMenuSections` +
+  `menubarExtraComponents` in `config/settings.defaults.js`). They read the whole
+  project (`POST /project/:id/llm/generate`) — matching the reviewer's point
+  that whole-document generators do not belong to a selection context — and open
+  a result modal with copy-to-clipboard. Non-LLM deployments see no menu items
+  (unregistered commands are filtered by the core menu renderer).
+- **#2 user settings inside Account Settings** — the BYO table/editor is rendered
+  directly in the core Account Settings page ("AI assistant" section,
+  `frontend/js/features/settings/components/llm-user-section.tsx`) via the
+  `overleafModuleImports` mechanism (`llmUserSettingsSection`, same pattern as
+  the github/zotero widgets — no dual-React risk); the section renders in
+  `compact` mode (no duplicate header) and falls back to a link card when the
+  module is absent. `/user/llm-settings` remains available as a deep link / the
+  Account ▸ 'AI Settings' entry.
+
 ## Layout
 
 - `app/src/LLMClient.mjs` — AI-SDK seam (models, chat text/objects, model listing)

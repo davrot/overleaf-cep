@@ -29,6 +29,8 @@ type ProviderRow = {
     completionModel: string
     enabled: boolean
     createdAt?: string
+    lastModelsCheckedAt?: number | string | null
+    staleCompletionModel?: boolean
 }
 
 type Draft = {
@@ -85,7 +87,23 @@ const PROVIDER_TYPE_LABELS: Record<string, string> = {
     openaiCompatible: 'OpenAI-compatible (Ollama, vLLM, llama.cpp, ...)',
 }
 
-export default function LLMSettingsSection() {
+// overleaf-lab: small relative-time helper for the "models updated" caption.
+function timeAgo(value: string | number): string {
+    const then = typeof value === 'number' ? value : Date.parse(value)
+    if (!Number.isFinite(then)) return ''
+    const minutes = Math.floor(Math.max(0, Date.now() - then) / 60000)
+    if (minutes < 1) return 'just now'
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 48) return `${hours} h ago`
+    return `${Math.floor(hours / 24)} d ago`
+}
+
+export default function LLMSettingsSection({ compact = false }: { compact?: boolean } = {}) {
+    // overleaf-lab: when embedded inside the core Account Settings page (reviewer
+    // #2) the surrounding page already provides context, so the standalone
+    // header is skipped there.
+
     const { t } = useTranslation()
     const [providers, setProviders] = useState<ProviderRow[]>([])
     const [maxProviders, setMaxProviders] = useState(10)
@@ -248,13 +266,29 @@ export default function LLMSettingsSection() {
         if (firstModel) body.model = firstModel
         try {
             const response = await postJSON('/user/llm-providers/check', { body })
+            // overleaf-lab (reviewer #5): the backend auto-detects the working API
+            // type — persist it on the row, or switch the draft so the saved type is right.
+            let autoTypeText = ''
+            if (response.detectedProviderType && response.detectedProviderType !== draft.providerType) {
+                const detected = response.detectedProviderType as string
+                if (draft.id) {
+                    try {
+                        await postJSON(`/user/llm-providers/${draft.id}`, { body: { providerType: detected } })
+                    }
+                    catch { /* row update is best-effort; the connection test itself passed */ }
+                }
+                else {
+                    setDraft((d) => (d ? { ...d, providerType: detected } : d))
+                }
+                autoTypeText = t('llm_byo_auto_type', ' — API type auto-set to {{type}}', { type: PROVIDER_TYPE_LABELS[detected] || detected })
+            }
             setTestResult({
                 type: 'success',
                 text: `${response.message || t('llm_byo_test_ok', 'Connection successful')}${
                     Array.isArray(response.models)
                         ? ` — ${response.models.length} model(s) served`
                         : ''
-                }`,
+                }${autoTypeText}`,
             })
         }
         catch (err: any) {
@@ -277,6 +311,11 @@ export default function LLMSettingsSection() {
         try {
             const response = await postJSON('/user/llm-providers/scan', { body })
             const found: string[] = Array.isArray(response.models) ? response.models : []
+            // overleaf-lab (reviewer #5): auto-detected type wins for the draft too.
+            if (response.detectedProviderType && response.detectedProviderType !== draft.providerType) {
+                const detected = response.detectedProviderType as string
+                setDraft((d) => (d ? { ...d, providerType: detected } : d))
+            }
             if (found.length === 0) {
                 flash({ type: 'error', text: t('llm_byo_scan_none', 'The backend reported no models') })
             }
@@ -322,7 +361,9 @@ export default function LLMSettingsSection() {
 
     return (
         <div className="llm-settings llm-buo">
+            {!compact && (
             <div className="llm-settings-header">
+
                 <h1 className="llm-settings-header-title">
                     {t('llm_byo_title', 'My LLM providers')}
                 </h1>
@@ -332,7 +373,9 @@ export default function LLMSettingsSection() {
                         'Use your own OpenAI, Anthropic, or any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp, ...). Keys are encrypted on this server and used only for calls you start.'
                     )}
                 </p>
+            
             </div>
+            )}
 
             {notice && (
                 <OLNotification type={notice.type} content={notice.text}
@@ -380,6 +423,16 @@ export default function LLMSettingsSection() {
                                                 </span>
                                             )}
                                         </div>
+                                        {row.lastModelsCheckedAt ? (
+                                            <div className="llm-buo-sync">
+                                                {t('llm_byo_models_updated', 'Models updated {{time}}', { time: timeAgo(String(row.lastModelsCheckedAt)) })}
+                                            </div>
+                                        ) : null}
+                                        {row.staleCompletionModel ? (
+                                            <div className="llm-buo-stale">
+                                                {t('llm_byo_stale_model', 'The chosen model is no longer served by the backend')}
+                                            </div>
+                                        ) : null}
                                     </td>
                                     <td>{row.hasKey ? '••••' : '—'}</td>
                                     <td>

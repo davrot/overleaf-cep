@@ -671,3 +671,15 @@
     margin-top: 1.5rem;
   }
 }
+
+  &-sync {
+    font-size: 0.75rem;
+    color: var(--content-tertiary, #8a9199);
+    margin-top: 0.25rem;
+  }
+
+  &-stale {
+    font-size: 0.75rem;
+    color: #b7791f;
+    margin-top: 0.125rem;
+  }

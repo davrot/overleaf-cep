@@ -29,7 +29,6 @@ export type LLMToolbarHandle = {
 type ParaphraseKind =
     | 'paraphrase'
     | 'style'
-    | 'splitjoin'
     | 'mathfix'
     | 'summarize'
     | 'explain'
@@ -41,7 +40,6 @@ type ParaphraseKind =
 const kindTitleMap: Record<ParaphraseKind, string> = {
     paraphrase: 'Paraphrase',
     style: 'Change Style',
-    splitjoin: 'Split / Join',
     summarize: 'Summarize',
     explain: 'Explain',
     mathfix: 'Fix formula syntax',
@@ -110,7 +108,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     const [panelMode, setPanelMode] = useState<
         'hidden' | 'menu' | 'chat' | 'paraphrase'
     >('hidden')
-    const [submenu, setSubmenu] = useState<null | 'style' | 'splitjoin'>(null)
+    const [submenu, setSubmenu] = useState<null | 'style'>(null)
 
     const [query, setQuery] = useState('')
     const [selectionText, setSelectionText] = useState('')
@@ -498,7 +496,6 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     const kindToMode: Record<ParaphraseKind, number> = {
         paraphrase: 1,
         style: 2,
-        splitjoin: 5,
         mathfix: 11,
         summarize: 7,
         explain: 8,
@@ -812,89 +809,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                             >
                                 Fix formula syntax
                             </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(9, 'title')}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                Generate title (full document)
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(10, 'abstract')}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                Generate abstract (full document)
-                            </div>
 
-                            <div
-                                style={{
-                                    height: 1,
-                                    background: 'rgba(255,255,255,0.03)',
-                                    margin: '8px 0',
-                                }}
-                            />
-                            <div
-                                style={{ fontSize: 12, color: '#98a3af', padding: '6px 8px' }}
-                            >
-                                Generate (whole document)
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startGenerate('title')}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                Title
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startGenerate('abstract')}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                Abstract
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startGenerate('keywords')}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                Keywords
-                            </div>
                         </div>
                     </div>
                 </div>

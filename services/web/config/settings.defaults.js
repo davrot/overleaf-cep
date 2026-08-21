@@ -1136,8 +1136,27 @@ module.exports = {
         __dirname,
         '../modules/template-gallery/frontend/js/features/template/components/menubar-manage-template'
       ),
+      // overleaf-lab: LLM whole-document generators (title/abstract/keywords) in the File menu.
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/extensions/llm-file-menu-commands'
+      ),
     ],
-    insertMenuSections: [],
+    // overleaf-lab: File-menu sections contributed by modules (reviewer #13).
+    insertMenuSections: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/extensions/llm-file-menu-section'
+      ),
+    ],
+    // overleaf-lab: BYO LLM provider management embedded in Account Settings (reviewer #2);
+    // the core section renders it when present, else falls back to a link card.
+    llmUserSettingsSection: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/components/llm-settings-section'
+      ),
+    ],
     oauth2Server: [
       Path.resolve(
         __dirname,
