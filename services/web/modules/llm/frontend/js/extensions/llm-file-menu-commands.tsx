@@ -12,7 +12,7 @@ import getMeta from '@/utils/meta'
 import { postJSON } from '@/infrastructure/fetch-json'
 import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provider'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
-import OLModal from '@/shared/components/ol/ol-modal'
+import { OLModal } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
 
 type GenerateKind = 'title' | 'abstract' | 'keywords'

@@ -1136,7 +1136,8 @@ module.exports = {
         __dirname,
         '../modules/template-gallery/frontend/js/features/template/components/menubar-manage-template'
       ),
-      // overleaf-lab: LLM whole-document generators (title/abstract/keywords) in the File menu.
+      // overleaf-lab: LLM whole-document generators (title/abstract/keywords) registered
+      // for the Generate section (see insertMenuSections below).
       Path.resolve(
         __dirname,
         '../modules/llm/frontend/js/extensions/llm-file-menu-commands'
