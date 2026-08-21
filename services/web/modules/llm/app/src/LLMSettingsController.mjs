@@ -251,8 +251,28 @@ async function deleteProvider(req, res) {
     if (!providers.some(r => r.id === rowId)) return res.status(404).json({ ok: false, error: 'not-found' })
     const rows = (await User.findById(userId, 'llmProviders')).llmProviders || providers.map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id, apiKey: normalizeStoredSecret(r.apiKey) }))
     const remaining = rows.filter(r => r.id !== rowId && !(rowId === 'legacy' && r.name === 'Imported settings'))
-    await User.updateOne({ _id: userId }, { $set: { llmProviders: remaining } })
-    logger.info({ userId, rowId }, '[LLM] deleteProvider: row deleted')
+    // overleaf-lab: deleting the "Imported settings" row must also clear the
+    // underlying legacy single-connection fields, otherwise loadProviders()
+    // re-migrates them on the next read and the deleted row comes back to life.
+    const targetIsLegacy = providers.some(
+        r => r.id === rowId && (r.id === 'legacy' || r.name === 'Imported settings')
+    ) || (rowId === 'legacy' && providers.some(r => r.name === 'Imported settings'))
+    const update = { $set: { llmProviders: remaining } }
+    if (targetIsLegacy) {
+        update.$unset = {
+            llmApiUrl: 1,
+            llmApiType: 1,
+            llmApiKey: 1,
+            llmModelName: 1,
+            llmModels: 1,
+            llmModelNames: 1,
+            llmCompletionModel: 1,
+            llmCompletionModels: 1,
+            useOwnLLMSettings: 1
+        }
+    }
+    await User.updateOne({ _id: userId }, update)
+    logger.info({ userId, rowId, targetIsLegacy }, '[LLM] deleteProvider: row deleted')
     res.json({ ok: true })
 }
 

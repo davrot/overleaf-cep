@@ -529,7 +529,22 @@ async function generateDocument(req, res) {
         model = resolved.model
     }
     catch (err) {
-        return res.status(503).json({ ok: false, error: err?.code || 'llm-disabled', message: err?.message || 'No LLM backend is configured' })
+        // overleaf-lab: a broken/stale BYO row must not hard-fail the whole-document
+        // generators when this deployment also has a working site backend (parity
+        // with the completion endpoint's lane chain). resolveSiteLane() throws
+        // when no site backend is configured, so this is a safe no-op otherwise.
+        const site = await resolveSiteLane()
+            .then(s => ({ ...s, lane: 'site' }))
+            .catch(() => null)
+        if (site) {
+            lane = site.lane
+            spec = site.spec
+            model = site.model
+            logger.info({ userId, err: err?.message }, '[LLM] generate: user lane failed, using site lane')
+        }
+        if (!lane) {
+            return res.status(503).json({ ok: false, error: err?.code || 'llm-disabled', message: err?.message || 'No LLM backend is configured' })
+        }
     }
 
     try {

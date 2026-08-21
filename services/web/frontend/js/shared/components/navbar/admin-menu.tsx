@@ -38,6 +38,12 @@ export default function AdminMenu({
       {canDisplayAdminMenu ? (
         <>
           <NavDropdownLinkItem href="/admin">Manage Site</NavDropdownLinkItem>
+          {/* overleaf-lab: explicit Admin dropdown entry for the site LLM
+              settings (reviewer follow-up: users expected the menu item; the
+              /admin "LLM Configuration" tab remains as well). */}
+          <NavDropdownLinkItem href="/admin/llm/settings">
+            Manage Site LLM
+          </NavDropdownLinkItem>
           <NavDropdownLinkItem href="/admin/user">
             Manage Users
           </NavDropdownLinkItem>
@@ -68,8 +74,6 @@ export default function AdminMenu({
           View Script Logs
         </NavDropdownLinkItem>
       ) : null}
-      {/* overleaf-lab: no standalone navbar entry — LLM Configuration is a tab
-          on the Manage Site page (/admin), per reviewer requirement. */}
     </NavDropdownMenu>
   )
 }
