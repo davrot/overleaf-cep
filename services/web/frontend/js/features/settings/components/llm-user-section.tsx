@@ -11,7 +11,7 @@
 // this section when embedded.
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import importOverleafModules from '../../../macros/import-overleaf-module.macro'
+import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
 
 const [llmUserSettingsSectionModule] = importOverleafModules(
     'llmUserSettingsSection'
