@@ -1073,9 +1073,7 @@ export default function LLMAdminSettingsPage() {
 
               {/* ── Save Button ── */}
               {saveErrors.length > 0 && (
-                  <OLNotification variant="error">
-                      {saveErrors.join(' · ')}
-                  </OLNotification>
+                  <OLNotification type="error" content={saveErrors.join(' · ')} />
               )}
               <OLButton
                   variant="primary"

@@ -335,13 +335,12 @@ export default function LLMSettingsSection() {
             </div>
 
             {notice && (
-                <OLNotification variant={notice.type === 'success' ? 'success' : 'error'}>
-                    {notice.text}
-                </OLNotification>
+                <OLNotification type={notice.type} content={notice.text}
+                />
             )}
 
             {loadError && (
-                <OLNotification variant="error">{loadError}</OLNotification>
+                <OLNotification type="error" content={loadError} />
             )}
 
             {/* Provider table */}
@@ -620,9 +619,7 @@ export default function LLMSettingsSection() {
                     </div>
 
                     {testResult && (
-                        <OLNotification variant={testResult.type === 'success' ? 'success' : 'error'}>
-                            {testResult.text}
-                        </OLNotification>
+                        <OLNotification type={testResult.type} content={testResult.text} />
                     )}
 
                     <div className="llm-buo-editor-actions">
