@@ -52,7 +52,10 @@ if (llmEnabled) {
                 const { startModelSync } = await import('./app/src/LLMModelSync.mjs')
                 const { User } = await import('../../app/src/models/User.mjs')
                 startModelSync({
-                    findUsers: () => User.find({ 'llmProviders.$enabled': true }).lean(),
+                    // $elemMatch matters: the positional-style 'llmProviders.$enabled'
+                    // filter matches NOTHING in this mongo version (verified live),
+                    // which would silently sync zero users forever.
+                    findUsers: () => User.find({ llmProviders: { $elemMatch: { enabled: true, baseUrl: { $ne: '' } } } }).lean(),
                     applySync: (user, row, updatedRow) =>
                         User.updateOne(
                             { _id: user._id },
