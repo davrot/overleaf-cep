@@ -40,7 +40,13 @@ function readAdminSettings() {
 function writeAdminSettings(data) {
   try {
     fs.mkdirSync(path.dirname(ADMIN_SETTINGS_PATH), { recursive: true })
-    fs.writeFileSync(ADMIN_SETTINGS_PATH, JSON.stringify(data, null, 2), { mode: 0o600 })
+    // F9: atomic write — temp file in the same directory + rename (POSIX
+    // rename is atomic) fixes torn reads; explicit chmod also corrects the
+    // mode of an EXISTING file created with looser permissions.
+    const tmp = `${ADMIN_SETTINGS_PATH}.tmp-${process.pid}-${Date.now()}`
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2))
+    fs.chmodSync(tmp, 0o600)
+    fs.renameSync(tmp, ADMIN_SETTINGS_PATH)
   } catch (err) {
     logger.error({ err, path: ADMIN_SETTINGS_PATH }, '[LLM] Could not write admin settings file')
     throw err
@@ -169,16 +175,16 @@ const llmSettingsSchema = z.object({
 async function saveAdminSettings(req, res) {
   const safeBody = llmSettingsSchema.safeParse(req.body)
   if (!safeBody.success) {
-    const errors = Object.fromEntries(
-      safeBody.error.issues.map(issue => [
-        issue.path.join('.'),
-        issue.message,
-      ])
-    )
-    logger.error( errors, 'Bad admin settings')
-// TODO: send all errors to the frontend and show them
+    const errors = safeBody.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message,
+    }))
+    logger.error( { errors }, 'Bad admin settings')
+    // F8: return ALL validation errors so the UI can surface them.
     return res.status(400).json({
+      ok: false,
       error: safeBody.error.issues[0].message,
+      errors,
     })
   }
 

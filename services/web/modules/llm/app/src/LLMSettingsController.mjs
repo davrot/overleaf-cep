@@ -28,7 +28,7 @@ import logger from '@overleaf/logger'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
-import { encryptSecret, decryptSecret } from './LLMCrypto.mjs'
+import { encryptSecret, normalizeStoredSecret, storedToPlaintext } from './LLMCrypto.mjs'
 import { normalizeProviderSpec, chatText, listModels, detectProviderType } from './LLMClient.mjs'
 import OError from '@overleaf/o-error'
 
@@ -110,8 +110,10 @@ export async function loadProviders(userId) {
         return user.llmProviders.filter(r => r?.id && Array.isArray(r?.models))
     }
 
-    // Legacy migration (read-only projection): a single saved connection
-    // becomes the first row.
+    // Legacy migration (projection + best-effort persistence): a single saved
+    // connection becomes the first row. F20: the legacy plaintext key is
+    // encrypted on migration and the row is persisted (if still not present)
+    // so save/edit/delete operate on a real row with an encrypted key.
     if (user.llmApiUrl) {
         const models = [
             ...(user.llmModelNames || user.llmModels || []),
@@ -122,17 +124,33 @@ export async function loadProviders(userId) {
             ...(user.llmCompletionModel && !user.llmCompletionModels?.includes(user.llmCompletionModel) ? [user.llmCompletionModel] : [])
         ]
         const legacyType = ['openai', 'anthropic', 'openaiCompatible'].includes(user.llmApiType) ? user.llmApiType : null
-        return [{
+        const row = {
             id: 'legacy',
             name: 'Imported settings',
             providerType: legacyType || detectProviderType(user.llmApiUrl),
             baseUrl: user.llmApiUrl,
-            apiKey: user.llmApiKey || '',
+            apiKey: normalizeStoredSecret(user.llmApiKey || ''),
             models: models.slice(0, 100),
             completionModel: (completionModels[0] && models.includes(completionModels[0])) ? completionModels[0] : (models[0] || ''),
             enabled: user.useOwnLLMSettings !== false,
             createdAt: new Date(0).toISOString()
-        }]
+        }
+        try {
+            const result = await User.updateOne(
+                {
+                    _id: userId,
+                    $or: [{ llmProviders: { $exists: false } }, { 'llmProviders.0': { $exists: false } }]
+                },
+                { $set: { llmProviders: [row] } }
+            )
+            if (result && result.modifiedCount) {
+                logger.info({ userId }, '[LLM] loadProviders: migrated legacy settings to "Imported settings" row (key encrypted)')
+            }
+        }
+        catch (err) {
+            logger.warn({ userId, err: err?.message }, '[LLM] loadProviders: legacy migration persist failed (continuing with virtual row)')
+        }
+        return [row]
     }
 
     return []
@@ -169,7 +187,7 @@ async function addProvider(req, res) {
     // a real id on first write.
     const migrated =
         existing.length === 0
-            ? (await loadProviders(userId)).map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id, apiKey: r.apiKey || '' }))
+            ? (await loadProviders(userId)).map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id, apiKey: normalizeStoredSecret(r.apiKey) }))
             : []
     const merged = [...migrated, ...existing, row]
     await User.updateOne({ _id: userId }, { $set: { llmProviders: merged } })
@@ -200,7 +218,7 @@ async function updateProvider(req, res) {
         const details = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
         return res.status(400).json({ ok: false, error: 'invalid', details })
     }
-    let apiKey = current.apiKey || ''
+    let apiKey = normalizeStoredSecret(current.apiKey || '')
     if (req.body?.clearApiKey) apiKey = ''
     else if (req.body?.apiKey && req.body.apiKey.trim() !== '') apiKey = encryptSecret(req.body.apiKey)
 
@@ -218,7 +236,7 @@ async function deleteProvider(req, res) {
     const rowId = req.params.id
     const providers = await loadProviders(userId)
     if (!providers.some(r => r.id === rowId)) return res.status(404).json({ ok: false, error: 'not-found' })
-    const rows = (await User.findById(userId, 'llmProviders')).llmProviders || providers.map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id }))
+    const rows = (await User.findById(userId, 'llmProviders')).llmProviders || providers.map(r => ({ ...r, id: r.id === 'legacy' ? makeRowId() : r.id, apiKey: normalizeStoredSecret(r.apiKey) }))
     const remaining = rows.filter(r => r.id !== rowId && !(rowId === 'legacy' && r.name === 'Imported settings'))
     await User.updateOne({ _id: userId }, { $set: { llmProviders: remaining } })
     logger.info({ userId, rowId }, '[LLM] deleteProvider: row deleted')
@@ -240,7 +258,7 @@ async function checkProviderConnection(req, res) {
         if (!row) return res.status(404).json({ ok: false, error: 'not-found' })
         baseUrl = baseUrl || row.baseUrl || ''
         providerType = providerType || row.providerType
-        if (!apiKey && row.apiKey) apiKey = decryptSecret(row.apiKey)
+        if (!apiKey && row.apiKey) apiKey = storedToPlaintext(row.apiKey)
     }
     if (!baseUrl && !providerType) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })
     providerType = providerType || detectProviderType(baseUrl)
@@ -282,7 +300,7 @@ async function scanProviderModels(req, res) {
         if (!row) return res.status(404).json({ ok: false, error: 'not-found' })
         baseUrl = baseUrl || row.baseUrl || ''
         providerType = providerType || row.providerType
-        if (!apiKey && row.apiKey) apiKey = decryptSecret(row.apiKey)
+        if (!apiKey && row.apiKey) apiKey = storedToPlaintext(row.apiKey)
     }
     providerType = providerType || detectProviderType(baseUrl)
     if (!baseUrl) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })

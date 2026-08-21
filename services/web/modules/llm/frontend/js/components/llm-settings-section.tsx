@@ -226,7 +226,7 @@ export default function LLMSettingsSection() {
             await load()
         }
         catch (err: any) {
-            flash({ type: 'error', text: err?.message || err?.data?.details || t('llm_byo_save_failed', 'Saving failed') })
+            flash({ type: 'error', text: err?.data?.message || err?.data?.details || err?.message || t('llm_byo_save_failed', 'Saving failed') })
         }
         finally {
             setBusy(null)
@@ -258,7 +258,7 @@ export default function LLMSettingsSection() {
             })
         }
         catch (err: any) {
-            setTestResult({ type: 'error', text: err?.message || err?.data?.details || t('llm_byo_test_fail', 'Connection failed') })
+            setTestResult({ type: 'error', text: err?.data?.message || err?.data?.details || err?.message || t('llm_byo_test_fail', 'Connection failed') })
         }
         finally {
             setBusy(null)
@@ -289,7 +289,7 @@ export default function LLMSettingsSection() {
             flash({ type: 'success', text: t('llm_byo_scan_ok', 'Models added to the row') })
         }
         catch (err: any) {
-            flash({ type: 'error', text: err?.message || err?.data?.details || t('llm_byo_scan_failed', 'Model scan failed') })
+            flash({ type: 'error', text: err?.data?.message || err?.data?.details || err?.message || t('llm_byo_scan_failed', 'Model scan failed') })
         }
         finally {
             setBusy(null)
@@ -310,7 +310,7 @@ export default function LLMSettingsSection() {
             await load()
         }
         catch (err: any) {
-            flash({ type: 'error', text: err?.message || err?.data?.details || t('llm_byo_delete_failed', 'Delete failed') })
+            flash({ type: 'error', text: err?.data?.message || err?.data?.details || err?.message || t('llm_byo_delete_failed', 'Delete failed') })
         }
         finally {
             setBusy(null)

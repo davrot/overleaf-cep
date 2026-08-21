@@ -162,12 +162,15 @@ export const useLLMChat = () => {
     }, [selectedModel, projectId])
 
     const sendMessage = useCallback(
-        async (userMessage: string) => {
+        async (userMessage: string, baseMessages?: Message[]) => {
             const newMessages: Message[] = [
-                ...messagesRef.current,
+                ...(baseMessages || messagesRef.current),
                 { role: 'user', content: userMessage },
             ]
 
+            // F11: keep the ref in sync immediately so callers that raced a
+            // setMessages (e.g. rerunLastMessage) can never observe a stale list.
+            messagesRef.current = newMessages
             setMessages(newMessages)
             setIsLoading(true)
             setError(null)
@@ -255,8 +258,10 @@ export const useLLMChat = () => {
         const messagesBeforeRerun = currentMessages.slice(0, foundIndex)
         setMessages(messagesBeforeRerun)
 
+        // F11: pass the exact message base explicitly so the 50 ms gap cannot
+        // observe a stale ref (previously a race window in effect timing).
         setTimeout(() => {
-            sendMessage(lastUserMessage)
+            sendMessage(lastUserMessage, messagesBeforeRerun)
         }, 50)
     }, [lastUserMessage, sendMessage])
 

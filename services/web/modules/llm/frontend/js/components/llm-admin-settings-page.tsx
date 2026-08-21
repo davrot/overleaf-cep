@@ -196,6 +196,8 @@ export default function LLMAdminSettingsPage() {
     } = useAsync()
 
     const [showSuccess, setShowSuccess] = useState(false)
+    // F8: surface validation errors returned by the save endpoint (field + message).
+    const [saveErrors, setSaveErrors] = useState<string[]>([])
     useEffect(() => {
         if (isSuccess) {
             setShowSuccess(true)
@@ -212,6 +214,7 @@ export default function LLMAdminSettingsPage() {
 
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault()
+        setSaveErrors([])
         runAsync(
             postJSON('/admin/llm/settings', {
                 body: {
@@ -236,7 +239,13 @@ export default function LLMAdminSettingsPage() {
                     askAiActionPrompts,
                 },
             })
-        ).catch(() => { })
+        ).catch((err: any) => {
+            // F8: show the specific validation errors when the server returns them.
+            const list = Array.isArray(err?.data?.errors)
+                ? err.data.errors.map((x: any) => `${x.field}: ${x.message}`)
+                : [err?.data?.error || err?.message || t('generic_something_went_wrong', 'Something went wrong')]
+            setSaveErrors(list)
+        })
     }
 
     const testConnection = async () => {
@@ -1109,6 +1118,11 @@ export default function LLMAdminSettingsPage() {
               )}
 
               {/* ── Save Button ── */}
+              {saveErrors.length > 0 && (
+                  <OLNotification variant="error">
+                      {saveErrors.join(' · ')}
+                  </OLNotification>
+              )}
               <OLButton
                   variant="primary"
                   type="submit"

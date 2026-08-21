@@ -348,6 +348,54 @@ function buildScanHints(strippedDocs, customPatterns = []) {
 // The save endpoint already refuses invalid regexes, but settings written by other
 // means must not break a review, so invalid lines are skipped here too. Capped to
 // keep the hint block small.
+/*
+ * F5: ReDoS guard for admin-authored rubric regexes. These patterns run over
+ * document text, so a catastrophic pattern (nested quantifiers such as (a+)+,
+ * recursive groups) could hang a review. Heuristic: reject recursive-group
+ * syntax and any group containing a quantifier that is itself quantified.
+ * Patterns that fail are skipped (with a debug log), never fatal.
+ */
+function containsNestedQuantifier(pattern) {
+    for (let i = 0; i < pattern.length; i++) {
+        if (pattern[i] !== '(' || pattern[i - 1] === '\\') continue
+        let depth = 1
+        let inner = false
+        let close = -1
+        for (let j = i + 1; j < pattern.length; j++) {
+            if (pattern[j - 1] === '\\') continue
+            const c = pattern[j]
+            if (c === '(') depth++
+            else if (c === ')') {
+                depth--
+                if (depth === 0) {
+                    close = j
+                    break
+                }
+            }
+            else if (depth === 1 && (c === '+' || c === '*' || c === '{')) {
+                inner = true
+            }
+        }
+        if (close !== -1 && inner && /^\s*(?:\+|\*|\{)/.test(pattern.slice(close + 1))) {
+            return true
+        }
+        if (close !== -1) i = close // continue after this group
+    }
+    return false
+}
+
+function safeRubricRegex(pattern) {
+    if (typeof pattern !== 'string' || !pattern || pattern.length > 300) return null
+    if (/\(?\?R|\(?\?&/.test(pattern)) return null // recursive groups
+    if (containsNestedQuantifier(pattern)) return null
+    try {
+        return new RegExp(pattern, 'i')
+    }
+    catch {
+        return null
+    }
+}
+
 function parseScanPatterns(text) {
     const patterns = []
     for (const rawLine of String(text || '').split('\n')) {
@@ -365,9 +413,16 @@ function parseScanPatterns(text) {
             continue
         }
         try {
-            patterns.push({ label: label || body, regex: new RegExp(body, 'i') })
-        } catch (err) {
-            logger.debug({ line }, '[LLM] compliance: skipping invalid scan pattern')
+            const regex = safeRubricRegex(body)
+            if (regex) {
+                patterns.push({ label: label || body, regex })
+            }
+            else {
+                logger.debug({ line }, '[LLM] compliance: skipping unsafe/invalid scan pattern')
+            }
+        }
+        catch (err) {
+            logger.debug({ line, err: err?.message }, '[LLM] compliance: skipping invalid scan pattern')
         }
     }
     return patterns

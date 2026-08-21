@@ -113,7 +113,10 @@ function splitMessages(messages, extraSystem) {
 function wrapError(err, fallbackMessage) {
   if (err instanceof APICallError) {
     if (err.statusCode === 401 || err.statusCode === 403) {
-      return Object.assign(new Error('Authentication failed with the LLM backend (401/403)'), { code: 'auth' });
+      return Object.assign(
+        new Error('The provider rejected the API key (HTTP 401/403). Check the key and that it has not expired.'),
+        { code: 'auth' }
+      );
     }
     if (err.statusCode === 404) {
       return Object.assign(new Error('Model not found on backend (404)'), { code: 'llm-bad-model' });
@@ -243,8 +246,14 @@ export async function listModels(spec, { timeoutMs = 60000 } = {}) {
     clearTimeout(timer);
   }
   if (!response.ok) {
-    const body = (await response.text().catch(() => '')).slice(0, 200);
-    const code = response.status === 401 || response.status === 403 ? 'auth' : 'llm-error';
+    const body = (await response.text().catch(() => '')).slice(0, 120);
+    if (response.status === 401 || response.status === 403) {
+      throw Object.assign(
+        new Error(`The provider rejected the API key (HTTP ${response.status})${body ? ` — ${body}` : ''}`),
+        { code: 'auth', status: response.status }
+      );
+    }
+    const code = response.status === 404 ? 'llm-bad-model' : 'llm-error';
     throw Object.assign(new Error(`Backend returned ${response.status}${body ? `: ${body}` : ''}`), { code, status: response.status });
   }
   const data = await response.json();
