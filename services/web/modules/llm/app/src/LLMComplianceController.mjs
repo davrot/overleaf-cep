@@ -6,6 +6,9 @@ import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEn
 import { getAdminLLMSettings, getComplianceRubrics, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
 import OError from '@overleaf/o-error'
 import { chatText, chatObject, listModels as listModelsSdk, normalizeProviderSpec } from './LLMClient.mjs' // overleaf-lab: AI-SDK provider seam (PR item 4: provider-agnostic review passes)
+// overleaf-lab: Review-tab model selector — resolve an explicit model ref (site
+// model id or 'u:<rowId>:<model>') to the right lane + spec.
+import { resolveModelLane } from './LLMChatController.mjs'
 
 // overleaf-lab: in-memory job queue for compliance reviews. A review sends the
 // whole project to the LLM and can run for minutes, so we run one at a time per
@@ -782,7 +785,9 @@ async function performReview(job) {
     const admin = await getAdminLLMSettings()
     const llmApiUrl = admin.llmApiUrl
     const llmApiKey = admin.llmApiKey
-    if (!llmApiUrl) {
+    // overleaf-lab: a per-job BYO model (Review-tab selector) does not need the
+    // site backend — its provider row supplies baseUrl + key.
+    if (!llmApiUrl && !job.modelOverride) {
         throw new Error('LLM backend is not configured')
     }
     // overleaf-lab: provider seam (Vercel AI SDK). baseSpec per job; llmChat()
@@ -793,12 +798,28 @@ async function performReview(job) {
         baseUrl: llmApiUrl,
         apiKey: llmApiKey,
     }
+    // overleaf-lab: per-job model selection (Review-tab model selector). A
+    // 'u:<rowId>:<model>' ref switches the base spec to that BYO provider row;
+    // a site model id keeps the admin base spec.
+    let reviewModelOverrideName = null
+    if (job.modelOverride) {
+        const resolved = await resolveModelLane(userId, job.modelOverride).catch(err => ({ error: err }))
+        if (resolved?.error) {
+            throw Object.assign(
+                new Error(resolved.error?.message || 'The selected review model is unavailable'),
+                { code: 'model-unavailable' },
+            )
+        }
+        currentBaseSpec = resolved.spec
+        reviewModelOverrideName = resolved.model
+    }
     const maxContextTokens = admin.maxContextTokens || 32000
     // overleaf-lab: the admin-set answer budget wins; fall back to the env default.
     const reviewMaxTokens = admin.reviewMaxTokens || REVIEW_MAX_TOKENS
-    // overleaf-lab: prefer the admin-chosen review model, then the first allowed
-    // model, then the env-derived default (mirrors the chat model fallback).
+    // overleaf-lab: per-job selector wins; then the admin-chosen review model,
+    // then the first allowed model, then the env-derived default.
     const reviewModel =
+        reviewModelOverrideName ||
         (admin.reviewModel && admin.reviewModel.trim()) ||
         (admin.allowedModels && admin.allowedModels[0]) ||
         ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || 'default').split(',')[0].trim())
@@ -1636,7 +1657,7 @@ async function startReview(req, res) {
     // 2. Request context.
     const projectId = req.params.Project_id
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const { rubricId } = req.body || {}
+    const { rubricId, model: requestedModel } = req.body || {}
 
     logger.debug({ projectId, userId, rubricId }, '[LLM] compliance: start requested')
 
@@ -1647,9 +1668,10 @@ async function startReview(req, res) {
         return res.json({ ok: false, error: 'no_rubric', message: 'Unknown or missing rubric' })
     }
 
-    // 4. Effective backend configuration must at least have a URL.
+    // 4. Effective backend configuration must at least have a URL — unless the
+    //    request carries an explicit BYO model ref (its provider row supplies one).
     const admin = await getAdminLLMSettings()
-    if (!admin.llmApiUrl) {
+    if (!admin.llmApiUrl && !(typeof requestedModel === 'string' && requestedModel.trim())) {
         return res.json({ ok: false, error: 'not_configured', message: 'LLM backend is not configured' })
     }
 
@@ -1682,6 +1704,9 @@ async function startReview(req, res) {
         userId,
         rubricId,
         rubricName: rubric.name,
+        // overleaf-lab: Review-tab model selector — explicit model ref
+        // (site id or 'u:<rowId>:<model>'); null = deployment default.
+        modelOverride: typeof requestedModel === 'string' && requestedModel.trim() ? requestedModel.trim().slice(0, 300) : null,
         status: 'queued',
         result: null,
         errorCode: null,

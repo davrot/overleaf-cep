@@ -79,6 +79,10 @@ function LLMCompliancePane() {
         rubricsLoaded,
         selectedRubricId,
         setSelectedRubricId,
+        // overleaf-lab: model selector (Review tab)
+        models,
+        selectedModel,
+        setSelectedModel,
         phase,
         position,
         progress,
@@ -345,8 +349,25 @@ function LLMCompliancePane() {
                 overflow: 'hidden',
             }}
         >
-            {/* Header row: rubric selector + run button */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Header row: model selector + rubric selector + run button */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                    className="form-select"
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    disabled={isActive}
+                    aria-label={t('review_model', 'Review model')}
+                    style={{ flex: 1, minWidth: 120 }}
+                >
+                    <option value="">
+                        {t('review_model_default', 'Default model')}
+                    </option>
+                    {models.map(m => (
+                        <option key={m.value} value={m.value}>
+                            {m.label}
+                        </option>
+                    ))}
+                </select>
                 <select
                     className="form-select"
                     value={selectedRubricId}
@@ -365,7 +386,7 @@ function LLMCompliancePane() {
                     <OLButton
                         variant="primary"
                         type="button"
-                        onClick={runReview}
+                        onClick={() => runReview(selectedModel || undefined)}
                         disabled={!selectedRubricId}
                     >
                         <MaterialIcon type="fact_check" />{' '}

@@ -174,6 +174,13 @@ async function resolveLane(userId, modelRef) {
     return { ...(await resolveSiteLane(modelRef.model)), lane: 'site' }
 }
 
+// overleaf-lab: expose lane resolution so other features (e.g. the Review tab's
+// model selector) can honor an explicit model ref — either a site model id or
+// a namespaced 'u:<rowId>:<model>' BYO ref — with that row's own baseUrl + key.
+export async function resolveModelLane(userId, modelRefString) {
+    return resolveLane(userId, parseModelRef(String(modelRefString || '').trim()))
+}
+
 function sendError(res, err, fallbackStatus) {
     const statusMap = {
         auth: 401,

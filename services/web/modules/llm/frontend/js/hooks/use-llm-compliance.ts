@@ -182,6 +182,9 @@ export const useLLMCompliance = () => {
     const [rubrics, setRubrics] = useState<ComplianceRubric[]>([])
     const [rubricsLoaded, setRubricsLoaded] = useState(false)
     const [selectedRubricId, setSelectedRubricId] = useState('')
+    // overleaf-lab: model selector for the Review tab (mirrors the Chat header).
+    const [models, setModels] = useState<Array<{ value: string; label: string }>>([])
+    const [selectedModel, setSelectedModel] = useState('')
     const [phase, setPhase] = useState<CompliancePhase>('idle')
     const [position, setPosition] = useState(0)
     const [result, setResult] = useState<ComplianceResult | null>(null)
@@ -261,6 +264,44 @@ export const useLLMCompliance = () => {
         }
 
         fetchRubrics()
+
+        return () => {
+            cancelled = true
+        }
+    }, [projectId])
+
+    // overleaf-lab: load the model list (site models + the user's BYO rows) for
+    // the Review-tab model selector. Same endpoint as the Chat header; a failure
+    // leaves an empty list and the selector simply offers "default model".
+    useEffect(() => {
+        let cancelled = false
+
+        async function fetchModels() {
+            if (!projectId) {
+                setModels([])
+                return
+            }
+            try {
+                const data: any = await getJSON(`/project/${projectId}/llm/models`)
+                if (cancelled) return
+                const options: Array<{ value: string; label: string }> = []
+                for (const m of data.models || []) {
+                    options.push({ value: m.id, label: String(m.name || m.id) })
+                }
+                for (const row of data.userRows || []) {
+                    const rowName = row.name ? `${row.name} · ` : ''
+                    for (const m of row.models || []) {
+                        options.push({ value: m.id, label: `${rowName}${String(m.name || m.id)}` })
+                    }
+                }
+                setModels(options)
+            } catch (err) {
+                if (cancelled) return
+                setModels([])
+            }
+        }
+
+        fetchModels()
 
         return () => {
             cancelled = true
@@ -380,20 +421,28 @@ export const useLLMCompliance = () => {
         [pollOnce, stopPolling]
     )
 
-    const runReview = useCallback(async () => {
-        if (!selectedRubricId) return
+    const runReview = useCallback(
+        async (modelOverride?: string) => {
+            if (!selectedRubricId) return
 
-        setResult(null)
-        setErrorInfo(null)
-        setPosition(0)
-        setProgress(null)
+            setResult(null)
+            setErrorInfo(null)
+            setPosition(0)
+            setProgress(null)
 
-        try {
-            // F14: postJSON adds the CSRF header + JSON content type itself.
-            const json = await postJSON(
-                `/project/${projectId}/llm/compliance/start`,
-                { body: { rubricId: selectedRubricId } }
-            )
+            try {
+                // F14: postJSON adds the CSRF header + JSON content type itself.
+                const json = await postJSON(
+                    `/project/${projectId}/llm/compliance/start`,
+                    {
+                        body: {
+                            rubricId: selectedRubricId,
+                            // overleaf-lab: model selector — explicit model ref
+                            // or omitted = deployment default.
+                            ...(modelOverride ? { model: modelOverride } : {}),
+                        },
+                    }
+                )
             if (!mountedRef.current) return
 
             if (json.ok) {
@@ -496,6 +545,10 @@ export const useLLMCompliance = () => {
         rubrics,
         rubricsLoaded,
         hasRubrics: rubrics.length > 0,
+        // overleaf-lab: Review-tab model selector
+        models,
+        selectedModel,
+        setSelectedModel,
         selectedRubricId,
         setSelectedRubricId,
         phase,
