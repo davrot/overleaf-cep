@@ -147,13 +147,13 @@ and the settings pages: 12/12 passing on the latest build.
   requested type first, then every supported type. A working type different from
   the saved one is returned as `detectedProviderType`, the UI persists it on the
   row (drafts are switched too), and the Test button says "API type auto-set to …".
-- **#9 daily model refresh** — `app/src/LLMModelSync.mjs` re-fetches the model
-  list of every enabled BYO row shortly after web startup and then every 24h
-  (`LLM_MODEL_SYNC_INTERVAL_MS` / `LLM_MODEL_SYNC_INITIAL_DELAY_MS`, '0' disables).
-  Synced rows carry `lastModelsCheckedAt` (+ `staleCompletionModel` when the
-  chosen model disappears); the table shows "Models updated …" and a warning
-  when the completion model is no longer served. Failures keep the previous
-  list and are logged in `web.log`.
+- **#9 model-list freshness (decided: manual only)** — no automatic background sync
+  (removed by owner decision 2026-08-21: timer-based auto-refreshes can replace a
+  user-curated model list and surprise users; the benefit was small). Model lists
+  are refreshed explicitly: **Test connection** (verifies and returns the current
+  list) and **Scan models** (merges the freshly served list into the row).
+  Providers whose model roster changes over time are handled with one click of
+  Scan — no timers, no background traffic, no rate-limit exposure.
 - **#11 split/join** — removed from the editor toolbar (type, labels, modes 5/6;
   the admin prompt templates remain available if ever needed).
 - **#13 generators in the File menu** — title / abstract / keywords moved from the

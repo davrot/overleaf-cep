@@ -94,8 +94,6 @@ function publicRow(row) {
         models: row.models,
         completionModel: row.completionModel || '',
         enabled: row.enabled !== false,
-        lastModelsCheckedAt: row.lastModelsCheckedAt || null,
-        staleCompletionModel: !!row.staleCompletionModel,
         createdAt: row.createdAt || new Date(0).toISOString()
     }
 }

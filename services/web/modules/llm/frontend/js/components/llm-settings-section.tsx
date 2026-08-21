@@ -29,8 +29,6 @@ type ProviderRow = {
     completionModel: string
     enabled: boolean
     createdAt?: string
-    lastModelsCheckedAt?: number | string | null
-    staleCompletionModel?: boolean
 }
 
 type Draft = {
@@ -85,18 +83,6 @@ const PROVIDER_TYPE_LABELS: Record<string, string> = {
     openai: 'OpenAI',
     anthropic: 'Anthropic',
     openaiCompatible: 'OpenAI-compatible (Ollama, vLLM, llama.cpp, ...)',
-}
-
-// overleaf-lab: small relative-time helper for the "models updated" caption.
-function timeAgo(value: string | number): string {
-    const then = typeof value === 'number' ? value : Date.parse(value)
-    if (!Number.isFinite(then)) return ''
-    const minutes = Math.floor(Math.max(0, Date.now() - then) / 60000)
-    if (minutes < 1) return 'just now'
-    if (minutes < 60) return `${minutes} min ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 48) return `${hours} h ago`
-    return `${Math.floor(hours / 24)} d ago`
 }
 
 export default function LLMSettingsSection({ compact = false }: { compact?: boolean } = {}) {
@@ -423,16 +409,6 @@ export default function LLMSettingsSection({ compact = false }: { compact?: bool
                                                 </span>
                                             )}
                                         </div>
-                                        {row.lastModelsCheckedAt ? (
-                                            <div className="llm-buo-sync">
-                                                {t('llm_byo_models_updated', 'Models updated {{time}}', { time: timeAgo(String(row.lastModelsCheckedAt)) })}
-                                            </div>
-                                        ) : null}
-                                        {row.staleCompletionModel ? (
-                                            <div className="llm-buo-stale">
-                                                {t('llm_byo_stale_model', 'The chosen model is no longer served by the backend')}
-                                            </div>
-                                        ) : null}
                                     </td>
                                     <td>{row.hasKey ? '••••' : '—'}</td>
                                     <td>

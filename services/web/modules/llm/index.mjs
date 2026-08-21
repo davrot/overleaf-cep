@@ -44,27 +44,6 @@ if (llmEnabled) {
     LLMModule = {
         name: 'llm',
         router: LLMRouter,
-        // overleaf-lab (reviewer #9): keep BYO model lists fresh — background sync
-        // after startup and every 24h. The core web app calls `module.start?.()`
-        // on boot (infrastructure/Modules.mjs).
-        start: () =>
-            (async () => {
-                const { startModelSync } = await import('./app/src/LLMModelSync.mjs')
-                const { User } = await import('../../app/src/models/User.mjs')
-                startModelSync({
-                    // $elemMatch matters: the positional-style 'llmProviders.$enabled'
-                    // filter matches NOTHING in this mongo version (verified live),
-                    // which would silently sync zero users forever.
-                    findUsers: () => User.find({ llmProviders: { $elemMatch: { enabled: true, baseUrl: { $ne: '' } } } }).lean(),
-                    applySync: (user, row, updatedRow) =>
-                        User.updateOne(
-                            { _id: user._id },
-                            { $set: { llmProviders: user.llmProviders.map(r => (r.id === row.id ? updatedRow : r)) } },
-                        ),
-                })
-            })().catch(err => {
-                logger.warn({ err: err?.message }, '[LLM] model sync: failed to start')
-            }),
     }
 } else {
     logger.info({}, '[LLM] Module NOT loaded (disabled)')
