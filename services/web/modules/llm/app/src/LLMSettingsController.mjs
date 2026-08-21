@@ -106,15 +106,20 @@ export async function loadProviders(userId) {
     const user = await User.findById(userId, 'llmProviders llmApiUrl llmApiType llmApiKey llmModelName llmModels llmModelNames llmCompletionModel llmCompletionModels useOwnLLMSettings')
     if (!user) return []
 
-    if (Array.isArray(user.llmProviders) && user.llmProviders.length) {
-        return user.llmProviders.filter(r => r?.id && Array.isArray(r?.models))
-    }
+    const providers = Array.isArray(user.llmProviders)
+        ? user.llmProviders.filter(r => r?.id && Array.isArray(r?.models))
+        : []
 
-    // Legacy migration (projection + best-effort persistence): a single saved
-    // connection becomes the first row. F20: the legacy plaintext key is
-    // encrypted on migration and the row is persisted (if still not present)
-    // so save/edit/delete operate on a real row with an encrypted key.
-    if (user.llmApiUrl) {
+    // Legacy settings (one single saved connection) are always represented
+    // as the "Imported settings" row, next to any BYO rows. F20: the legacy
+    // plaintext key is encrypted on migration; the row is persisted (if still
+    // not present) so save/edit/delete operate on a real row with an
+    // encrypted key. Making the row visible when other rows exist is
+    // required for delete (the delete of that row is what unsets the legacy
+    // fields — owner bug report: "row reappears after delete / can't delete").
+    if (user.llmApiUrl
+        && !providers.some(r => r.id === 'legacy'
+            || (r.name === 'Imported settings' && r.baseUrl === user.llmApiUrl))) {
         const models = [
             ...(user.llmModelNames || user.llmModels || []),
             ...(user.llmModelName && !user.llmModels?.includes(user.llmModelName) ? [user.llmModelName] : [])
@@ -137,11 +142,8 @@ export async function loadProviders(userId) {
         }
         try {
             const result = await User.updateOne(
-                {
-                    _id: userId,
-                    $or: [{ llmProviders: { $exists: false } }, { 'llmProviders.0': { $exists: false } }]
-                },
-                { $set: { llmProviders: [row] } }
+                { _id: userId },
+                { $set: { llmProviders: [row, ...providers] } }
             )
             if (result && result.modifiedCount) {
                 logger.info({ userId }, '[LLM] loadProviders: migrated legacy settings to "Imported settings" row (key encrypted)')
@@ -150,10 +152,10 @@ export async function loadProviders(userId) {
         catch (err) {
             logger.warn({ userId, err: err?.message }, '[LLM] loadProviders: legacy migration persist failed (continuing with virtual row)')
         }
-        return [row]
+        return [row, ...providers]
     }
 
-    return []
+    return providers
 }
 
 async function getProvidersJson(req, res) {
