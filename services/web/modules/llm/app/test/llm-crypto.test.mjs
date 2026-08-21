@@ -16,7 +16,7 @@ import {
 } from '../src/LLMCrypto.mjs'
 
 test('normalizeStoredSecret: plaintext becomes enc:v1: and round-trips', () => {
-    const plain = '***REDACTED***'
+    const plain = 'testkey1234567890abcdef'
     const stored = normalizeStoredSecret(plain)
     assert.ok(hasEncPrefix(stored), 'expected enc:v1: prefix, got: ' + stored)
     assert.equal(storedToPlaintext(stored), plain, 'round-trip must return the original key')
