@@ -119,7 +119,10 @@
        content width and left the input small). */
     align-items: stretch;
     padding: var(--spacing-03) var(--spacing-04) var(--spacing-03) var(--spacing-02);
-    background-color: var(--llm-chat-new-message-bg);
+    /* overleaf-lab: the upstream restyle makes the pane a card surface —
+       --llm-chat-bg (--wf-panel-bg) must win over the old transparent input-bar
+       value that overrode it here. */
+    background-color: var(--llm-chat-bg);
     border-bottom: 1px solid var(--llm-chat-new-message-border);
     gap: var(--spacing-03);
 }
@@ -145,7 +148,7 @@
     label {
         font-size: var(--font-size-02);
         font-weight: 600;
-        color: var(--content-primary-themed);
+        color: var(--wf-muted, var(--content-primary-themed));
         margin: 0 0 var(--spacing-00) var(--spacing-02);
         white-space: nowrap;
     }
@@ -162,7 +165,7 @@
            selected model name) is legible on light AND dark. Plain --content-primary
            did not flip on dark; --content-primary-themed does (the "Model" label
            already uses it). The option popup is themed separately below. */
-        color: var(--content-primary-themed);
+        color: var(--wf-panel-text, var(--content-primary-themed));
         font-size: var(--font-size-02);
         outline: none;
         border-color: var(--border-primary);
