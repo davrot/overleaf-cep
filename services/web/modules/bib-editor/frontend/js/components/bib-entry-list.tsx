@@ -1,44 +1,83 @@
 /**
- * List of BibTeX entries shown in the visual editor.
+ * List of BibTeX entries shown in the visual editor (Phase C capture,
+ * PHASE_C_PLAN.md §1.3/§3-C3).
  *
- * Keyboard (REDESIGN_PLAN.md §2.7):
- *  - the search box is focused on mount (when entries exist),
- *  - ArrowUp/ArrowDown move through the entry cards (Enter opens),
- *  - Escape / clear search resets the filter.
- * Bulk selection is Phase B (plan §8) — no selection UI here yet.
+ * Compact windowed rows (capture `bibtex-entry-card-*` BEM), each with:
+ *  - checkbox (`bibtex-entry-card-checkbox`, aria "Select entry")
+ *  - citation key (`bibtex-entry-card-key`)
+ *  - persistent error icon (`bibtex-entry-error-icon`, aria
+ *    "Entry has errors") — per-entry required-field check, no Check press
+ *  - compact details line (author / title / year)
+ * Bulk bar: select-all (`bibtex-bulk-actions-select-all`, aria
+ * "Select all entries") + count ("N reference(s)", `{ count }`).
+ * Search placeholder is DYNAMIC: "Search <openDocName>" (capture).
+ *
+ * Windowing: absolutely positioned rows + data-index (capture), simple
+ * overscan window — see virtual-list.ts (pure, unit-tested).
+ *
+ * Selection state is lifted (props) so the C4 preview panel can close a
+ * previewed row's preview on bulk delete and keep preview consistent.
  */
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ParsedBibEntry } from '../utils/bib-parser'
+import { getEntryType, getMissingRequiredFields } from '../utils/bib-types'
 import {
-  getEntryType,
-  getMissingRequiredFields,
-} from '../utils/bib-types'
+  visibleWindow,
+  spacerHeights,
+  type WindowMath,
+} from '../utils/virtual-list.ts'
+
+const ROW_HEIGHT = 47
 
 type Props = {
   entries: ParsedBibEntry[]
   onSelect: (entry: ParsedBibEntry) => void
+  /** Preview binding (C4): the entry id whose preview is open */
+  previewId?: string | null
+  /** Bulk selection (C3): checked row ids (bulk-bar driven) */
+  selectedIds?: string[]
+  onToggleSelect?: (id: string) => void
+  onToggleSelectAll?: (kind: 'all' | 'none') => void
+  /** Open document filename (dynamic "Search <file>" placeholder) */
+  openDocName?: string
 }
 
-export default function BibEntryList({ entries, onSelect }: Props) {
+export default function BibEntryList({
+  entries,
+  onSelect,
+  previewId = null,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
+  openDocName,
+}: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
-  const [active, setActive] = useState(0)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(470)
   const searchRef = useRef<HTMLInputElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return entries
-    const q = search.toLowerCase()
+    const q = search.trim().toLowerCase()
     return entries.filter(e => {
       const title = (e.fields.title || '').toLowerCase()
       const author = (e.fields.author || '').toLowerCase()
+      const editor = (e.fields.editor || '').toLowerCase()
       const id = e.id.toLowerCase()
       const year = (e.fields.year || '').toLowerCase()
-      const venue =
-        (e.fields.journal || e.fields.booktitle || '').toLowerCase()
+      const venue = (
+        e.fields.journal ||
+        e.fields.journaltitle ||
+        e.fields.booktitle ||
+        ''
+      ).toLowerCase()
       return (
         title.includes(q) ||
         author.includes(q) ||
+        editor.includes(q) ||
         id.includes(q) ||
         year.includes(q) ||
         venue.includes(q)
@@ -50,105 +89,126 @@ export default function BibEntryList({ entries, onSelect }: Props) {
   // file in list mode, focus goes to the search box).
   useEffect(() => {
     if (entries.length > 0) {
-      const raf = requestAnimationFrame(() => {
-        searchRef.current?.focus()
-      })
+      const raf = requestAnimationFrame(() => searchRef.current?.focus())
       return () => cancelAnimationFrame(raf)
     }
   }, [entries.length])
 
-  const focusCard = useCallback((i: number) => {
-    setActive(i)
-    const raf = requestAnimationFrame(() => {
-      document
-        .getElementById(`bib-card-${i}`)
-        ?.focus()
-    })
-    return () => cancelAnimationFrame(raf)
+  // Viewport height (fixed-row windowing needs the visible height).
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return undefined
+    const measure = () => setViewportHeight(el.clientHeight || 470)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
-  const handleListKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (filtered.length === 0) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        focusCard(Math.min(active + 1, filtered.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        focusCard(Math.max(active - 1, 0))
-      } else if (e.key === 'Home') {
-        e.preventDefault()
-        focusCard(0)
-      } else if (e.key === 'End') {
-        e.preventDefault()
-        focusCard(filtered.length - 1)
-      } else if (e.key === 'Enter' && e.target === searchRef.current) {
-        e.preventDefault()
-        focusCard(active)
-      }
-    },
-    [filtered.length, active, focusCard]
-  )
+  const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop)
+  }, [])
 
-  const handleCardKeyDown = useCallback(
-    (e: React.KeyboardEvent, i: number) => {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        focusCard(Math.min(i + 1, filtered.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        focusCard(Math.max(i - 1, 0))
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        onSelect(filtered[i])
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        searchRef.current?.focus()
+  const window: WindowMath = visibleWindow(
+    scrollTop,
+    viewportHeight,
+    ROW_HEIGHT,
+    filtered.length
+  )
+  const spacers = spacerHeights(filtered.length, ROW_HEIGHT, window)
+
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSearch('')
       }
     },
-    [filtered, onSelect, focusCard]
+    []
   )
 
   return (
-    <div className="bib-entry-list">
-      {/* Inline search (module-local; the upstream SearchForm is project-
-          list specific — REDESIGN_PLAN §2.8) */}
-      <input
-        id="bib-list-search"
-        ref={searchRef}
-        type="search"
-        className="bib-list-search-input"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        onKeyDown={handleListKeyDown}
-        placeholder={t('Search for entries')}
-        aria-label={t('Search for entries')}
-      />
-
-      {/* Entry count */}
-      <div className="bib-list-count">
-        {filtered.length === entries.length
-          ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`
-          : `${filtered.length} of ${entries.length} entries`}
+    <div className="bibtex-entry-list">
+      <div className="bibtex-entry-list-toolbar">
+        <input
+          id="bib-list-search"
+          ref={searchRef}
+          type="search"
+          className="bibtex-search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          placeholder={t('Search __fileName__', {
+            fileName: openDocName || '.bib',
+          })}
+          aria-label={t('search')}
+        />
       </div>
 
-      {/* Entry list */}
-      <div className="bib-list-entries">
-        {filtered.length === 0 && (
-          <div className="bib-list-empty">
-            {entries.length === 0
-              ? t('No bibliography entries yet. Click "Add new entry" to create one.')
-              : t('No entries match your search.')}
-          </div>
-        )}
-        {filtered.map((entry, i) => (
-          <BibEntryCard
-            key={`${entry.id}-${entry.sourceStart}`}
-            entry={entry}
-            index={i}
-            onSelect={onSelect}
-            onCardKeyDown={handleCardKeyDown}
+      {/* Bulk bar (C3): select-all + count */}
+      <div className="bibtex-bulk-actions-bar">
+        <label className="bibtex-bulk-actions-select-all">
+          <input
+            type="checkbox"
+            aria-label={t('Select all entries')}
+            checked={
+              filtered.length > 0 &&
+              selectedIds.length > 0 &&
+              selectedIds.every(id =>
+                filtered.some(e => e.id === id)
+              )
+            }
+            onChange={e => onToggleSelectAll?.(e.target.checked ? 'all' : 'none')}
           />
+          <span>{t('Select all')}</span>
+        </label>
+        <span className="bibtex-bulk-actions-count">
+          {t('__count__ reference(s)', { count: selectedIds.length })}
+        </span>
+      </div>
+
+      <div className="bibtex-list-count" aria-hidden="true">
+        {filtered.length === entries.length
+          ? t('__count__ reference(s)', { count: entries.length })
+          : `${filtered.length} / ${entries.length}`}
+      </div>
+
+      {(filtered.length === 0 || entries.length === 0) && (
+        <div className="bib-list-empty">
+          {entries.length === 0
+            ? t('No bibliography entries yet. Click "Add new entry" to create one.')
+            : t('No entries match your search.')}
+        </div>
+      )}
+
+      {/* Windowed list body (capture: role=list, absolute rows, data-index) */}
+      <div
+        ref={viewportRef}
+        className="bibtex-entry-list-body"
+        role="list"
+        onScroll={onScroll}
+        style={{
+          height:
+            Math.max(spacers.top + (window.end - window.start) * ROW_HEIGHT + spacers.bottom, 47)
+        }}
+      >
+        <div className="bibtex-list-spacer" style={{ height: spacers.top }} />
+        {filtered.slice(window.start, window.end).map((entry, i) => (
+          <div
+            key={`${entry.id}-${entry.sourceStart}`}
+            data-index={window.start + i}
+            className="bibtex-entry-card-row"
+            role="listitem"
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%' }}
+          >
+            <BibEntryCard
+              entry={entry}
+              index={window.start + i}
+              onSelect={onSelect}
+              previewing={previewId === entry.id}
+              checked={selectedIds.includes(entry.id)}
+              onToggleSelect={onToggleSelect}
+            />
+          </div>
         ))}
       </div>
     </div>
@@ -159,55 +219,90 @@ function BibEntryCard({
   entry,
   index,
   onSelect,
-  onCardKeyDown,
+  previewing,
+  checked,
+  onToggleSelect,
 }: {
   entry: ParsedBibEntry
   index: number
   onSelect: (entry: ParsedBibEntry) => void
-  onCardKeyDown: (e: React.KeyboardEvent, i: number) => void
+  previewing: boolean
+  checked: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const t = useTranslation().t
   const typeDef = getEntryType(entry.type)
   const missingFields = typeDef
     ? getMissingRequiredFields(typeDef.requiredFields, entry.fields)
     : []
-  const invalid = missingFields.length > 0
+  const hasErrors =
+    missingFields.length > 0 || entry.id.trim().length === 0
   const title = entry.fields.title || t('Untitled')
   const author = entry.fields.author || ''
-  const year = entry.fields.year || ''
-  const venue =
-    entry.fields.journal || entry.fields.booktitle || entry.fields.publisher || ''
+  const year = entry.fields.year || entry.fields.date || ''
 
   // Truncate long author lists
   const authorDisplay = useMemo(() => {
     const parts = author.split(/\s+and\s+/i)
     if (parts.length <= 2) return author
-    return `${parts[0]} et al.`
+    const first = parts[0] || ''
+    return `${first} et al.`
   }, [author])
+
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onSelect(entry)
+      }
+    },
+    [entry, onSelect]
+  )
 
   return (
     <div
-      id={`bib-card-${index}`}
-      className={['bib-entry-card', invalid ? 'bib-entry-card-invalid' : '']
+      id={`bibtex-entry-card-${entry.id}#${index}`}
+      className={[
+        'bibtex-entry-card',
+        'bibtex-entry-card-compact',
+        'bibtex-entry-card-clickable',
+        hasErrors ? 'bibtex-entry-card-errors' : '',
+        previewing ? 'bibtex-entry-card-previewing' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
       role="button"
-      tabIndex={0}
+      tabIndex={-1}
       onClick={() => onSelect(entry)}
-      onKeyDown={e => onCardKeyDown(e, index)}
+      onKeyDown={handleCardKeyDown}
     >
-      <div className="bib-entry-card-header">
-        <span className="bib-entry-card-type">@{entry.type}</span>
-        <span className="bib-entry-card-key">{entry.id}</span>
+      <div className="bibtex-entry-card-checkbox">
+        <input
+          type="checkbox"
+          aria-label={t('Select entry')}
+          checked={checked}
+          onClick={e => e.stopPropagation()}
+          onChange={() => onToggleSelect?.(entry.id)}
+        />
       </div>
-      <div className="bib-entry-card-title">{title}</div>
-      {(authorDisplay || year) && (
-        <div className="bib-entry-card-meta">
-          {authorDisplay && <span>{authorDisplay}</span>}
-          {authorDisplay && year && <span> · </span>}
-          {year && <span>{year}</span>}
-          {venue && <span> · {venue}</span>}
+      <div className="bibtex-entry-card-content">
+        <div className="bibtex-entry-card-header">
+          <span className="bibtex-entry-card-key">{entry.id}</span>
+          <span className="bibtex-entry-card-details">
+            {authorDisplay && (
+              <span className="bibtex-entry-card-author">{authorDisplay}</span>
+            )}
+            {title && <span className="bibtex-entry-card-title">{title}</span>}
+            {year && <span className="bibtex-entry-card-year">{year}</span>}
+          </span>
         </div>
+      </div>
+      {hasErrors && (
+        <span className="bibtex-entry-error-icon" role="img" aria-label={t('Entry has errors')}>
+          <span className="material-symbols" aria-hidden="true">
+            error
+          </span>
+        </span>
       )}
     </div>
   )
