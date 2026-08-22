@@ -3,7 +3,8 @@ import Settings from '@overleaf/settings'
 import { expressify } from '@overleaf/promise-utils'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
-import { getAdminLLMSettings, getComplianceRubrics, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
+import { getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
+import { getComplianceRubricsForUser } from './LLMSettingsController.mjs' // overleaf-lab (2026-08-27): user-scoped rubrics
 import OError from '@overleaf/o-error'
 import { chatText, chatObject, listModels as listModelsSdk, normalizeProviderSpec } from './LLMClient.mjs' // overleaf-lab: AI-SDK provider seam (PR item 4: provider-agnostic review passes)
 // overleaf-lab: Review-tab model selector — resolve an explicit model ref (site
@@ -775,54 +776,32 @@ async function performReview(job) {
 
     // overleaf-lab: resolve the rubric fresh at run time (the job only stores id and
     // name) so the guidelines text is current when the job finally runs.
-    const rubrics = await getComplianceRubrics()
+    // overleaf-lab (2026-08-27): from the USER's rubric set (own or inherited).
+    const rubrics = await getComplianceRubricsForUser(userId)
     const rubric = rubrics.find(r => r.id === job.rubricId)
     if (!rubric) {
         throw new Error('Rubric is no longer available')
     }
 
-    // Effective backend configuration.
+    // overleaf-lab (2026-08-27): the ONE shared model resolution — explicit
+    // job override > user's profile selection > first BYO row > site backend.
+    // The former admin "Review model" and the not_configured URL check are gone:
+    // a deployment without a global LLM works through the same lane chain.
     const admin = await getAdminLLMSettings()
-    const llmApiUrl = admin.llmApiUrl
-    const llmApiKey = admin.llmApiKey
-    // overleaf-lab: a per-job BYO model (Review-tab selector) does not need the
-    // site backend — its provider row supplies baseUrl + key.
-    if (!llmApiUrl && !job.modelOverride) {
-        throw new Error('LLM backend is not configured')
-    }
-    // overleaf-lab: provider seam (Vercel AI SDK). baseSpec per job; llmChat()
-    // derives the per-call spec from body.model. llmApiType may be absent — the
-    // client detects from the URL (openai.com / anthropic.com / compatible).
-    currentBaseSpec = {
-        providerType: admin.llmApiType,
-        baseUrl: llmApiUrl,
-        apiKey: llmApiKey,
-    }
-    // overleaf-lab: per-job model selection (Review-tab model selector). A
-    // 'u:<rowId>:<model>' ref switches the base spec to that BYO provider row;
-    // a site model id keeps the admin base spec.
-    let reviewModelOverrideName = null
-    if (job.modelOverride) {
-        const resolved = await resolveModelLane(userId, job.modelOverride).catch(err => ({ error: err }))
-        if (resolved?.error) {
-            throw Object.assign(
-                new Error(resolved.error?.message || 'The selected review model is unavailable'),
-                { code: 'model-unavailable' },
-            )
-        }
-        currentBaseSpec = resolved.spec
-        reviewModelOverrideName = resolved.model
-    }
+    const resolved = await resolveModelLane(userId, job.modelOverride || undefined).catch(err => {
+        throw Object.assign(
+            new Error(err?.message || 'No usable LLM backend is configured'),
+            { code: 'model-unavailable' },
+        )
+    })
+    currentBaseSpec = resolved.spec
+    const reviewModel = resolved.model
+    // overleaf-lab: deployment context budgets (admin-configured, with safe
+    // defaults) — unchanged by the per-user migration.
     const maxContextTokens = admin.maxContextTokens || 32000
-    // overleaf-lab: the admin-set answer budget wins; fall back to the env default.
+    // overleaf-lab: the admin-set answer budget; the effective room adapts to
+    // what the document leaves free inside maxContextTokens.
     const reviewMaxTokens = admin.reviewMaxTokens || REVIEW_MAX_TOKENS
-    // overleaf-lab: per-job selector wins; then the admin-chosen review model,
-    // then the first allowed model, then the env-derived default.
-    const reviewModel =
-        reviewModelOverrideName ||
-        (admin.reviewModel && admin.reviewModel.trim()) ||
-        (admin.allowedModels && admin.allowedModels[0]) ||
-        ((process.env.LLM_MODEL_NAME || process.env.LLM_AVAILABLE_MODELS || 'default').split(',')[0].trim())
 
     // overleaf-lab: resolve the effective editable prompts (admin override or the
     // shipped default) so the review uses the admin-tuned system prompt.
@@ -1635,7 +1614,11 @@ async function getRubrics(req, res) {
     if (!flags.reviewEnabled) {
         return res.json({ rubrics: [] })
     }
-    const rubrics = await getComplianceRubrics()
+    // overleaf-lab (2026-08-27): USER-SCOPED rubrics (the user configured them
+    // under /user/llm-settings); a user without their own inherits the
+    // deployment-wide set.
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const rubrics = await getComplianceRubricsForUser(userId)
     // overleaf-lab: expose names only, never the guidelines text, to the project UI.
     res.json({ rubrics: rubrics.map(r => ({ id: r.id, name: r.name })) })
 }
@@ -1662,17 +1645,26 @@ async function startReview(req, res) {
     logger.debug({ projectId, userId, rubricId }, '[LLM] compliance: start requested')
 
     // 3. Resolve the requested rubric (capture its name for the job).
-    const rubrics = await getComplianceRubrics()
+    // overleaf-lab (2026-08-27): from the USER's own rubrics (fall back to the
+    // deployment-wide set) — rubrics are per-user now, not global.
+    const rubrics = await getComplianceRubricsForUser(userId)
     const rubric = rubrics.find(r => r.id === rubricId)
     if (!rubric) {
         return res.json({ ok: false, error: 'no_rubric', message: 'Unknown or missing rubric' })
     }
 
-    // 4. Effective backend configuration must at least have a URL — unless the
-    //    request carries an explicit BYO model ref (its provider row supplies one).
-    const admin = await getAdminLLMSettings()
-    if (!admin.llmApiUrl && !(typeof requestedModel === 'string' && requestedModel.trim())) {
-        return res.json({ ok: false, error: 'not_configured', message: 'LLM backend is not configured' })
+    // 4. A usable lane must exist: the user's selection / BYO row / site backend.
+    // overleaf-lab (2026-08-27): deployments WITHOUT a global LLM are first-class
+    // — resolving the lane also honors the user's profile selection and BYO rows.
+    try {
+        await resolveModelLane(userId, (typeof requestedModel === 'string' && requestedModel.trim()) || undefined)
+    } catch (err) {
+        logger.debug({ userId, err: err?.message }, '[LLM] compliance: no usable lane')
+        return res.json({
+            ok: false,
+            error: 'not_configured',
+            message: 'No usable LLM backend: set a model (File → Select LLM Model) or add your own LLM connection',
+        })
     }
 
     // overleaf-lab: F6 — concurrency caps. One user keeps at most one review

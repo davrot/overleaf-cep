@@ -133,17 +133,11 @@ export default function LLMAdminSettingsPage() {
             .map(m => m.trim())
             .filter(Boolean)
     )
-    // overleaf-lab: admin-chosen inline-completion model for the shared backend
-    // ('' = auto, i.e. the first allowed model). Separate from the chat models.
-    const [completionModel, setCompletionModel] = useState<string>(
-        (getMeta('ol-completionModel') as string) || ''
-    )
-    // overleaf-lab: compliance review settings. Rubrics come from a data-type='json'
-    // meta tag, so getMeta returns the parsed value; guard in case it is not an array.
-    const rubricsFromMeta = getMeta('ol-complianceRubrics') as Array<{ id: string; name: string; guidelines: string; scanPatterns?: string }>
-    const initialRubrics = Array.isArray(rubricsFromMeta) ? rubricsFromMeta : []
-    const [complianceRubrics, setComplianceRubrics] = useState<Array<{ id: string; name: string; guidelines: string; scanPatterns?: string }>>(initialRubrics)
-    const [reviewModel, setReviewModel] = useState<string>((getMeta('ol-reviewModel') as string) || '')
+    // overleaf-lab (2026-08-27, owner request): the admin "Inline completion
+    // model" and "Review model" pickers and the rubric editor are GONE. Inline
+    // completion and the review both run on each user's shared model selection
+    // (profile → BYO row → site default), and rubrics live per-user under
+    // /user/llm-settings.
     const [maxContextTokens, setMaxContextTokens] = useState<number>(parseInt((getMeta('ol-maxContextTokens') as string) || '32000', 10) || 32000)
     // overleaf-lab: budget for the review's JSON answer (the model's max_tokens and
     // the room reserved for it in the context check).
@@ -204,9 +198,10 @@ export default function LLMAdminSettingsPage() {
                     clearLlmApiKey,
                     allowedModels,
                     knownModels,
-                    completionModel,
-                    complianceRubrics,
-                    reviewModel,
+                    // overleaf-lab (2026-08-27): completionModel / complianceRubrics /
+                    // reviewModel no longer sent — see the state block above. Existing
+                    // values in the admin settings document simply stop being read by
+                    // the lane resolution logic.
                     maxContextTokens,
                     reviewMaxTokens,
                     chatEnabled,
@@ -283,22 +278,8 @@ export default function LLMAdminSettingsPage() {
         )
     }
 
-    // overleaf-lab: compliance rubric editing helpers. Each rubric keeps a stable
-    // client-generated id so React keys and immutable updates stay correct.
-    const addRubric = () => {
-        const id = `rubric-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        setComplianceRubrics(prev => [...prev, { id, name: '', guidelines: '', scanPatterns: '' }])
-    }
-
-    const updateRubric = (id: string, field: 'name' | 'guidelines' | 'scanPatterns', value: string) => {
-        setComplianceRubrics(prev =>
-            prev.map(r => (r.id === id ? { ...r, [field]: value } : r))
-        )
-    }
-
-    const removeRubric = (id: string) => {
-        setComplianceRubrics(prev => prev.filter(r => r.id !== id))
-    }
+    /* overleaf-lab (2026-08-27): rubric editing moved to the user settings page
+       (/user/llm-settings) — no admin rubric state anymore. */
 
     const allModels = Array.from(new Set([...knownModels, ...availableModels, ...allowedModels]))
 
@@ -330,7 +311,6 @@ export default function LLMAdminSettingsPage() {
                   { id: 'connection', icon: 'link', label: t('api_connection', 'API Connection') },
                   { id: 'models', icon: 'model_training', label: t('model_selection', 'Model Selection') },
                   { id: 'prompt', icon: 'description', label: t('system_prompt', 'System Prompt') },
-                  { id: 'compliance', icon: 'fact_check', label: t('compliance_review', 'Compliance Review') },
                   { id: 'prompts', icon: 'edit_note', label: t('ai_prompts', 'AI Prompts') },
               ].map(s => (
                   <button
@@ -637,69 +617,11 @@ export default function LLMAdminSettingsPage() {
                       </>
                   )}
 
-                  {/* overleaf-lab: admin picks the single shared inline-completion model */}
-                  <OLFormGroup
-                      controlId="llm-completion-model"
-                      className={allModels.length > 0 ? 'ol-llm-admin-settings__mt-lg' : undefined}
-                  >
-                      <OLFormLabel>
-                          {t('inline_completion_model', 'Inline completion model')}
-                      </OLFormLabel>
-                      <Dropdown>
-                        <DropdownToggle
-                          id="llm-completion-model-dropdown"
-                          className="btn-secondary"
-                          aria-label="Select completion model"
-                        >
-                          <span className="text-truncate" aria-hidden>
-                            {completionModel
-                              ? completionModel === '__disabled__'
-                                ? t(
-                                    'completion_disabled_shared',
-                                    'Disabled (only users with their own API key)'
-                                  )
-                                : completionModel
-                              : t('auto_first_allowed_model', 'Auto (first allowed model)')}
-                          </span>
-                        </DropdownToggle>
-
-                        <DropdownMenu flip={false}>
-                          <DropdownItem
-                            active={completionModel === ''}
-                            onClick={() => setCompletionModel('')}
-                          >
-                            {t('auto_first_allowed_model', 'Auto (first allowed model)')}
-                          </DropdownItem>
-
-                          {/* overleaf-lab: turn off shared autocomplete; users can still use their own API key */}
-                          <DropdownItem
-                            active={completionModel === '__disabled__'}
-                            onClick={() => setCompletionModel('__disabled__')}
-                          >
-                            {t(
-                              'completion_disabled_shared',
-                              'Disabled (only users with their own API key)'
-                            )}
-                          </DropdownItem>
-
-                          {allModels.map(model => (
-                            <DropdownItem
-                              key={model}
-                              active={model === completionModel}
-                              onClick={() => setCompletionModel(model)}
-                            >
-                              {model}
-                            </DropdownItem>
-                          ))}
-                        </DropdownMenu>
-                      </Dropdown>
-                      <OLFormText>
-                          {t(
-                              'inline_completion_model_admin_help',
-                              'Model used for inline autocomplete on the shared backend. Can differ from the chat models. Set to Disabled to turn off shared autocomplete (users with their own API key still get it).'
-                          )}
-                      </OLFormText>
-                  </OLFormGroup>
+                  {/* overleaf-lab (2026-08-27, owner request): the admin
+                      "Inline completion model" picker is GONE — inline
+                      completion runs on each user's shared model selection
+                      (profile -> first BYO row -> site default), managed by
+                      users in File -> "Select LLM Model" and their BYO rows. */}
               </div>
 
               {/* ── Section 4: System Prompt ── */}
@@ -749,161 +671,39 @@ export default function LLMAdminSettingsPage() {
                   </div>
               </div>
 
-              {/* ── Section 5: Compliance Review ── */}
-              <div className="llm-settings-section" data-sec="compliance">
+              {/* overleaf-lab (2026-08-27, owner request): the former admin
+                  Compliance Review section (rubric editor + Review model picker)
+                  is GONE. Rubrics are USER-SCOPED now: each user configures
+                  their own under /user/llm-settings; the reviewer reads the
+                  user's rubrics, inheriting the deployment-wide set until the
+                  user saves their own. The review runs on the user's shared
+                  model selection (profile -> BYO row -> site default), the
+                  same as every other AI surface. The review's token budgets
+                  moved to Section 5 (AI Prompts). */}
+
+              {/* ── Section 6: AI Prompts ── */}
+              {/* overleaf-lab: editable prompts behind each AI feature; empty means built-in default */}
+              <div className="llm-settings-section" data-sec="prompts">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">5</span>
-                      <MaterialIcon type="fact_check" />
-                      {t('compliance_review', 'Compliance Review')}
+                      <MaterialIcon type="edit_note" />
+                      {t('ai_prompts', 'AI Prompts')}
                   </div>
                   <p className="llm-settings-section-desc">
                       {t(
-                          'compliance_review_desc',
-                          'Configure the document compliance review: the guideline rubrics users can check against, the model that runs the review, and the maximum context size.'
+                          'ai_prompts_desc',
+                          'Customize the prompts and token budgets behind each AI feature. Leave a field empty to use the built-in default.'
                       )}
                   </p>
 
-                  {/* overleaf-lab: (a) rubrics editor */}
-                  {complianceRubrics.length === 0 && (
-                      <p className="ol-llm-admin-settings__muted-md">
-                          {t('no_rubrics_yet', 'No rubrics yet. Add one to enable the compliance review for users.')}
-                      </p>
-                  )}
-                  {complianceRubrics.map(rubric => (
-                      <div
-                          key={rubric.id}
-                          className="ol-llm-admin-settings__rubric-card"
-                      >
-                          <OLFormGroup controlId={`rubric-name-${rubric.id}`}>
-                              <OLFormLabel>
-                                  {t('rubric_name', 'Rubric name')}
-                              </OLFormLabel>
-                              <OLFormControl
-                                  type="text"
-                                  value={rubric.name}
-                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                      updateRubric(rubric.id, 'name', e.target.value)
-                                  }
-                                  placeholder={t('rubric_name_placeholder', 'e.g. Thesis writing guidelines')}
-                              />
-                          </OLFormGroup>
-                          <OLFormGroup controlId={`rubric-guidelines-${rubric.id}`} className="ol-llm-admin-settings__mb-sm">
-                              <OLFormLabel>
-                                  {t('rubric_guidelines', 'Guidelines')}
-                              </OLFormLabel>
-                              <OLFormControl
-                                  as="textarea"
-                                  rows={6}
-                                  value={rubric.guidelines}
-                                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                                      updateRubric(rubric.id, 'guidelines', e.target.value)
-                                  }
-                                  className="ol-llm-admin-settings__mono"
-                              />
-                          </OLFormGroup>
-                          {/* overleaf-lab: per-rubric mechanical scans; policy
-                              patterns live next to the guidelines they verify */}
-                          <OLFormGroup controlId={`rubric-scans-${rubric.id}`} className="ol-llm-admin-settings__mb-sm">
-                              <OLFormLabel>
-                                  {t('rubric_scan_patterns', 'Scan patterns (optional, one per line)')}
-                              </OLFormLabel>
-                              <OLFormControl
-                                  as="textarea"
-                                  rows={3}
-                                  value={rubric.scanPatterns || ''}
-                                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                                      updateRubric(rubric.id, 'scanPatterns', e.target.value)
-                                  }
-                                  placeholder={'First person :: (?<![\\w.@/])(io|noi|ho)\\b\nWikipedia :: wikipedia'}
-                                  className="ol-llm-admin-settings__mono"
-                              />
-                              <OLFormText>
-                                  {t(
-                                      'rubric_scan_patterns_help',
-                                      '"Label :: regex" (case-insensitive; a plain word works too). The whole source is scanned in code, exhaustively, and the matches are handed to the model as candidates to judge in context. Use it for the pattern-like requirements of THIS rubric (words to avoid, forbidden constructs), in the language of your guidelines.'
-                                  )}
-                              </OLFormText>
-                          </OLFormGroup>
-                          <div className="ol-llm-admin-settings__row-end">
-                              <OLButton
-                                  variant="danger"
-                                  size="sm"
-                                  type="button"
-                                  onClick={() => removeRubric(rubric.id)}
-                              >
-                                  <MaterialIcon type="delete" className="me-1 ol-llm-admin-settings__icon-base"  />
-                                  {t('remove', 'Remove')}
-                              </OLButton>
-                          </div>
-                      </div>
-                  ))}
-                  <div className="ol-llm-admin-settings__mb-sm">
-                      <OLButton
-                          variant="secondary"
-                          size="sm"
-                          type="button"
-                          onClick={addRubric}
-                      >
-                          <MaterialIcon type="add" className="me-1 ol-llm-admin-settings__icon-base"  />
-                          {t('add_rubric', 'Add rubric')}
-                      </OLButton>
-                  </div>
-                  <OLFormText>
-                      {t(
-                          'compliance_rubrics_help',
-                          'Paste your thesis or internship writing guidelines. The AI checks the whole document against each rubric and returns a report.'
-                      )}
-                  </OLFormText>
-
-                  {/* overleaf-lab: (b) review model selector */}
-                  <OLFormGroup controlId="llm-review-model" className="ol-llm-admin-settings__mt-xl">
+                  {/* overleaf-lab (2026-08-27): the compliance review's token budgets
+                      moved here from the former admin Compliance Review section.
+                      These are DEPLOYMENT budgets — the review runs each user's
+                      own rubrics (user settings), but the context window and the
+                      answer budget are site-wide. */}
+                  <OLFormGroup controlId="llm-max-context-tokens" className="ol-llm-admin-settings__mt-md">
                       <OLFormLabel>
-                          {t('review_model', 'Review model')}
-                      </OLFormLabel>
-                      <Dropdown>
-                        <DropdownToggle
-                          id="llm-review-model-dropdown"
-                          className="btn-secondary"
-                          aria-label="Select review model"
-                        >
-                          <span className="text-truncate" aria-hidden>
-                            {reviewModel
-                              ? reviewModel
-                              : t('review_model_shared_default', 'Shared chat model (default)')}
-                          </span>
-                        </DropdownToggle>
-
-                        <DropdownMenu flip={false}>
-                          <DropdownItem
-                            active={reviewModel === ''}
-                            onClick={() => setReviewModel('')}
-                          >
-                            {t('review_model_shared_default', 'Shared chat model (default)')}
-                          </DropdownItem>
-
-                          {allModels.map(model => (
-                            <DropdownItem
-                              key={model}
-                              active={model === reviewModel}
-                              onClick={() => setReviewModel(model)}
-                            >
-                              {model}
-                            </DropdownItem>
-                          ))}
-                        </DropdownMenu>
-                      </Dropdown>
-                      <OLFormText>
-                          {t(
-                              'review_model_help',
-                              'Model used to run the compliance review. Pick a large-context model. Defaults to the shared chat model.'
-                          )}
-                      </OLFormText>
-                  </OLFormGroup>
-
-                  {/* overleaf-lab: (c) max context tokens */}
-                  <OLFormGroup controlId="llm-max-context-tokens" className="ol-llm-admin-settings__mt-lg-mb-0">
-                      <OLFormLabel>
-                          {t('max_context_tokens', 'Max context tokens')}
+                          {t('max_context_tokens', 'Review: max context tokens')}
                       </OLFormLabel>
                       <OLFormControl
                           type="number"
@@ -918,12 +718,11 @@ export default function LLMAdminSettingsPage() {
                       <OLFormText>
                           {t(
                               'max_context_tokens_help',
-                              'The context window (in tokens) of the review model, as configured on your llama.cpp server (the -c value, divided by --parallel). The review refuses documents that would not fit. No auto-detection.'
+                              'The context window (in tokens) of the review model, as configured on your backend. The review refuses documents that would not fit. No auto-detection.'
                           )}
                       </OLFormText>
                   </OLFormGroup>
 
-                  {/* overleaf-lab: budget for the review answer itself */}
                   <OLFormGroup controlId="llm-review-max-tokens" className="ol-llm-admin-settings__mt-lg-mb-0">
                       <OLFormLabel>
                           {t('review_max_tokens', 'Review answer budget (tokens)')}
@@ -945,23 +744,6 @@ export default function LLMAdminSettingsPage() {
                           )}
                       </OLFormText>
                   </OLFormGroup>
-
-              </div>
-
-              {/* ── Section 6: AI Prompts ── */}
-              {/* overleaf-lab: editable prompts behind each AI feature; empty means built-in default */}
-              <div className="llm-settings-section" data-sec="prompts">
-                  <div className="llm-settings-section-header">
-                      <span className="llm-settings-section-badge">6</span>
-                      <MaterialIcon type="edit_note" />
-                      {t('ai_prompts', 'AI Prompts')}
-                  </div>
-                  <p className="llm-settings-section-desc">
-                      {t(
-                          'ai_prompts_desc',
-                          'Customize the prompts behind each AI feature. Leave a field empty to use the built-in default.'
-                      )}
-                  </p>
 
                   {/* overleaf-lab: (a) the three standalone prompts, each with a reset link */}
                   {[
@@ -1044,7 +826,10 @@ export default function LLMAdminSettingsPage() {
                                       'Each template runs on the selected text. Use {{selection}} where the selected text should be inserted; if omitted, it is appended.'
                                   )}
                               </OLFormText>
-                              {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'mathFix', 'translate', 'synonyms', 'checkCitations', 'title', 'abstract'].map(key => (
+                              {/* overleaf-lab (audit #7): only the templates the current Ask AI menu actually uses —
+                                  punchy/split/join/summarize/explain/mathFix/checkCitations were removed with the
+                                  menu rebuild, and title/abstract now flow through the generators endpoint. */}
+                              {['paraphrase', 'academic', 'concise', 'translate', 'synonyms'].map(key => (
                                   <div key={key} className="ol-llm-admin-settings__mb-lg">
                                       <OLFormGroup controlId={`llm-action-${key}`} className="ol-llm-admin-settings__mb-xs">
                                           <OLFormLabel>

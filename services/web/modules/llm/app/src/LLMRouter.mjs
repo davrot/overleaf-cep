@@ -128,6 +128,23 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /user/llm/selected-model')
 
+        // overleaf-lab (2026-08-27, owner request): user-scoped compliance
+        // review rubrics — every user configures their own under
+        // /user/llm-settings; the reviewer reads them per user.
+        webRouter.get(
+            '/user/llm/compliance',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.getUserCompliance
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm/compliance')
+
+        webRouter.post(
+            '/user/llm/compliance',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.saveUserCompliance
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm/compliance')
+
         // overleaf-lab: BYO provider rows (user-scoped). Every handler enforces
         // the LLM_ALLOW_USER_SETTINGS gate itself (F1): the router registers them
         // unconditionally, and disabled deployments answer 403, so there is no

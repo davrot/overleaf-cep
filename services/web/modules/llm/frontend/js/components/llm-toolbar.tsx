@@ -185,7 +185,11 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     const [panelMode, setPanelMode] = useState<
         'hidden' | 'menu' | 'chat' | 'paraphrase'
     >('hidden')
-    const [submenu, setSubmenu] = useState<null | 'style'>(null)
+    // overleaf-lab (owner feedback): the Translate language list is an INLINE
+    // accordion inside the menu with a search filter — the old hover fly-out
+    // opened far from the pointer and closed before it could be reached.
+    const [translateOpen, setTranslateOpen] = useState(false)
+    const [langQuery, setLangQuery] = useState('')
     // overleaf-lab (owner request 2026-08-26): the "Select LLM Model" menu item is
     // gone — that choice lives ONLY under File → "Select LLM Model" (the one
     // user-scoped selection used by every AI surface).
@@ -441,13 +445,19 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
 
     useImperativeHandle(ref, () => {
         const api = {
-        show: (view: EditorView) => {
+        // overleaf-lab (owner bug report #6): `preSelection` carries the
+        // selection captured by the trigger at pointer-down — authoritative
+        // even when the click already cleared the editor's live selection.
+        show: (view: EditorView, preSelection?: { text: string; range: { from: number; to: number } } | null) => {
             viewRef.current = view
-            const sel = view.state.selection.main
-            // overleaf-lab (2026-08): allow opening with NO selection (editor
-            // toolbar "Ask AI" button) — the menu then shows the generators,
-            // matching the reference's context sensitivity.
-            const isEmpty = sel.empty
+            const live = view.state.selection.main
+            let sel = live
+            let selText = live.empty ? '' : view.state.sliceDoc(live.from, live.to)
+            if (selText === '' && preSelection && preSelection.text) {
+                sel = { from: preSelection.range.from, to: preSelection.range.to, empty: false }
+                selText = preSelection.text
+            }
+            const isEmpty = !selText
             if (isEmpty) {
                 const containerW = wrapRef.current?.getBoundingClientRect()?.width ?? window.innerWidth
                 const width = Math.max(320, Math.min(560, containerW - 24))
@@ -523,8 +533,8 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
 
             setPanelRect({ top: panelTop, left: panelLeft, width })
             setAnchorPos({ top: clampedTop, left: clampedLeft })
-            setSelectionText(view.state.sliceDoc(sel.from, sel.to))
-            setSelectionRange({ from: sel.from, to: sel.to })
+            setSelectionText(selText)
+            setSelectionRange(isEmpty ? null : { from: sel.from, to: sel.to })
             setAnchorShown(true)
             setPanelMode('hidden')
             document.dispatchEvent(
@@ -534,7 +544,8 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         hide: () => {
             setAnchorShown(false)
             setPanelMode('hidden')
-            setSubmenu(null)
+            setTranslateOpen(false)
+            setLangQuery('')
             document.dispatchEvent(
                 new CustomEvent('llm-toolbar-active', { detail: { active: false } })
             )
@@ -554,14 +565,23 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     // for the context menu via this document event, passing its view.
     useEffect(() => {
         const handler = (e: Event) => {
-            const view = (e as CustomEvent).detail?.view as EditorView | undefined
+            const detail = (e as CustomEvent).detail || {}
+            const view = detail.view as EditorView | undefined
             if (!view) return
-            apiRef.current?.show(view)
+            const pre = typeof detail.text === 'string' && detail.text.length > 0
+                ? { text: detail.text as string, range: detail.range?.from != null ? { from: detail.range.from, to: detail.range.to } : { from: 0, to: 0 } }
+                : null
+            apiRef.current?.show(view, pre)
             apiRef.current?.openMenu()
         }
         document.addEventListener('ol-llm-open-ask-ai', handler)
         return () => document.removeEventListener('ol-llm-open-ask-ai', handler)
     }, [])
+
+    // overleaf-lab (owner bug report #6): context sensitivity is decided at
+    // OPEN time from the selection captured by the trigger (pointer-down,
+    // before blur). No runtime re-derivation: interacting with the menu itself
+    // must not flip between the two item sets mid-navigation.
 
     useEffect(() => {
         if (panelMode !== 'hidden') {
@@ -759,6 +779,15 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         .llm-item-icon-spacer{width:18px;flex:0 0 auto;display:inline-block}
         .llm-item-chevron{margin-left:auto;color:var(--wf-muted,#8fa2bd)}
         .llm-menu-divider{height:1px;background:var(--wf-border-in,#dfe5ec);margin:6px 4px}
+        /* overleaf-lab (owner feedback): Translate languages are an INLINE
+           accordion with a search field — reachable, never closes early, and
+           no hunting for a fly-out sub-menu. */
+        .llm-translate-sub{margin:2px 2px 6px 28px;padding:4px;border:1px solid var(--wf-border-in,#dfe5ec);border-radius:8px;display:flex;flex-direction:column;gap:2px}
+        .llm-lang-search{margin:0 2px 4px 2px;padding:5px 8px;font-size:12.5px;border:1px solid var(--wf-border-in,#dfe5ec);border-radius:6px;background:var(--wf-row-hi,#fff);color:var(--wf-panel-text,#1e293b);outline:none}
+        .llm-lang-search:focus{border-color:var(--wf-accent,#28518f)}
+        .llm-lang-list{max-height:190px;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+        .llm-lang-list .llm-item{min-height:30px;font-size:13px}
+        .llm-lang-empty{padding:8px 10px;font-size:12.5px;color:var(--wf-muted,#8fa2bd)}
         .llm-anchor .material-symbols{font-size:15px}
         .llm-paraphrase-card{pointer-events:auto;width:100%;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:12px;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
         .llm-paraphrase-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
@@ -853,44 +882,40 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                     <AskAiMenuItem icon="transform" label="Rephrase" onClick={() => startFetch(1, 'paraphrase')} />
                                     <AskAiMenuItem icon="text_fields" label="Shorten" onClick={() => startFetch(3, 'style')} />
                                     <AskAiMenuItem icon="school" label="More scientific" onClick={() => startFetch(2, 'style')} />
-                                    <div
-                                        style={{ position: 'relative' }}
-                                        onMouseEnter={() => setSubmenu('style')}
-                                        onMouseLeave={() => setSubmenu(null)}
-                                    >
-                                        <div className="llm-item">
-                                            <span aria-hidden="true"><MaterialIcon type="translate" /></span>
-                                            Translate
-                                            <span aria-hidden="true" className="llm-item-chevron">
-                                                <MaterialIcon type="chevron_right" style={{ fontSize: 18 }} />
-                                            </span>
-                                        </div>
-                                        {submenu === 'style' && (
-                                            <div
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: '104%',
-                                                    top: 0,
-                                                    minWidth: 160,
-                                                    maxHeight: 320,
-                                                    overflowY: 'auto',
-                                                }}
-                                                className="llm-menu"
-                                            >
-                                                {TRANSLATE_LANGUAGES.map(lang => (
-                                                    <AskAiMenuItem
-                                                        key={lang}
-                                                        icon=""
-                                                        label={lang}
-                                                        onClick={() => startFetch(12, 'translate', undefined, { language: lang })}
-                                                    />
-                                                ))}
+                                    <AskAiMenuItem icon="translate" label="Translate" onClick={() => setTranslateOpen(v => !v)} />
+                                    {translateOpen && (
+                                        <div className="llm-translate-sub">
+                                            <input
+                                                className="llm-lang-search"
+                                                type="search"
+                                                placeholder="Search language…"
+                                                value={langQuery}
+                                                onChange={e => setLangQuery(e.target.value)}
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                            <div className="llm-lang-list">
+                                                {TRANSLATE_LANGUAGES
+                                                    .filter(l => l.toLowerCase().includes(langQuery.trim().toLowerCase()))
+                                                    .map(lang => (
+                                                        <AskAiMenuItem
+                                                            key={lang}
+                                                            icon=""
+                                                            label={lang}
+                                                            onClick={() => {
+                                                                setTranslateOpen(false)
+                                                                setLangQuery('')
+                                                                startFetch(12, 'translate', undefined, { language: lang })
+                                                            }}
+                                                        />
+                                                    ))}
+                                                {TRANSLATE_LANGUAGES.filter(l => l.toLowerCase().includes(langQuery.trim().toLowerCase())).length === 0 && (
+                                                    <div className="llm-lang-empty">No matching language</div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                     <div className="llm-menu-divider" role="separator" />
                                     <AskAiMenuItem icon="search" label="Synonyms" onClick={() => startFetch(13, 'synonyms')} />
-                                    <AskAiMenuItem icon="fact_check" label="Check citations" onClick={() => startFetch(14, 'checkCitations')} />
                                 </>
                             ) : (
                                 <>

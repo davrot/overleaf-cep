@@ -265,6 +265,11 @@ export const UserSchema = new Schema(
     // LLM Model"): model id or `u:<rowId>:<model>`; '' = deployment default.
     // Written by LLMSettingsController.saveSelectedModel (module:llm).
     llmSelectedModel: { type: String, default: '' },
+    // overleaf-lab (2026-08-27): per-user compliance review rubrics (owner
+    // request: the rubrics moved from global admin settings to the user's own
+    // LLM settings page). Free-form documents of the shared rubric shape
+    // (id/name/guidelines/scanPatterns), sanitized by the module's shared helper.
+    llmComplianceRubrics: { type: [Object], default: [] },
     // Each row is a free-form document shaped by the module's row schema
     // (id/name/providerType/baseUrl/apiKey[encrypted]/models/completionModel/enabled).
     llmProviders: { type: [Object], default: [] },

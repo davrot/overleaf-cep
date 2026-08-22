@@ -106,7 +106,7 @@ const LLMChatPane = React.memo(function LLMChatPane({
                             <button
                                 type="button"
                                 onClick={handleClear}
-                                className="llm-action-button"
+                                className={`llm-action-button${armedClear ? ' llm-action-button-armed' : ''}`}
                                 title={armedClear
                                     ? t('llm_chat_confirm_clear', 'Click again to clear the conversation')
                                     : t('clear_conversation', 'Clear conversation')}
@@ -114,7 +114,13 @@ const LLMChatPane = React.memo(function LLMChatPane({
                                     ? t('llm_chat_confirm_clear', 'Click again to clear the conversation')
                                     : t('clear_conversation', 'Clear conversation')}
                             >
-                                <MaterialIcon type="delete" />
+                                {armedClear ? (
+                                    <span className="llm-action-button-text">
+                                        {t('clear_confirm', 'Clear all?')}
+                                    </span>
+                                ) : (
+                                    <MaterialIcon type="delete" />
+                                )}
                             </button>
                         )}
                     </div>

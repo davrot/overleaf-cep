@@ -110,7 +110,7 @@ function splitMessages(messages, extraSystem) {
   };
 }
 
-function wrapError(err, fallbackMessage) {
+function wrapError(err, modelName) {
   if (err instanceof APICallError) {
     if (err.statusCode === 401 || err.statusCode === 403) {
       return Object.assign(
@@ -119,7 +119,15 @@ function wrapError(err, fallbackMessage) {
       );
     }
     if (err.statusCode === 404) {
-      return Object.assign(new Error('Model not found on backend (404)'), { code: 'llm-bad-model' });
+      // overleaf-lab (owner bug report #3): say WHICH model failed and how to
+      // fix it — a bare "404" is useless when the provider's catalog changed.
+      return Object.assign(
+        new Error(
+          `Model not found on the backend (404)${modelName ? ` (model: ${modelName})` : ''}. ` +
+          'Re-scan the provider model list (Account → LLM settings → Scan) and select an available model.'
+        ),
+        { code: 'llm-bad-model' }
+      );
     }
     if (err.statusCode === 429) {
       return Object.assign(new Error('Rate limited by LLM backend (429)'), { code: 'llm-rate-limited' });
@@ -128,7 +136,12 @@ function wrapError(err, fallbackMessage) {
     // (possible internal hostname/fragment leakage); status + code is enough.
     // The 401/403 branch above intentionally keeps a generic key-rejection hint.
     return Object.assign(
-      new Error(`LLM backend error (HTTP ${err.statusCode})`),
+      // overleaf-lab (owner bug report #3): 5xx from the backend (e.g. Ollama
+      // overloads) — include the model so the failure is diagnosable.
+      new Error(
+        `LLM backend error (HTTP ${err.statusCode})${modelName ? ` for model: ${modelName}` : ''}. ` +
+        'This is usually transient provider overload — retry, or select a different model.'
+      ),
       { code: 'llm-error' }
     );
   }
@@ -139,8 +152,9 @@ function wrapError(err, fallbackMessage) {
     return Object.assign(new Error('Request aborted'), { code: 'llm-abort' });
   }
   if (err && err.code) return err;
-  const message = fallbackMessage || (err?.message ? `LLM request failed: ${err.message}` : 'LLM request failed');
-  return Object.assign(new Error(message), { code: 'llm-error' });
+  const base = err?.message ? `LLM request failed: ${err.message}` : 'LLM request failed';
+  const suffix = modelName ? ` (model: ${modelName})` : '';
+  return Object.assign(new Error(base + suffix), { code: 'llm-error' });
 }
 
 /*
@@ -189,7 +203,7 @@ export async function chatText(spec, messages, options = {}) {
     return { text: stripThinkTags(result.text), usage: usageOf(result), finishReason: result.finishReason };
   }
   catch (err) {
-    throw wrapError(err);
+    throw wrapError(err, spec.model);
   }
 }
 
@@ -210,7 +224,7 @@ export async function chatObject(spec, messages, schema, options = {}) {
     return { object: result.object, usage: usageOf(result) };
   }
   catch (err) {
-    throw wrapError(err);
+    throw wrapError(err, spec.model);
   }
 }
 

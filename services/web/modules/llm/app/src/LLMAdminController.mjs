@@ -213,25 +213,19 @@ async function saveAdminSettings(req, res) {
 
   const existing = readAdminSettings()
 
-  // overleaf-lab: sanitize each rubric and cap the count. Entries without an id or
-  // name are dropped; text fields are length-capped. When not provided, keep the
+  // overleaf-lab: sanitize each rubric and cap the count via the shared helper
+  // (same rules as the per-user rubric save). When not provided, keep the
   // existing rubrics untouched.
-  let sanitizedRubrics
-  if (Array.isArray(complianceRubrics)) {
-    sanitizedRubrics = complianceRubrics
-      .map(r => ({
-        id: String((r && r.id) || ''),
-        name: String((r && r.name) || '').slice(0, 200),
-        guidelines: String((r && r.guidelines) || '').slice(0, 20000),
-        // overleaf-lab: per-rubric mechanical scans ("Label :: regex" per
-        // line); policy lives with the rubric it verifies, never in code.
-        scanPatterns: String((r && r.scanPatterns) || '').slice(0, 4000),
-      }))
-      .filter(r => r.id && r.name)
-      .slice(0, 50)
-  } else {
-    sanitizedRubrics = Array.isArray(existing.complianceRubrics) ? existing.complianceRubrics : []
+  const sanitizedRubricsInput = sanitizeComplianceRubrics(complianceRubrics)
+  // overleaf-lab: validate the RAW input so an over-long scan-patterns block
+  // fails loudly (the sanitizer would otherwise silently truncate it).
+  const rubricError = validateComplianceRubrics(Array.isArray(complianceRubrics) ? complianceRubrics : [])
+  if (rubricError) {
+    return res.status(400).json({ error: rubricError })
   }
+  const sanitizedRubrics = sanitizedRubricsInput === null
+    ? (Array.isArray(existing.complianceRubrics) ? existing.complianceRubrics : [])
+    : sanitizedRubricsInput
 
   // overleaf-lab: clamp the context window to a sane range; keep existing (or the
   // 32000 default) when not provided.
@@ -258,39 +252,8 @@ async function saveAdminSettings(req, res) {
     sanitizedReviewMaxTokens = existing.reviewMaxTokens || DEFAULT_REVIEW_MAX_TOKENS
   }
 
-  // overleaf-lab: validate each rubric's scan patterns ("Label :: regex" per line)
-  // so the admin learns about a broken regex at save time, not from a silently
-  // hint-less review. The reviewer side skips invalid lines anyway (defense in
-  // depth for settings written by other means).
-  if (Array.isArray(complianceRubrics)) {
-    for (const r of complianceRubrics) {
-      const patternsText = r && typeof r.scanPatterns === 'string' ? r.scanPatterns : ''
-      if (patternsText.length > 4000) {
-        return res.status(400).json({
-          error: `Scan patterns of rubric "${(r && r.name) || '?'}" must be 4000 characters or fewer`,
-        })
-      }
-      for (const rawLine of patternsText.split('\n')) {
-        const line = rawLine.trim()
-        if (!line) {
-          continue
-        }
-        const sep = line.indexOf('::')
-        const body = (sep === -1 ? line : line.slice(sep + 2)).trim()
-        if (!body) {
-          continue
-        }
-        try {
-          // eslint-disable-next-line no-new
-          new RegExp(body, 'i')
-        } catch (err) {
-          return res.status(400).json({
-            error: `Invalid scan pattern regex in rubric "${(r && r.name) || '?'}": ${body}`,
-          })
-        }
-      }
-    }
-  }
+  // overleaf-lab: scan-pattern validation moved to the shared helper above
+  // (validateComplianceRubrics — same 4000-char cap + per-line RegExp check).
 
   // overleaf-lab: sanitize the action prompt overrides. When provided, keep only
   // known keys with string values, each capped at 4000 chars. When not provided,
@@ -415,6 +378,55 @@ export async function getLLMFeatureFlags() {
 export async function getComplianceRubrics() {
   const settings = readAdminSettings()
   return Array.isArray(settings.complianceRubrics) ? settings.complianceRubrics : []
+}
+
+// overleaf-lab (2026-08-27): shared rubric hygiene, used by BOTH the admin save
+// and the per-user compliance rubric save (owner request: rubrics became
+// user-scoped in /user/llm-settings — same caps, same validation).
+// Sanitizes a rubric list (drops entries without id/name, caps text fields,
+// caps the list). Returns null when `list` is not an array (caller keeps the
+// existing value).
+export function sanitizeComplianceRubrics(list) {
+  if (!Array.isArray(list)) return null
+  return list
+    .map(r => ({
+      id: String((r && r.id) || ''),
+      name: String((r && r.name) || '').slice(0, 200),
+      guidelines: String((r && r.guidelines) || '').slice(0, 20000),
+      // overleaf-lab: per-rubric mechanical scans ("Label :: regex" per
+      // line); policy lives with the rubric it verifies, never in code.
+      scanPatterns: String((r && r.scanPatterns) || '').slice(0, 4000),
+    }))
+    .filter(r => r.id && r.name)
+    .slice(0, 50)
+}
+
+// overleaf-lab: validates each rubric's scan patterns ("Label :: regex" per
+// line) so a broken regex fails at SAVE time, not as a silently hint-less
+// review. Returns the first error message, or null when everything parses
+// (reviewer-side parsing skips invalid lines anyway — defense in depth).
+export function validateComplianceRubrics(list) {
+  if (!Array.isArray(list)) return null
+  for (const r of list) {
+    const patternsText = r && typeof r.scanPatterns === 'string' ? r.scanPatterns : ''
+    if (patternsText.length > 4000) {
+      return `Scan patterns of rubric "${(r && r.name) || '?'}" must be 4000 characters or fewer`
+    }
+    for (const rawLine of patternsText.split('\n')) {
+      const line = rawLine.trim()
+      if (!line) continue
+      const sep = line.indexOf('::')
+      const body = (sep === -1 ? line : line.slice(sep + 2)).trim()
+      if (!body) continue
+      try {
+        // eslint-disable-next-line no-new
+        new RegExp(body, 'i')
+      } catch (err) {
+        return `Invalid scan pattern regex in rubric "${(r && r.name) || '?'}": ${body}`
+      }
+    }
+  }
+  return null
 }
 
 // overleaf-lab: resolve the EFFECTIVE editable prompts (admin override when set,

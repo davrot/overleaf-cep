@@ -30,6 +30,7 @@ import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, normalizeStoredSecret, storedToPlaintext } from './LLMCrypto.mjs'
 import { normalizeProviderSpec, chatText, listModels, detectProviderType, PROVIDER_TYPES } from './LLMClient.mjs'
+import { sanitizeComplianceRubrics, validateComplianceRubrics, getComplianceRubrics, getLLMFeatureFlags } from './LLMAdminController.mjs'
 import OError from '@overleaf/o-error'
 
 // overleaf-lab: hard cap on rows per user - keeps the editor model list and
@@ -461,6 +462,63 @@ async function saveSelectedModel(req, res) {
     res.json({ ok: true, selected: value })
 }
 
+// overleaf-lab (2026-08-27, owner request): USER-SCOPED compliance review
+// rubrics. Each user configures their own rubrics under /user/llm-settings; the
+// compliance reviewer (LLMComplianceController) reads them per user. Storage is
+// the user document (llmComplianceRubrics) — no new collection.
+//
+// Migration behavior: a user who has never saved their own rubrics inherits the
+// deployment-wide rubrics configured by the admin, so existing setups keep
+// working on the first visit.
+// overleaf-lab (2026-08-27): the internal (no-auth) lookup used by the
+// compliance reviewer — the user's own rubrics, falling back to the
+// deployment-wide set when the user has never saved their own.
+export async function getComplianceRubricsForUser(userId) {
+    const userDoc = await User.findOne({ _id: userId }).lean().catch(() => null)
+    const mine = Array.isArray(userDoc?.llmComplianceRubrics) && userDoc.llmComplianceRubrics.length
+        ? userDoc.llmComplianceRubrics
+        : null
+    if (mine) return mine
+    return getComplianceRubrics()
+}
+
+async function getUserCompliance(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) {
+        return res.status(401).json({ ok: false, error: 'unauthorized', message: 'Login required' })
+    }
+    const flags = await getLLMFeatureFlags()
+    if (!flags.reviewEnabled) {
+        return res.json({ ok: true, rubrics: [], inherited: false })
+    }
+    const rubrics = await getComplianceRubricsForUser(userId)
+    const userDoc = await User.findOne({ _id: userId }).lean()
+    const inherited = !(Array.isArray(userDoc?.llmComplianceRubrics) && userDoc.llmComplianceRubrics.length)
+    res.json({ ok: true, rubrics, inherited })
+}
+
+async function saveUserCompliance(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) {
+        return res.status(401).json({ ok: false, error: 'unauthorized', message: 'Login required' })
+    }
+    const flags = await getLLMFeatureFlags()
+    if (!flags.reviewEnabled) {
+        return res.status(403).json({ ok: false, error: 'disabled', message: 'The compliance review feature is disabled' })
+    }
+    const list = req.body?.rubrics
+    const sanitized = sanitizeComplianceRubrics(list)
+    if (sanitized === null) {
+        return res.status(400).json({ ok: false, error: 'bad-request', message: 'Invalid rubrics' })
+    }
+    const problem = validateComplianceRubrics(Array.isArray(list) ? list : [])
+    if (problem) {
+        return res.status(400).json({ ok: false, error: 'bad-request', message: problem })
+    }
+    await User.updateOne({ _id: userId }, { $set: { llmComplianceRubrics: sanitized } })
+    res.json({ ok: true, rubrics: sanitized })
+}
+
 export default {
     isUserSettingsAllowed,
     requireUserSettingsAllowed,
@@ -474,5 +532,8 @@ export default {
     scanProviderModels: expressify(scanProviderModels),
     // overleaf-lab: user-scoped shared model selection (File → "Select LLM Model")
     getSelectedModel: expressify(getSelectedModel),
-    saveSelectedModel: expressify(saveSelectedModel)
+    saveSelectedModel: expressify(saveSelectedModel),
+    // overleaf-lab (2026-08-27): user-scoped compliance review rubrics
+    getUserCompliance: expressify(getUserCompliance),
+    saveUserCompliance: expressify(saveUserCompliance)
 }

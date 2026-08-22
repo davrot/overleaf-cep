@@ -321,13 +321,25 @@ async function completion(req, res) {
         return res.json({ success: true, data: '' })
     }
 
-    // Resolve the lane. Explicit selection wins; otherwise the user's first
-    // enabled BYO row (when allowed), then the admin completion model, then
-    // the site default. A missing/broken user lane falls through to the site
-    // lane when one exists; broken site lane + no user lane -> empty
-    // suggestion (the editor shows nothing, no error toast).
+    // Resolve the lane. overleaf-lab (2026-08-27, owner request): the client no
+    // longer sends a model — order is the user's SHARED selection (profile),
+    // then the first enabled BYO row, then the site backend. The former admin
+    // "Inline completion model" picker is gone; deployments WITHOUT a global
+    // LLM work through the same chain (BYO row or profile selection).
     const adminSettings = await getAdminLLMSettings()
-    const ref = parseModelRef(modelRefString)
+    let ref = parseModelRef(modelRefString)
+    let refFromProfile = false
+    if (!ref.model) {
+        const profile = await User.findOne({ _id: userId }).lean().catch(() => null)
+        const profileValue = typeof profile?.llmSelectedModel === 'string' ? profile.llmSelectedModel.trim() : ''
+        if (profileValue) {
+            try {
+                ref = parseModelRef(profileValue)
+                refFromProfile = true
+            }
+            catch { /* stale/invalid saved selection - fall through to the chain below */ }
+        }
+    }
     const adminSharedCompletionDisabled = adminSettings.completionModel === '__disabled__'
     const siteCompletionModel = adminSettings.completionModel !== '__disabled__'
         ? (adminSettings.completionModel ||
@@ -340,8 +352,9 @@ async function completion(req, res) {
     else if (!ref.model && isUserSettingsAllowed()) candidates.push({ lane: 'user', ref: { rowId: null } })
     if (!adminSharedCompletionDisabled && (adminSettings.llmApiUrl || process.env.LLM_API_URL) && (adminSettings.allowedModels?.length || (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME))) {
         if (adminSettings.allowedModels?.length) {
-            if (ref.kind === 'site' && ref.model && !adminSettings.allowedModels.includes(ref.model)) {
-                // explicit model not allowed -> reject (F2)
+            if (!refFromProfile && ref.kind === 'site' && ref.model && !adminSettings.allowedModels.includes(ref.model)) {
+                // explicit model not allowed -> reject (F2); a profile-derived
+                // ref just fails this candidate and continues the chain
                 return res.status(400).json({ success: false, error: `Model "${ref.model}" is not available` })
             }
         }
@@ -785,12 +798,47 @@ async function generateDocument(req, res) {
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
         messages.push({ role: 'user', content: `${styleGuidance}${generator.instruction}\n\nDOCUMENT:\n${docText}` })
 
+        // overleaf-lab (owner bug report #2): several instruct models answer
+        // document-generation requests with a FABRICATED TOOL CALL such as
+        // `tool call: get_keywords_from_document("/main.tex")` instead of the
+        // requested text. Mitigations: a hard no-tool-call instruction on
+        // every attempt, one nudge-retry when the output still looks like a
+        // tool call, then a clear, actionable error (never show the gibberish
+        // as the "result").
+        const NO_TOOLS =
+            ' Do not call, name, or simulate any tool, function, or API (never output lines such as "tool call: ..." or "function ..."). Answer directly with the requested text only.'
+        messages[messages.length - 1].content += NO_TOOLS
+
         const started = Date.now()
-        const { text, usage } = await chatText(spec, messages, {
-            maxOutputTokens: generator.maxOutputTokens,
-            temperature: generator.temperature,
-            timeoutMs: 300000
-        })
+        let text = ''
+        let usage = null
+        const baseUserContent = messages[messages.length - 1].content
+        const prefix = messages.slice(0, -1)
+        let toolish = false
+        for (let attempt = 1; attempt <= 2 && !text; attempt++) {
+            const userContent =
+                attempt === 1
+                    ? baseUserContent
+                    : `${baseUserContent}\n\nReminder (second attempt): produce the plain ${type} text now. No tool calls, no function names, no placeholders, no code fences.`
+            const r = await chatText(spec, [...prefix, { role: 'user', content: userContent }], {
+                maxOutputTokens: generator.maxOutputTokens,
+                temperature: generator.temperature,
+                timeoutMs: 300000
+            })
+            usage = r.usage || usage
+            toolish = /^(tool|function)\s*call\b|^\s*get_[a-z0-9_]+\(/im.test((r.text || '').trim())
+            if (!toolish) {
+                text = (r.text || '').trim()
+            }
+        }
+        if (toolish) {
+            throw Object.assign(
+                new Error(
+                    'The model answered with a tool-call-like response instead of the requested text. Choose a different model (File → Select LLM Model) and try again.'
+                ),
+                { code: 'llm-tool-call-output' }
+            )
+        }
         assertNonEmpty(text)
         budget.record(usage?.outputTokens)
 
