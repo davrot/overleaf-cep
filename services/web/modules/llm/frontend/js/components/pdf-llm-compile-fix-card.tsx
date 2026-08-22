@@ -83,6 +83,11 @@ function PdfLlmCompileFixCard({ logEntry }: Props) {
         logEntry ? getCompileFixStatus(logEntry) : { status: 'idle' as const }
     )
     const [copied, setCopied] = useState(false)
+    // Apply state: idle → pending → applied, or a failure reason.
+    const [applyState, setApplyState] = useState<
+        { kind: 'idle' } | { kind: 'pending' } | { kind: 'applied' }
+        | { kind: 'failed'; reason: string; openDoc?: string }
+    >({ kind: 'idle' })
 
     // Keep the card in sync with the store (button triggers, re-runs).
     useEffect(() => {
@@ -99,6 +104,7 @@ function PdfLlmCompileFixCard({ logEntry }: Props) {
 
     useEffect(() => {
         setCopied(false)
+        setApplyState({ kind: 'idle' })
     }, [status])
 
     const copy = useCallback(async () => {
@@ -126,6 +132,83 @@ function PdfLlmCompileFixCard({ logEntry }: Props) {
                 : null
         void requestCompileFix(logEntry, prev)
     }, [logEntry, status])
+
+    // overleaf-lab (2026): "Apply fix" — dispatch to the editor-scoped bridge
+    // (llm-source-editor-component) which performs the exact-match edit. Only
+    // valid for the current result; refused (not fuzzy-applied) if the text
+    // is gone, the doc is wrong, or the user is read-only.
+    const apply = useCallback(async () => {
+        if (status.status !== 'result') return
+        const reqId = `cfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        setApplyState({ kind: 'pending' })
+        const result = status.result
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+                window.removeEventListener('llm-cfx-apply-reply', onReply)
+                setApplyState({ kind: 'failed', reason: 'timeout' })
+                resolve()
+            }, 8000)
+            const onReply = (ev: Event) => {
+                const d = ((ev as CustomEvent).detail || {}) as {
+                    reqId?: string
+                    ok?: boolean
+                    reason?: string
+                    openDoc?: string
+                }
+                if (d.reqId !== reqId) return
+                clearTimeout(timer)
+                window.removeEventListener('llm-cfx-apply-reply', onReply)
+                if (d.ok) setApplyState({ kind: 'applied' })
+                else setApplyState({ kind: 'failed', reason: d.reason || 'error', openDoc: d.openDoc })
+                resolve()
+            }
+            window.addEventListener('llm-cfx-apply-reply', onReply)
+            window.dispatchEvent(
+                new CustomEvent('llm-cfx-apply-request', {
+                    detail: {
+                        reqId,
+                        file: result.file,
+                        line: result.line,
+                        span: result.span,
+                        suggestedOld: result.suggestedOld,
+                        suggestedNew: result.suggestedNew
+                    }
+                })
+            )
+        })
+    }, [status])
+
+    const applyStatusLine = useCallback(() => {
+        if (applyState.kind === 'applied') {
+            return (
+                <span className="llm-cfx-apply-status llm-cfx-apply-status-ok">
+                    {t('llm_cfx_applied', 'Applied — recompile to see the result.')}
+                </span>
+            )
+        }
+        if (applyState.kind === 'failed') {
+            let msg: string | React.ReactNode
+            if (applyState.reason === 'wrong-doc') {
+                msg = (
+                    <span>
+                        {t('llm_cfx_apply_open', 'Open ')}
+                        <strong>
+                            {applyState.openDoc || t('llm_cfx_apply_thedoc', 'the document')}
+                        </strong>{' '}
+                        {t('llm_cfx_apply_then', 'to apply the fix.')}
+                    </span>
+                )
+            } else if (applyState.reason === 'not-found') {
+                msg = t('llm_cfx_apply_notfound', 'That text is no longer there — the line may have changed. Suggest a new fix.')
+            } else if (applyState.reason === 'read-only') {
+                msg = t('llm_cfx_apply_readonly', 'You do not have edit rights on this project.')
+            } else {
+                msg = t('llm_cfx_apply_error', 'Could not apply the fix right now — please try again.')
+            }
+            return <span className="llm-cfx-apply-status">{msg}</span>
+        }
+        return null
+    }, [applyState, t])
 
     if (!logEntry || status.status === 'idle') return null
 
@@ -202,10 +285,24 @@ function PdfLlmCompileFixCard({ logEntry }: Props) {
                 </div>
             </div>
             <div className="llm-cfx-actions">
+                <button
+                    type="button"
+                    className="llm-cfx-btn llm-cfx-apply"
+                    onClick={() => void apply()}
+                    disabled={applyState.kind === 'pending' || applyState.kind === 'applied'}
+                >
+                    <MaterialIcon type={applyState.kind === 'applied' ? 'check' : 'check_circle'} style={{ fontSize: 16 }} />
+                    {applyState.kind === 'applied'
+                        ? t('llm_cfx_applied_btn', 'Applied')
+                        : applyState.kind === 'pending'
+                            ? t('llm_cfx_applying', 'Applying…')
+                            : t('llm_cfx_apply', 'Apply fix')}
+                </button>
                 <button type="button" className="llm-cfx-btn llm-cfx-again" onClick={differentFix}>
                     <MaterialIcon type="refresh" style={{ fontSize: 16 }} />
                     {t('llm_cfx_different', 'Suggest a different fix')}
                 </button>
+                {applyStatusLine()}
             </div>
             <div className="llm-cfx-footer">
                 {t('llm_cfx_footer', 'AI can make mistakes. Review fixes before you apply them.')}
