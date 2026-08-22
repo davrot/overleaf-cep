@@ -1,484 +1,208 @@
-# Phase C — overleaf.com reference-editor parity (implementation plan)
+# References module: implementation plan (reconciled to the overleaf.com reference)
 
-**Status: plan (supersedes prior PHASE_C plan draft and the reviewer-given
-implementation goals/tasks).**
-**Authoritative spec = the three capture files (user-confirmed):**
-`/home/davrot/bib_notes.txt` (48 Add-reference form states + empty modal),
-`/home/davrot/bibtypes_notes.txt` (48 exported `@type{...}` lines),
-`/home/davrot/bib_style.html` (full live page snapshot of the shipped
-reference editor: toolbar, list panel, bulk bar, compact cards, preview panel,
-in-preview form, Optional + Add-field autocomplete, Paste/Preview import flow).
-Wherever these captures conflict with REDESIGN_PLAN decisions or Phase B
-reviewer work items (W1–W7 framing), **the captures win**. Committed code
-so far (W1–W3, W5 core `d82833ac88`, bulk planner) stays in place as the
-data layer; this plan re-bases the *UI and feature* plan on the captures.
+**Status: SUPERSEDED-BY-THIS-PLAN → ACTIVE.** The Phase-B plan (2026-07-20) is a *redesign* plan built from reviewer notes. The overleaf.com reference (the four capture/asset files) is now the **authoritative source of truth** and where it disagrees with the Phase-B plan, **the reference wins** (per user instruction). This plan re-grounds every decision on what the reference actually ships, and the single deliberate deviation (an "Import from Library" add-item) is called out explicitly.
+
+This is a plan, not code.
+
+**Scope (unchanged):** the `services/web` bib-editor CEP `visual` provider and the `visual` provider registration. The editor stays `.bib`/BibTeX; we do not add LaTeX/Biber engines, a `.bibtex-log` language, or a log-pane view mode.
+
+**Repo:** a fork of overleaf-cep (`davrot/bib-editor`). **Module:** `services/web/modules/bib-editor`. **Web root:** `services/web`. **Build (C8):** `make all` **build-only** (label==sha; no webpack ERROR); live matrix is not asserted. **ESLint:** scope `services/web/modules/bib-editor`, gate **0 errors** (`--max-warnings 0`).
+
+**Live matrix:** DEFERRED/optional. No live container is available in this environment; `make all` build-only is the required gate and the live matrix is documented but not run.
+
+**Committed & kept (Phase A–B, revertible individually):**
+- `services/web/modules/bib-editor/frontend/js/utils/overleaf-type-map.ts` — 48 machine↔label + requiredFields + all/optionalFields (machine→human label map, `formatBibTypeLabel`, `getBibTypeDisplayFields`)
+- `services/web/modules/bib-editor/frontend/js/utils/bibtex-schema.json` — `publicationTypes` (per-type required/optional/defaultOptional), `fieldLabels`, `optionalFieldsByGroup`
+- `services/web/modules/bib-editor/frontend/js/utils/bib-types.ts` — `BibTypeSpec`, `getBibTypeDisplaySpec`
+- `services/web/modules/bib-editor/frontend/js/utils/preview-model.ts` — `previewRow`/`previewBody`/`previewMissingGroups`
+- `services/web/modules/bib-editor/frontend/js/utils/bib-write.ts` — `applyBibSourceEdit` (C3)
+- `services/web/modules/bib-editor/frontend/js/utils/doi-fetcher.ts` — `fetchBibFromDoi` (C4)
+- W5 `importEntry` flow; `bib-editor-context.tsx` (C1b–C4); extension `BIB_VISUAL_DELETE_EVENT` (C2b), `BIB_IMPORT_EVENT`, `BIB_RESOLVE_DOI_REQUEST/RESPONSE`, `BIB_VISUAL_WRITE_REQUEST/RESPONSE`.
+
+**Kept, NOT reverted:** the Add-menu item **Import from Library** (C9, user-added) despite being absent from the reference — this is the one deliberate deviation (§C9).
 
 ---
 
-## 1. What the captures establish (analysis)
+## The new authority
+- **Reference capture (authoritative, wins over this plan's earlier claims and over the Phase-B plan):** `/home/davrot/bib_notes.txt`, `/home/davrot/bibtypes_notes.txt`, `/home/davrot/bib_style.html`, and the live session captured under `/home/davrot/ref_bib/` (`1..4.html`, `1_files/`, `2_files/`, `3_files/`, `4_files/`). The machine-readable reference is the deployed bundle `ref_bib/1_files/library-*.js` (the `bibtex` module: type map, field map, taxonomy, `BibEntry` model, import/preview/resolve components) plus `ref_bib/2_files/9324-*.css` (the `bibtex-*` class spec). These are *our* reference, not a different product.
+- **What the reference is:** the live overleaf.com IDE `.bib` visual editor (BibTeX), same module we shipped (Phase A–B). It is the target we must match.
 
-### 1.1 Entry type vocabulary (verified 48/48)
+**Precedence (final):**
+1. Reference capture (overleaf.com IDE) — highest.
+2. `REDESIGN_PLAN` — only where the reference is silent.
+3. Committed Phase A–B data layer (W1–W3, `overleaf-type-map.ts`, `bibtex-schema.json`, `bib-types.ts`).
+4. Phase-B plan review notes (2026-07-20) — *only* where the reference is silent; superseded wherever it conflicts.
 
-`bibtypes_notes.txt` gives the exact machine `@type` for every human label
-— 1:1, standard BibTeX/biblatex names:
+**What stays unchanged (verified present in the reference and we build it):** W1–W3 data layer (`overleaf-type-map.ts`, `bibtex-schema.json` — *data shape corrected below*; `bib-types.ts`), W5 `importEntry`, extension C1b/C2b/C4 (`BIB_RESOLVE_DOI_REQUEST/RESPONSE`), the 48-type + taxonomy coverage, the C3 bulk-delete + `applyBibSourceEdit`, the C5 `importMany`/Paste flow, and the C9 `Import from Library` stub (our addition).
 
-```
-Article→article              In reference→inreference
-Artwork→artwork              Jurisdiction→jurisdiction
-Audio→audio                  Legal→legal
-Book→book                    Legislation→legislation
-Book in book→bookinbook      Letter→letter
-Booklet→booklet              Manual→manual
-Commentary→commentary        Master's thesis→mastersthesis
-Conference→conference        Miscellaneous→misc
-Collection→collection        Movie→movie
-Dataset→dataset              Music→music
-Electronic resource→electronic Multi-volume book→mvbook
-Image→image                  Multi-volume collection→mvcollection
-In proceedings→inproceedings Multi-volume proceedings→mvproceedings
-In book→inbook               Multi-volume reference→mvreference
-In collection→incollection   Online resource→online
-Patent→patent                Performance→performance
-Periodical→periodical        PhD thesis→phdthesis
-Proceedings→proceedings      Reference→reference
-Report→report                Review→review
-Software→software            Standard→standard
-Supplemental material in book→suppbook
-Supplemental material in collection→suppcollection
-Supplemental material in periodical→suppperiodical
-Tech report→techreport Thesis→thesis
-Unpublished→unpublished Video→video
-WWW→www
-```
+---
 
-(That's 48 rows. Machine set = our 13 + 35 new; **our 13 are a strict
-subset of the 48** — no existing entry becomes orphaned. Exact spelling
-above is as written in the user's export lines; the machine→type map is
-keyed on the lowercased machine name, human display labels are from the
-selector.)
+## 0. Decisive deltas (reference vs our current code)
+Verified by diffing the reference bundle against this repo. Every "fix" in §C1–§C10 below is a direct consequence of these deltas:
 
-Key deltas vs our current schema (13 types, `bibtex-schema.json`):
-- 35 machine types to add (from the 48 minus our 13): `artwork, audio,
-  bookinbook, commentary, conference, collection, dataset, electronic,
-  image, inreference, jurisdiction, legal, legislation, letter, movie,
-  music, mvbook, mvcollection, mvproceedings, mvreference, online, patent,
-  performance, periodical, reference, report, review, software, standard,
-  suppbook, suppcollection, suppperiodical, thesis, video, www` — 24 listed;
-  the 35th comes from **the `thesis`/`mvreference` pair being distinct**
-  (already counted) — the authoritative count is 48 − 13 = 35; the diff is
-  in code (C1 test asserts the count).
-- Notable pairs: **`report` AND `techreport`** are distinct (we only have
-  `techreport`); **`online` AND `electronic`** are distinct;
-  **`thesis`** is distinct from `phdthesis`/`mastersthesis`.
+| # | Aspect | Reference (authoritative) | Our current (Phase B) | Action |
+|---|---|---|---|---|
+| D1 | **requiredFields** | **OR-aliases** as arrays: `[year\|date]`, `[journal\|journaltitle]`, `[doi\|eprint\|url]`, `[author\|editor]`, `[school\|institution]`; ~half the "generic" types have **no** required fields (misc, artwork, audio, commentary, image, jurisdiction, legal, legislation, letter, movie, music, performance, software…); booklet/manual = `title` only | 45/48 types **differ**; we use bare `year` + `journal` + over-stated requireds (e.g. software=`author,title,year`, misc=`author,editor,title,year`) | **Re-derive `requiredFields` from the reference** (`§C1`): 45 spec diffs |
+| D2 | **optionalFields** | *Minimal* typed lists (article ≈ 25: author/editor/title… `journaltitle`, `journaltitleaddon`, `journal`, `journalsubtitle`, `issuetitleaddon`, …) — *not* the full 74-field catalogue | ~74 fields per type (the whole catalogue is optional) | **Re-derive `optionalFields` + `defaultOptionalFields` from the reference** (`§C1`) |
+| D3 | **optional-field taxonomy groups** | 8 groups / 64 items; *Periodicals and journals* includes `journaltitle` (7) | Our `OPTIONAL_FIELD_TAXONOMY` is 8 groups / **63** items; *Periodicals and journals* has 6 (**no `journaltitle`**) — all 7 other groups already match verbatim | Add `journaltitle` to the *Periodicals and journals* group (D3). 7/7 other groups already match. |
+| D4 | **preview panel** | `position:fixed; width:30rem; transform:translateX(100%)`, slides in; the list shifts via `:has() { margin-right:30rem; transition:.3s }`; three modes `contained` / `overlay` / mobile-offcanvas | flex `split` (the panel is a right column of a flex row — the *classes* are already `-contained/-open/-overlay`, but they are laid out flex, not as a slide-out) | **Preview = fixed 30rem slide-out; list `margin-right`** (CSS-only, §C7) |
+| D5 | **entry list** | **virtualized** (react-window): absolutely-positioned rows `translateY(start−overscan)`, `overflow:hidden scroll`; row props `searchTerms, compileErrors, hasDuplicateKey, checked, …` | Committed HEAD C3: virtualized (custom visible-window) absolutely-positioned `bibtex-entry-card-row` with `data-index` + error icon + per-row card (not `<table>`). *Missing*: `searchTerms` highlight per row, `hasDuplicateKey`, `showErrorTooltip` | Add per-row `searchTerms` + error tooltip (§C4) |
+| D6 | **Add menu items** | `Paste references` → `Enter manually` (reference has no Upload in this capture) | Committed HEAD: separate nav button "Add new entry" + C5 Add dropdown (Paste references / Enter manually / Import from Library stub) | Wire C5 Add dropdown (in progress this phase) + keep the reference `Paste references` → `Enter manually` order (§C5, §C9) |
+| D7 | **Add / search layout** | `.bibtex-entry-list-panel` = search form-control-wrapper (leading icon) width **320px** + Add button (`margin-left:auto`); search + Add in the *same* row | Committed HEAD (C5 WIP): search + Add dropdown **in the same row** (`bibtex-entry-list-toolbar`) — matches the reference layout | (no change) |
+| D8 | **preview card** | header (prev/next chevrons + close) → summary (key chip + title + `author · year` meta) → **kebab** [Download / Delete] → **Details / Abstract tabs** → inline form | Committed HEAD C4 **already has** all of it (header nav, summary, kebab Download/Delete, Details/Abstract tabs, inplace form) — *matches D8* | (no change) |
+| D9 | **form** | **modal** for Add (type selector button + "Select a type to see the required fields." helper + **Cancel**/**Save**) | Committed HEAD: form is a full-view *inline* (`selection.kind==='new'` — the split view); C4 preview form is inplace. The reference **Add modal** is not built in our C2 | Defer (out of scope for this sync; §C9 keeps the C9 stub) |
+| D10 | **import preview** | `bibtex-import-preview-card` (checkbox + key chip + `author (year)` heading + title + "already in your library" tag) + `bibtex-import-preview-footer-warning` + `no_references` empty | Committed C5 (WIP): import modal has row cards + `already_in_your_library` tag (D10) + select-all header + footer warning + `no_references` empty | Add the missing `bibtex-import-preview-footer-warning` row (in progress this phase: C5 WIP) |
+| D11 | **error affordance** | `.bibtex-entry-error-icon` + `.bibtex-tooltip-errors` (click → error tooltip/blockquote) | Committed HEAD C3: row error **icon is present**; the **tooltip** (`.bibtex-tooltip-errors`, lists errors) is not yet | Add error tooltip (§C4) |
+| D12 | **author humanize** | von/first/last parsing; 1 = "First Last"; 2 = "A and B"; ≥3 or et-al = "Last et al."; import heading shows "Last (year)" or "(no author)" / "(no year)" / "(no title)" | Committed HEAD C3/C4: `citationAttribution` is "Last et al." (no year) | Use "Last (year)" in preview meta + import heading (§C4) |
+| D13 | **i18n keys** | `paste_references`, `upload_bib_file`, `enter_manually`, `select_entry_type`, `required_fields_missing`, `no_references`, `no_references_found_in_this_file`, `select_all`, `some_dois_could_not_be_resolved`, `already_in_your_library`, `previous_reference`, `next_reference`, `actions`, `delete_permanently`, `restore`, `reference_count` (plural), etc. | **Note:** we key by English **strings** (not snake_case). The reference strings we need are already in `en.json` (`Paste references`, `Enter manually`, `Previous reference`, `Next reference`, `Select all entries`, `Required fields missing`, etc.). `Import from Library` **is** missing (ours, §C9). | Add `Import from Library` + `Import` (already present) keys to both locales (§C6) |
+| D14 | **CSS** | 121 `bibtex-*` rules incl. card, error-icon, tooltip, preview tabs/summary/actions, import cards, `:root`/`[data-theme]` custom properties, `bibtex-toolbar` (32px, `inset 0`), `bibtex-entry-list-panel` (320px search) | Committed HEAD C3/C4 CSS: card, error-icon, preview tabs/summary/actions all present. Missing: the fixed 30rem slide-out geometry, `bibtex-import-preview-footer-warning`, `bibtex-tooltip-errors`, `:has(...)` list shift, `--bibtex-already-in-library-*` | Add the reference geometry + the two missing component blocks (§C7) |
+| D15 | **search scope** | `searchTerm` passed to every row (`searchTerms` prop) → highlight matches + filter; `no_entries_matching` when filtered empty | Committed HEAD C3: filter-only (no per-row highlight) | Add per-row highlight (§C4) |
 
-### 1.2 Add-reference modal (from `bib_notes.txt` — 48/48 forms verified)
+Every §C section below is a re-statement of one of these deltas; nothing is invented. Phase-B "gotchas" that the reference does not support (e.g. "C1 is correct on substance") are discarded in favor of the reference.
 
-Modal "Add reference", Cancel/Save footer (Save disabled until a type is
-selected — observed on the empty modal). Every form (all 48) has the same
-anatomy:
-1. `Entry type` — `entry-type-selector-btn` (full-width button + caret).
-2. `Citation key` + helpers: "Unique key for citations, no spaces or
-   special characters" / "Auto-generated from the author and year, if
-   left blank".
-3. Per-type main fields (table below) — Author/Editor rows carry helper
-   'Separate multiple names with "and"'; Pages carries "Page range".
-4. `Year` then `Date` — **for every type, always present** in that order.
-   Only exceptions: `electronic`/`online`/`www` add DOI/Eprint/URL rows, and
-   `unpublished` adds a Note row, all **after** Date.
-5. Collapsed `Optional` (`bibtex-collapsible-heading`, "Expand Optional"
-   aria-label, caret icon).
-6. Footer: Cancel / **Save** (Save disabled at "Select" state).
+---
 
-Per-type main fields, **exact** from the 48 captured forms (schema field
-names, before Year/Date — these are UI rows, NOT validation requiredFields;
-they become `CAPTURED_MAIN_FIELDS` in `overleaf-type-map.ts`):
+## 1. Authoritative reference inventory (what the capture actually contains)
+The machine-readable artifacts extracted from the reference bundle (the implementer's copy-from source) are persisted at
+**`services/web/modules/bib-editor/reference/capture/`** (committed), so the plan is self-contained:
+- `overleaf-48.json` — 48-type `req`/`opt` (per-type **required** and **default-optional** field arrays); OR-groups appear as `"[year,date]"` tokens.
+- `field-map.json` — 74 field `label`/`helperText` entries (the reference's field map; contributor name-fields use the `Separate multiple names with "and"` helper).
+- `taxonomy-windows.txt` — the 8-group optional-field taxonomy, verbatim from the bundle.
+- `bibtex-css.txt` — all 121 `bibtex-*` CSS rules (the class spec, §1.4).
+- `all48.json`/`required.json` (derived) — kept as intermediate artifacts of the same extraction.
 
-| type | main fields (after citation key, before Year/Date) |
+### 1.1 Field map (74 entries) — author source: `reference/capture/field-map.json`
+The reference field map is a 74-entry `{key: {label, helperText}}` object. **Copy it verbatim** from `reference/capture/field-map.json` (earlier draft lists in this plan were mis-extracted; the JSON file is the source). Verified facts:
+- **12 contributor name-fields** (helperText: `Separate multiple names with "and"`): `author, editor, editora, editorb, editorc, translator, annotator, commentator, introduction, foreword, afterword, bookauthor`. (No `authora`/`authorb`/`arxiv`/`archiveprefix`/`editiontype`/`journalvolume` exist in the map.)
+- Two **distinct** fields: `journal` (label "Journal") and `journaltitle` (label "Journal title").
+- `number` = **"Number"** (not "Volume"); `volume` = "Volume"; `urldate` = "URL date"; `school` = "School"; `institution` = "Institution".
+- 36 of the 74 entries have empty helperText.
+- This map feeds `bibtex-schema.json.fieldLabels`. It is *separate* from the per-type `requiredFields` OR-groups (that is §1.2/C1) and from the 8-group taxonomy (also §1.2/C1).
+
+### 1.2 Optional-field taxonomy — 8 groups / 64 items (reference)
+The reference's 8 groups (verbatim, extracted from `reference/capture/taxonomy-windows.txt`). The only item we currently miss is `journaltitle` in *Periodicals and journals*:
+
+| Group | Fields |
 |---|---|
-| `article` | author, title, journal, `journaltitle` |
-| `artwork`, `audio`, `booklet`, `commentary`, `dataset`, `image`, `jurisdiction`, `legal`, `legislation`, `letter`, `misc`, `movie`, `music`, `performance`, `review`, `software`, `standard`, `video` | author, editor, title |
-| `book` | author, editor, title, publisher |
-| `bookinbook`, `inbook`, `suppbook` | author, editor, title, booktitle, chapter, pages, publisher |
-| `conference`, `inproceedings` | author, title, booktitle |
-| `collection`, `mvcollection`, `mvreference`, `reference`, `periodical` | editor, title |
-| `mvproceedings` | title |
-| `electronic`, `online`, `www` | author, editor, title, doi, eprint, url |
-| `incollection` | author, title, booktitle, publisher |
-| `inreference` | author, editor, title, booktitle |
-| `manual` | author, editor, title |
-| `mastersthesis`, `phdthesis` | author, title, institution, school |
-| `mvbook` | author, title |
-| `patent` | author, title, number |
-| `proceedings` | title |
-| `report`, `thesis` | author, title, type, institution |
-| `suppcollection` | author, editor, title, booktitle |
-| `suppperiodical` | author, title, `journaltitle` |
-| `techreport` | author, title, institution |
-| `unpublished` | author, title, then Year/Date → **note** (after Date) |
+| Common (7) | `abstract`, `subtitle`, `titleaddon`, `language`, `note`, `addendum`, `pubstate` |
+| Contributors (12) | `editor`, `editora`, `editorb`, `editorc`, `translator`, `annotator`, `commentator`, `introduction`, `foreword`, `afterword`, `bookauthor`, `holder` |
+| Books and volumes (14) | `maintitle`, `mainsubtitle`, `maintitleaddon`, `booktitle`, `booksubtitle`, `booktitleaddon`, `volume`, `volumes`, `part`, `edition`, `chapter`, `pages`, `pagetotal`, `eid` |
+| **Periodicals and journals (7)** | `journaltitle` ← we have 6 (no `journaltitle`), `journalsubtitle`, `journaltitleaddon`, `issuetitle`, `issuesubtitle`, `issuetitleaddon`, `issue` |
+| Events and conferences (4) | `eventtitle`, `eventtitleaddon`, `eventdate`, `venue` |
+| Publication details (13) | `publisher`, `location`, `organization`, `institution`, `series`, `number`, `type`, `version`, `month`, `isbn`, `issn`, `isrn`, `howpublished` |
+| Digital and online (6) | `doi`, `eprint`, `eprintclass`, `eprinttype`, `url`, `urldate` |
+| Language and origin (1) | `origlanguage` |
 
-Note: the capture forms show `author` **and** `editor` as separate rows
-whenever both appear — validation `requiredFields` may still use OR-groups
-(`['author','editor']`); rows and validation are separate concerns.
+**Total = 64** (ours: 63 — add `journaltitle` to Periodicals). Do *not* re-derive group boundaries; the other 7 groups already match the reference verbatim.
 
-Labels → schema fields: "Digital object identifier (DOI)" → `doi` (helper
-"The identifier only, not the full URL, e.g. 10.1000/xyz123"); "Eprint" →
-`eprint` (helper "The preprint archive identifier, e.g. math/0307200v3");
-"Number" → `number`; "Type" → `type`; "Note" → `note`; "Journal" → `journal`;
-"Journal title" → `journaltitle` (OQ-4 resolved: two distinct fields —
-the capture shows BOTH rows on `article`, each bound to its own field).
+### 1.3 Preview card humanization (D8/D12)
+- Row / preview summary heading: `author (year)` → `Last (year)`, no year → `Last (no year)`, no author → `(no author)`; title line is the `title` field or `(no title)`.
+- Author summarize algorithm (from the reference `Name` class): split on `\s+and\s+` (case-insensitive); `hasOthers` if trailing token is "others"; von/first/last; summary joins `von last` tokens: 1 = "Last", 2 = "A & B" (the *list* uses ` & `), ≥3 or hasOthers = "First et al." (import heading shows "First (year)").
+- Preview summary meta: `<span>{authorSummary}</span> <span>{year}</span>` (both optional; hide if absent).
+- Preview summary key chip (mono) + title (semibold) in `.bibtex-entry-preview-summary-content`; meta on the right of `.bibtex-entry-preview-summary`.
 
-### 1.3 Toolbar + list panel + bulk bar (from `bib_style.html`)
-
-- Toolbar: Undo/Redo actions group + **Code / Visual** switch (fieldset
-  "Editor mode.", radios `cm6`/`rich-text`). (Module already has the
-  toggle; naming/structure alignment is cosmetic.)
-- `bibtex-entry-list-panel`:
-  - `bibtex-search` input, aria-label "Search", **placeholder is dynamic:
-    "Search <currentDocName>"** (capture: "Search sample.bib") — our current
-    search is static text; must derive from open doc filename.
-  - `bibtex-add-button` (dropdown, "Add"):
-    - "Paste references" — description "BibTeX, DOI"
-    - "Enter manually"
-- `bibtex-bulk-actions-bar` (between search/Add and the list):
-  - select-all checkbox (`bibtex-bulk-actions-select-all`,
-    aria-label "Select all entries")
-  - `bibtex-bulk-actions-count`: "N reference(s)" (capture: "1 reference").
-- `bibtex-entry-list-body` (role=list, `bibtex-entry-card-row`
-  role=listitem with `data-index`, absolutely positioned → windowed/virtual
-  list):
-  - Row = `bibtex-entry-card bibtex-entry-card-compact
-    bibtex-entry-card-clickable` role=button tabindex=0, id
-    **`bibtex-entry-card-<key>#<index>`**; while previewed the row gets
-    `bibtex-entry-card-previewing`.
-  - Row contents: checkbox `bibtex-entry-card-checkbox`
-    (aria-label "Select entry"), `bibtex-entry-card-key` (the citation
-    key), `bibtex-entry-error-icon` (aria-label "Entry has errors", error
-    icon shown only when the entry has validation errors),
-    `bibtex-entry-card-details` (compact summary line: author, title,
-    year — fields `bibtex-entry-card-author/-title/-year/-meta/-author`
-    classes present).
-
-### 1.4 Preview panel (from `bib_style.html`)
-
-`bibtex-entry-list-and-preview` holds list + preview side by side
-(`bibtex-list-and-preview`); preview has contained and overlay variants
-(`...-panel-contained`, `...-panel-overlay`; overlay covers the list on
-narrow layouts). `bibtex-entry-preview-panel` role=region,
-aria-label "Edit reference"; hidden until a card is previewed
-(`bibtex-entry-preview-panel-open`).
-
-Structure (top to bottom):
-1. `bibtex-entry-preview-header` / `bibtex-entry-preview-header-nav`:
-   - "Previous reference" (chevron_left), "Next reference" (chevron_right),
-     "Close" (close icon).
-2. `bibtex-entry-preview-summary`:
-   - `bibtex-entry-preview-summary-key` (citation key, bold).
-   - `bibtex-entry-preview-summary-actions`: **Actions** kebab (more_vert)
-     → menu: **Download** (download icon) and **Delete** (delete icon).
-   - Warning (only when applicable): `role=alert`, warning icon,
-     **bold "Required fields missing"** + the missing field names.
-   - `bibtex-entry-preview-summary-title/-meta` (author/year summary line).
-3. `bibtex-entry-preview-body`: `bibtex-entry-preview-tabs` (role=tablist):
-   - **Details** tab (`bibtex-entry-preview-tab-active`) → tabpanel
-     `bibtex-entry-preview-panel-details`:
-     - **The full entry form is IN the preview** — same
-       `form id="bibtex-entry-form"`, same rows (Entry type selector,
-       Citation key, per-type main fields, Year, Date, collapsed
-       `Optional`) — and **there is NO Save/Cancel footer in the capture**.
-       (Edit-commit model = open OQ-7.)
-   - **Abstract** tab → tabpanel `bibtex-entry-preview-panel-abstract`:
-     `bibtex-abstract-form-group` label "Abstract" + textarea
-     `bibtex-abstract-textarea` id `ref-abstract`.
-   - `bibtex-entry-preview-body-abstract` marks the body while Abstract
-     is active.
-
-So the entry form is a **shared component** with two hosts:
-(a) Add dialog (new entry) — with Cancel/Save footer;
-(b) preview Details tab (existing entry) — no footer; commits are
-in-place (OQ-7). The Add dialog and the preview must stay in sync (the
-preview for entry X shows X's form state; editing the preview and then
-reopening the modal reflects it — no separate draft store).
-
-### 1.5 Optional section + "Add field" autocomplete (from `bib_style.html`)
-
-The `Optional` collapse (`bibtex-collapsible-heading`, aria-label
-"Expand Optional"/"Collapse Optional") contains a **`bibtex-add-field-button`**
-("add" icon + "Add field") plus a combobox:
-- label: **"Add optional field"**, input placeholder **"Enter field name"**,
-  role=combobox, downshift listbox.
-- Grouped options (headings are li role=heading, separators between
-  groups, options are li role=option):
-
-| Group | Fields offered |
-|---|---|
-| Common | Abstract, Subtitle, Title addon, Language, Note, Addendum, Publication state |
-| Contributors | Editor, Editor A, Editor B, Editor C, Translator, Annotator, Commentator, Introduction, Foreword, Afterword, Book author, Holder |
-| Books and volumes | Main title, Main subtitle, Main title addon, Book title, Book subtitle, Book title addon, Volume, Volumes, Part, Edition, Chapter, Pages, Page total, EID |
-| Periodicals and journals | Journal subtitle, Journal title addon, Issue title, Issue subtitle, Issue title addon, Issue |
-| Events and conferences | Event title, Event title addon, Event date, Venue |
-| Publication details | Publisher, Location, Organization, Institution, Series, Number, Type, Version, Month, ISBN, ISSN, ISRN, How published |
-| Digital and online | Digital object identifier (DOI), Eprint, Eprint class, Eprint type, URL, URL date |
-| Language and origin | Original language |
-
-Note for implementation: the list **excludes the current type's main fields**
-(capture for Article: Journal/Journal title already main → not offered;
-but Journal subtitle IS offered). Both "Volume" and "Volumes" exist
-(distinct biblatex fields `volume`/`volumes`). "Editor" appears in
-Contributors even though it's a main field for most types — i.e. the
-filter is by *form position*, not by name.
-
-### 1.6 Paste references / import flow (from `bib_style.html` + `bib_notes.txt`)
-
-Add → "Paste references" (desc "BibTeX, DOI") opens modal "Add reference"
-with `bibtex-import-form`:
-- Label "Reference", `bibtex-import-textarea` (rows≈6), helper "Paste BibTeX
-  or DOIs here."
-- Footer: Cancel + **Preview** (disabled until textarea non-empty).
-Then (Preview) a second modal "Preview" (back arrow → return to textarea):
-- `bibtex-import-preview-header`: "Select all" checkbox +
-  `bibtex-import-preview-count` ("N reference(s)").
-- `bibtex-import-preview-list` of `bibtex-import-preview-card`:
-  - checkbox (`bibtex-import-preview-card-check`, label = citation key)
-  - `bibtex-import-preview-card-content`:
-    - `bibtex-import-preview-card-key` (citation key)
-    - `bibtex-import-preview-card-details` →
-      `bibtex-import-preview-card-heading` (humanized: "Ernst et al. (2007)")
-      + `bibtex-import-preview-card-field` (title line "Efficient
-      Computation Based on Stochastic Spikes") +
-      `bibtex-import-preview-card-tags` (type badge)
-- Footer: count + buttons (Cancel + **Import**).
-
-Paste input is BibTeX text AND DOIs (capture input: `doi:
-10.1162/neco.2007.19.5.1313` → previewed as @article Ernst2007 → DOI
-**resolution is part of the Paste flow**, OQ-8 scope decision). Conflict
-behavior (existing same key) not captured — OQ-9.
-
-### 1.7 Add dropdown (from `bib_style.html`)
-
-`bibtex-add-button` → menu items: **"Paste references"** (sub-label
-"BibTeX, DOI") and **"Enter manually"** (exact label — resolves prior
-OQ-3). "Enter manually" = our existing Add reference modal.
+### 1.4 Reference CSS inventory (121 `bibtex-*` rules) — key anchors
+- `.bibtex-visual-editor{position:absolute;inset:0;flex column;font-size:14px;background var(--bg-primary)}`
+- `.bibtex-toolbar{height:32px;box-shadow inset;padding:0 5px}`
+- `.bibtex-entry-list-panel{flex;gap 8px;padding:8px 8px 10px}` (search + Add row)
+- `.bibtex-search{width:320px}`
+- `.bibtex-bulk-actions-bar` sticky `top:0; z-index:3` (selected vs unselected bg)
+- `.bibtex-entry-card-row` absolute; `.bibtex-entry-card` (border, radius-m, hover/selected/previewing, `:before` 6px previewing accent bar)
+- `.bibtex-entry-card-key` (mono chip), `-author/-year/-title/-updated-at`, `-meta`, `-checkbox`
+- `.bibtex-entry-error-icon{color:var(--red-50)}`, `.bibtex-entry-error-icon-static`, `.bibtex-tooltip-errors{column;ul/blockquote}`
+- `.bibtex-entry-preview-panel{position:fixed;right:0;width:30rem;transform:translateX(100%);transition .3s;z-index:20}` + `-open{transform:none}` + `-contained{position:absolute}` + `-overlay{inset:20% 0 0;transform:translateY(100%)}` (mobile)
+- `.bibtex-list-and-preview{flex column;position:relative}` ; `:has(-panel-contained.open){.bibtex-entry-list{margin-right:30rem;transition .3s}}`
+- `.bibtex-entry-preview-header(-nav)` ; `.bibtex-entry-preview-summary(-content|-key|-title|-meta|-actions)` ; `.bibtex-entry-preview-tabs(-tab|-tab-active)` ; `.bibtex-entry-preview-body(-abstract)`
+- `.bibtex-import-preview-card(-check|-content|-key|-details|-heading|-field|-tags)` ; `.bibtex-import-preview(-empty|-header|-count|-list|-check-all|-footer|-footer-buttons|-footer-count|-footer-warning|-footer-actions)` ; `.bibtex-import-textarea{font-family:DM Mono}`
+- `:root{--bibtex-card-hover-bg:var(--neutral-85); ...}` + `[data-theme=light]{...}` + `[data-theme=default]{--bibtex-already-in-library-color:var(--yellow-20);...}` custom properties.
+*(Full spec verbatim in `reference/capture/bibtex-css.txt`; source: `/home/davrot/ref_bib/2_files/9324-*.css`.)*
 
 ---
 
-## 2. Delta vs our current module implementation
-
-| Area | Current (committed) | Capture (target) | Change |
-|---|---|---|---|
-| Type vocabulary | 13 types (`bibtex-schema.json`) | 48 verified machine types | Schema +35 types (additive blocks); label map human→machine 48/48 |
-| Form host | Full form view replacing list (modal for new) | Preview panel (contained/overlay) with Details form + Abstract tab; modal only for "Enter manually" | Redo `bib-editor-panel` layout: list + preview split; form component extracted with `footer: 'save' \| 'inplace'` variants |
-| Form fields | required + defaultOptional per type | Main fields + Year + Date + collapsed **Optional** (Add-field combobox; optional rows = valued fields + added ones) | New form model from §1.2 table; `Optional` = dynamic |
-| Year/Date | single `displayFieldsFor` list | Explicit Year row + Date row, all types | Write/read `year=` AND `date=` (non-empty) |
-| List rows | card grid from REDESIGN | compact rows + **checkbox per row** + select-all bulk bar + dynamic "Search <file>" | List component rework; windowing (rows absolute-positioned, data-index) |
-| Bulk delete | W5 core (event + planner) committed | same, wired to row checkboxes | Keep `planBibBulkDelete` + `entryIds` branch; UI on top |
-| Preview header | (list had search + add) | prev/next chevron + Close + Actions (Download/Delete) + required-missing alert | New preview panel component; reuses existing single/bulk delete |
-| Abstract | (field row in form) | Abstract **tab** (textarea `ref-abstract`) | Moves `abstract` out of main form into tab |
-| Add menu | single Add button opens modal | add dropdown: Paste references (BibTeX, DOI) / Enter manually / Import from Library (stub, C9) | Dropdown + import modal + preview step (local BibTeX parse + DOI fetch, C5) |
-| Add-field autocomplete | n/a (optionalFields shown) | grouped combobox §1.5, "Add optional field"/"Enter field name" | New field taxonomy data + combobox (a11y: combobox/option/separator/heading roles as captured) |
-| Search | static placeholder | "Search <openDocName>" | dynamic from open doc |
-| Card errors | validation via Check | persistent error icon per row ("Entry has errors") | rows carry per-entry error state (parse + schema required check) |
-| Card id/ARIA | `bibtex-entry-card-*` partial | id `bibtex-entry-card-<key>#<index>`, role=button, row role=listitem, previewing class | match naming |
-
-### Data-layer impact
-
-- **`bibtex-schema.json`**: add 35 `publicationTypes` blocks (required
-  per §1.2 table; optionalFields = biblatex fields not main;
-  defaultOptionalFields = [] by default since Optional is dynamic now).
-  Update `supportedPublicationTypes` to the 48. `allKnownFields` gains:
-  `volumes, volumeaddon? (only as offered: volume, volumes, edition,
-  pages, eid, titleaddon, subtitle, titleaddonaddon? no—) — exactly the
-  §1.5 taxonomy ∪ current allKnownFields`.
-- **`bib-types.ts`**: 48-entry label map (machine → human label),
-  `ENTRY_TYPES` regenerated from schema (still the single source).
-- **New pure utils (unit-tested, .mjs tests)**:
-  - `overleaf-type-map.ts`: 48 `{label, machine}[]` + humanized heading
-    builder ("Ernst et al. (2007)"), field-label→schema map, optional-field
-    taxonomy (8 groups) with per-type exclusion (main fields of the
-    current machine type are not offered).
-  - `bib-import.ts`: paste text → entries (local BibTeX parse + `doi:`
-    lines resolved through `fetchEntryFromDoi`), per-line status (ok/error),
-    duplicate-key detection (existing keys in current source), preview
-    card model (humanized heading util).
-- **Context**: `BibAddManyRequest` (import) or reuse `BibAddRequest` in a
-  loop? — one guarded write inserting N entries (all-or-nothing, like
-  bulk delete) → `planBibImport(source, entries: {key, text}[])`.
-- **Extension**: emit events for import; preview panel state (selected entry,
-  prev/next index) is React state over the current parse list (no new
-  document state).
-
-### i18n (additive in `en.json` + `extracted-translations.json`, `{ count }`
-style, **no re-sorting** of the shared files)
-
-New keys (UI strings from captures, en values; `{ count }` for plural):
-- `Select all entries`, `Select entry`, `Search {fileName}`
-  (interpolated), `N references` plural (existing `entry_selected`?
-  no — that's the old W4 bar; add `reference_count` `{count}`:
-  "{{count}} reference(s)" — capture: "1 reference"/
-  "N references" pattern), `Previous reference`, `Next reference`,
-  `Close`, `Actions`, `Download`, `Delete`, `Details`, `Abstract`,
-  `Optional` ("Optional" section), `Entry has errors`,
-  `Required fields missing` + `Missing: {fields}` (interpolated list),
-  `Paste references`, `BibTeX, DOI`, `Enter manually`,
-  `Paste BibTeX or DOIs here.`, `Reference` (reuse?), `Preview`,
-  `Select all`, `Import`, `Cancel` (existing?), `Save reference`/`Save`
-  (existing `save`?), `Add reference` (existing), `Add field`,
-  `Add optional field`, `Enter field name`, `Expand Optional` /
-  `Collapse Optional`, `Entry type` (existing?), `Citation key`
-  (existing?), per-field label keys for the new main fields (DOI, Eprint,
-  URL, Book title, Chapter, Pages, Publisher, Institution, School,
-  Number, Type, Note, Journal, Journal title) — most already exist (field
-  labels from existing form); only add missing. Group headers for the
-  autocomplete (Common, Contributors, Books and volumes, Periodicals and
-  journals, Events and conferences, Publication details, Digital and
-  online, Language and origin).
-  → Estimate ~35-40 new keys; exact list finalized per-WI, all additive,
-  both files.
+## 2. Synced i18n (from the reference) — both `services/web/locales/{en,sv}.json` + `frontend/extracted-translations.json`
+Add (additive; do not translate — copy reference strings): `paste_references`, `upload_bib_file`, `enter_manually`, `select_entry_type`, `required_fields_missing`, `no_references`, `no_references_found_in_this_file`, `select_all`, `select_all_entries`, `some_dois_could_not_be_resolved`, `already_in_your_library`, `previous_reference`, `next_reference`, `actions`, `delete_permanently`, `restore`, `reference_count` (plural: `{count} reference|{count} references`), `filter` (search placeholder), `error`/`errors`. **Keep** ours only: `import_from_library` (D6 deviation) and existing `could_not_import`, `paste`, `preview`, `no_entries_matching` (reconcile phrasing with the reference where the reference has the same intent). Do not add the reference's internal `no_year`/`no_title`/`no_author` (those are code-side fallback strings, not i18n). (`§C6`)
 
 ---
 
-## 3. Work items (commit order — each revertible alone)
+## 3. Per-change tasks
+Each change is individually revertible and gated: ESLint 0 errors (scope `modules/bib-editor`), module `yarn vitest` green, `make all` build-only green.
 
-**C1 — Type vocabulary (48 map + schema expansion).**
-`overleaf-type-map.ts` (48 rows: label→machine, humanized heading, per-type
-main-fields from §1.2, field-label→schema map, optional-field taxonomy +
-per-type exclusion) + 35 new `bibtex-schema.json` blocks +
-`supportedPublicationTypes`=48 + `bib-types.ts` label source +
-tests: 48 round-trip cases (write entry per machine type → parse →
-machine type preserved; per-type required/optional lists match §1.2
-table; taxonomy exclusion (Article does NOT offer Journal/Journal title,
-DOES offer
-Journal subtitle)).
-i18n: the 48 human labels (they're field-ish display strings — likely need
-no key since they're in the map? labels are English-English: **skip i18n
-for type labels? — NO: en.json is the UI string store; human labels are
-display strings → add as `type_label_*` ONLY IF the project i18n policy
-covers them; reviewer pattern: type names were previously hardcoded…
-decision: map labels are data (like field names are), NOT i18n — document
-decision, keep out of locales (precedent: machine field names are not
-i18n'd)).
+### C1 (fix data layer) — re-derive the data (was "already correct", now the main task)
+- **Input (durable, in-repo):** `reference/capture/overleaf-48.json` (48-type `req`/`opt`, machine-extracted from the reference bundle; OR-groups appear as `"\[year,date\]"` tokens), `reference/capture/field-map.json` (the 74 field `label`/`helperText` entries — copy verbatim), `reference/capture/taxonomy-windows.txt` (verbatim 8-group list for `journaltitle` placement). Source of truth: `/home/davrot/ref_bib/1_files/library-*.js`.
+- **Data-only rewrite of `bibtex-schema.json`** (no engine/parse changes), for each of the 48 types:
+  1. `requiredFields` = reference `req` with `"[a,b]"` tokens converted to `["a","b"]` OR-group arrays (our `BibTypeSpec` already handles `string | string[]` and `bib-validate.ts` already implements OR semantics). Spot checks to assert: `article.req = [author, title, [journal|journaltitle], [year|date]]`; `book.req = [[author|editor], title, [year|date]]`; `software.req = []` (note: reference requires **nothing** for software); `misc.req = []`; `booklet.req = [title]`; `inreference.req = [author, title, editor, booktitle, [year|date]]`.
+  2. `defaultOptionalFields` = reference per-type `opt` array (this is what drives the kind-new form: per `bib-types.ts`, the form shows `required + defaultOptionalFields` only). The union across all 48 `opt` arrays is 34 distinct fields — do **not** use the full ~145-field catalogue here.
+  3. `optionalFields` (full citation-js catalogue; feeds `getFieldsForType` + the dynamic Add-field combobox) stays as today. This is *not* the reference form model; it only feeds the Add-field combobox.
+- **`overleaf-type-map.ts`:** `OPTIONAL_FIELD_TAXONOMY` gains `journaltitle` in *Periodicals and journals* (D3; 63 → 64). 7 groups already match — do not re-derive.
+- **`bibtex-schema.json.fieldLabels`:** sync from `reference/capture/field-map.json` (74 entries; 12 contributor name-fields with the `Separate multiple names with "and"` helper — verbatim).
+- **Tests:** `test/unit/src/overleaf-type-map.test.mjs` — assert per-type `requiredFields` OR-group shape (all 48 types vs `reference/capture/overleaf-48.json`, not just spot cases); assert `defaultOptionalFields` == reference `opt`; assert taxonomy has 64 items incl. `journaltitle` in Periodicals. `make all` green.
+- *Replaces* the Phase-B claim "C1 is correct on substance; C3 is wrong on shape" (reversed: the reference is the source of truth).
 
-**C2 — Form parity (Year/Date rows, per-type main fields, Optional collapse,
-Abstract split).**
-Refactor `bib-entry-form.tsx` to the captured anatomy: Entry type selector
-(48, from C1 map) → Citation key (+ helpers) → per-type main fields →
-Year → Date → collap
-sed `Optional` (dynamic: valued optional fields + "Add field" combobox
-from taxonomy, per-type excluded) → host-provided footer. Split
-`abstract` from main rows (form no longer lists `abstract` — it's the
-Abstract tab, C4). Write path unchanged (guarded, expectedSource,
-flush-on-leave — W1/W2/W3 code unaffected). Tests (pure): field ordering
-per type, Year/Date always present, Optional contents per valued state.
+### C2 (keep bulk delete + `applyBibSourceEdit`; fix the extension listener bug)
+- Keep `BIB_VISUAL_DELETE_EVENT` / `BIB_IMPORT_EVENT` handlers (reference has bulk-delete via `bibtex-bulk-actions-bar`).
+- **Fix** `destroy()` double-removal of `BIB_DELETE_EVENT` (delete the first, stale line) — reference does not depend on the bug.
+- `make all` green.
 
-**C3 — List panel + bulk bar + dynamic search.**
-Compact `bibtex-entry-card-row` list (role=list/listitem/button per
-capture), row checkbox (aria "Select entry"), select-all
-(aria "Select all entries"), bulk bar count ("N reference(s)" plural),
-search placeholder = `Search {fileName}` from open doc, row error icon
-("Entry has errors") from per-entry required-field check, row id
-`bibtex-entry-card-<key>#<index>`, `previewing` state, windowing note
-(absolute rows + data-index — implement simple virtualization: visible
-window + spacer heights; unit-test the window math). Bulk delete
-wires `entryIds` to the W5 core event (existing). Delete of a previewed
-row: close preview + keep selection consistent.
+### C3 (keep `applyBibSourceEdit`; align the `existing` anchor to the reference id semantics)
+- Keep `mode:'new'` append. For `mode:'existing'`, the reference resolves by the **display `key`** (the mono chip) and accepts `id` when present (Phase A–B `bibtex-schema` uses `key`/`id` — keep both, matching the capture's "Key" chip).
+- `NOT_A_BIB_REASON` guard unchanged.
+- `make all` green.
 
-**C4 — Preview panel (split layout, header nav, Actions, tabs, in-preview
-form).**
-`bib-list-and-preview` split: list (C3) + preview panel
-(`...-contained` default; `-overlay` fallback by width) with header
-prev/next + Close, summary (key, Actions → Download/Delete; warning
-`role=alert` "Required fields missing" + names), Details tab hosts the C2
-form in **inplace mode** (no footer; commit model per OQ-7 — default:
-flush-on-leave per field, same guard), Abstract tab (textarea
-`id=ref-abstract`, writes `abstract` field through the normal write
-path), prev/next = prev/next entry in the current parse list (not
-file order? file order of entries — decide: file order). Download =
-**whole-file** download (OQ-6 default) via existing export path; Delete
-=single delete (existing) / from bulk bar = bulk (existing).
+### C4 (fix structure: preview slide-out + virtualized list + search/Add row + form modal + error icon + humanize + download)
+- **Preview (D4/D8/D13/D14):** replace the flex `split` with the reference `contained` panel: `.bibtex-entry-preview-panel-contained{position:absolute;width:30rem}` slides in; list `.bibtex-entry-list{margin-right:30rem;transition:.3s}` via `:has(...)`. Header (prev/next chevrons + close), summary (key chip + title + author/year meta), **kebab** [Download / Delete], Details/**Abstract** tabs, inline `BibEditorForm` (`autoSaveOnBlur`). Add `Download` (export entry `@type{key,...}` as `.bib`), `Prev/Next reference`.
+- **List (D5/D7/D15):** virtualized rows (react-window or an equivalent scroll container) rendered as `.bibtex-entry-card` (not `<table>`); row props per §1.4 (`compileErrors`, `hasDuplicateKey`, `onEdit`, `onDelete`, `isPreviewing`, `showUpdatedAt`, `showErrorTooltip`); search row merged with Add into `.bibtex-entry-list-panel` (search width 320, leading icon); search is filter **+** highlight (`searchTerms` per row) and shows `no_entries_matching` when filtered empty.
+- **Form (D9):** Add → modal (`modal` + fixed panel / offcanvas) with type-selector button + "Select a type to see the required fields." helper + **Cancel**/**Save** (Save disabled until type selected); remove the old full-view inline `selection.kind==='new'` host in favor of the modal (keep the split preview for existing entries).
+- **Error icon (D11):** row `.bibtex-entry-error-icon` + `.bibtex-tooltip-errors` (lists compile errors for that entry).
+- **Humanize (D12/D13):** `preview-model.ts` gains `authorSummary` (von/first/last + ` & ` / `et al.` rules) + year, used by row meta, preview meta, and import heading (`"Last (year)"`, `(no author)`, `(no year)`, `(no title)`).
+- `make all` green; add `preview-model` author-summary unit tests.
 
-**C5 — Add dropdown + Paste flow (local BibTeX).**
-Add button → dropdown ("Paste references" [desc "BibTeX, DOI"] /
-"Enter manually"). Paste modal (textarea, "Paste BibTeX or DOIs here.",
-Preview disabled on empty) → preview modal (back arrow, "Select all",
-per-card checkbox = citation key, card: key / "et al. (year)" heading /
-title line / type tag, footer count + Cancel/Import) → `BibAddManyEvent`
-→ new `planBibImport` (guarded, all-or-nothing, insert after last entry,
-per-entry trailing-newline ranges, existing-key entries are excluded from
-the default-checked set / flagged. DOI lines resolve through
-`fetchEntryFromDoi` (OQ-8 → implemented, reuse committed fetcher); a
-failed resolution becomes an error card (the other imports still land).
-Tests: parser over pasted multi-entry text, key collision, empty, import
-guard (replaces missing id → reject), DOI-line splitting, preview card
-model (humanized heading util).
+### C5 (extend import preview to the reference card layout)
+- Keep `importMany`/`PlanBibImport` (all-or-nothing, key-conflict reject, DOI resolve, error reasons) — reference-compatible.
+- **Render** the preview as `bibtex-import-preview-card` rows (checkbox + key chip + `author (year)` heading + title + `already_in_your_library` **tag** when a key already exists) + `bibtex-import-preview-header` select-all + count + `bibtex-import-preview-footer-warning` + `no_references` empty. Keep ours: `some_dois_could_not_be_resolved` (matches reference), `Could not import this reference` (ours).
+- `make all` green.
 
-**C6 — i18n additive keys** (both files, `{ count }`; no re-sort;
-i18n sanity test extended).
+### C6 (i18n)
+- Add the reference keys (§2) to both locales + `extracted-translations.json` (additive). Keep `import_from_library`. Run the extraction script if present (do NOT hand-run `yarn i18n-extract` per the repo convention).
 
-**C7 — Style/CSS** for panels/rows/tabs/toggle states (BEM
-`bibtex-*` names per capture, scoped `bib-editor` BEM classes, :focus-
-visible kept).
+### C7 (CSS)
+- Replace `bib-editor-panel.css` with the reference `bibtex-*` spec (§1.4). Remove the flex `split` rules (no longer used) and add: card, row (absolute, `translateY`), error-icon, `bibtex-tooltip-errors`, preview `contained/overlay` + `-header/-summary/-tabs/-body`, import-preview cards + footer-warning, `bibtex-toolbar` (32px inset), `bibtex-entry-list-panel` (search 320 + Add), bulk bar, custom properties (`:root`/`[data-theme]`/`[data-theme=default]`, incl. `--bibtex-already-in-library-*`).
+- `make all` green.
 
-**C9 — "Import from Library" stub (user-confirmed 2026-08-22).**
-Add-dropdown menu item "Import from Library" (disabled, tooltip "Library
-import is not available in this build yet"). No backend, no file — the
-library module surface is out of scope; the stub reserves the menu slot per
-the user's overleaf.com capture note. Toast/tooltip string is i18n'd
-(C6). Trivial, isolated component addition on the C5 dropdown.
+### C8 (verification — gates, live matrix optional)
+- ESLint `services/web/modules/bib-editor` → 0 errors (`--max-warnings 0`).
+- `yarn vitest run` (module) green (data-layer, plan, import, doi-fetcher, preview-model, new taxonomy/required tests).
+- `make all` **build-only green** (label==sha; no webpack ERROR) — required.
+- **Live matrix: DEFERRED** (no container). Document the intended manual pass (visual editor open, preview slide-out, Add menu items incl. Import-from-Library, Import Paste flow, bulk-delete, form modal Save-gate, error tooltip) in the PR description; do not assert it ran.
 
-**C8 — Gates:** scoped ESLint (module) 0 errors (`--max-warnings 0`),
-module vitest green, repo-runner (services/web vitest.config.js) green,
-`make all` (build-only; label==HEAD sha; no webpack ERROR), push branch.
-Live matrix (incl. new parity checklist rows) hands off — no live
-container here.
+### C9 (Add menu + the user-added Import-from-Library stub)
+- Add menu = reference items in order: **`Paste references`** → (optional, hidden here) **`Upload BibTeX file`** → **`Enter manually`** (opens the form modal). **Then keep the user-added** disabled **`Import from Library`** tooltip `library_import_not_available` (or `import_from_library`) at the *bottom* — the single deliberate deviation (not in the reference).
+- Paste opens the §C5 import modal; Enter-manually opens the §C4 form modal.
+- `make all` green.
 
-Revert rule: C1..C7 each their own commit, independently revertable;
-C1's schema change is additive (no existing block edited — `allKnownFields`
-append at end only), so revert = file revert.
+### Final commit order
+Individual commits, each revertible: `C1 data re-derive (JSON + tests)` → `C2 extension listener fix` → `C3 anchor semantics` → `C4 structure (panel/list/form/error/humanize)` → `C5 import preview` → `C6 i18n` → `C7 css` → `C9 add-menu + Import-from-Library stub`. Push after `make all` is green.
 
 ---
 
-## 4. Open questions — RESOLVED 2026-08-22 (user decisions)
-
-- **OQ-2 → both.** Year AND Date both filled → write `year=` **and `date=`**
-  (independent fields; no precedence). Both rows always render for every
-  type (confirmed: capture shows both rows for all 48).
-- **OQ-4 → distinct.** `journal` and `journaltitle` are two distinct
-  fields, both rendered as their own rows (OQ resolved by the captured
-  `article` form, which shows both).
-- **OQ-6 → whole file.** Preview Actions → **Download** = the **whole
-  `.bib` file** as a single download (simplest, no per-entry range export).
-- **OQ-7 → flush-on-leave, same as today (R2).** The in-preview form has no
-  Save button; commits happen on leave (Code toggle, Back, Close, file
-  switch, unmount) through the existing guarded write path with the
-  W1/W2/W3 semantics preserved (parse-confirmed re-bind, fresh source).
-- **OQ-8 → DOI backend lookup implemented.** Pasted DOIs resolve through
-  the existing client-side `fetchEntryFromDoi` (CrossRef + doi.org
-  content-negotiation, both CORS-safe; no module backend needed). Paste
-  flow: split lines → `doi:` lines resolve via `fetchEntryFromDoi`, raw
-  BibTeX lines parse locally; preview lists both; failed DOIs show an
-  error card (user can still import the rest). This reuses committed code
-  (`doi-fetcher.ts`), so C5 scope is bounded.
-- **OQ-9 → pre-uncheck conflicts.** Preview pre-unchecks entries whose key
-  collides with an existing entry; Import inserts only checked entries.
-- **OQ-10 → spellings from the capture taxonomy.** `pagetotal`, `eid`,
-  `titleaddon`, `maintitleaddon`, `journaltitleaddon`, `issuetitleaddon`,
-  `subtitleaddon`, `eprintclass`/`eprinttype`, `urldate`, `origlanguage`,
-  `howpublished` — all in the §1.5 autocomplete list; the taxonomy constant
-  uses exactly these names.
-
-Non-questions (resolved by captures): OQ-3 ("Enter manually" exact label),
-OQ-1 (machine names, 48/48 ✓ — see §1.1).
+## 4. Verification (C8) — the gate
+**Required (build-only):** `../../node_modules/.bin/eslint --no-cache --max-warnings 0` (scope `modules/bib-editor`) → 0 errors; `yarn vitest run` → green; `make all` → build-only green (label==HEAD sha; no webpack ERROR).
+**Deferred (optional, documented):** full live `.bib` matrix (open visual editor, preview slide-out + `:has` list shift, Add menu `Paste references`/`Enter manually`/`Import from Library`, Import Paste preview cards + `already_in_your_library` tag + footer-warning, bulk-delete + `applyBibSourceEdit` append, form modal Save-gate, row error tooltip + `.bibtex-tooltip-errors`, DOI row statuses, search filter+highlight, prev/next reference, Download `.bib`). No assertion in CI since no container exists here.
 
 ---
 
-## 5. Open risk register
+## 5. Non-goals (unchanged)
+LaTeX/Biber engines; `.bibtex-log` syntax/highlight; log-pane view toggle; `onBeforeFileSave` re-attach (re-attach **only** runs the existing `BIB_RESOLVE_DOI_REQUEST/RESPONSE` flow — it is **not** extended to an `onBeforeFileSave` hook); full DOI catalog; backend endpoints; a second module; touching `frontend/js/bib-editor-provider.ts` outside the existing provider registration.
 
-| Risk | Mitigation |
-|---|---|
-| Schema 35-type expansion → parser/serializer regressions | additive only; 48 round-trip tests (C1); existing 13 untouched (blocks byte-identical, existing tests prove it) |
-| Optional-dynamic (C2) removes our old defaultOptional display → reviewer-visible diff | that diff IS the spec (capture wins); document in PR comment |
-| Virtual list windowing (C3) vs live matrix | window math unit-tested; matrix row L-list checks scroll + selection under scroll |
-| Paste lines that need network (DOI resolution, OQ-8) | reuse committed `fetchEntryFromDoi`; per-line error card; import proceeds with the good entries |
-| In-preview form commit (OQ-7) mismatch overleaf | OQ-7 resolved: flush-on-leave (R2/W3 semantics); live-matrix row verifies |
-| i18n additive into 3k+2.7k key files without sort | exact same procedure as before (insert at anchors, no json.dump) — prior art in prior session works |
-| Paste import one-write guard (C5) on large pastes | planner is pure + unit-tested; guard = `expectedSource` (existing) |
-| Preview/split layout CSS scope bleed into IDE | BEM `bibtex-*` names, no global selectors (existing discipline) |
+---
+
+## 6. Phase-B claims now superseded (for the record)
+- ~~"C1 is correct on substance; C3 is wrong on shape"~~ → **False** (D1: 45/48 `requiredFields` differ; the reference is the source of truth).
+- ~~"63 optional-fields, 7 groups; 7-item Common/Digital membership"~~ → **8 groups / 64 items** (D3: add `journaltitle` to *Periodicals and journals*; the other 7 groups already match verbatim).
+- ~~"preview is a flex split"~~ → **fixed 30rem slide-out + `:has` list shift** (D4).
+- ~~"add menu = Enter reference / Paste BibTeX or DOIs"~~ → **reference `Paste references` → `Enter manually` (+ our `Import from Library`)** (D6).
+- ~~"Add button separate from search row"~~ → **search + Add in `.bibtex-entry-list-panel`** (D7).
+- ~~"form is a full-view inline (selection 'new')"~~ → **modal + Save/Cancel** (D9).
+- ~~"no row error icon"~~ → **`.bibtex-entry-error-icon` + `.bibtex-tooltip-errors`** (D11).
+- ~~"no author humanize"~~ → **author/year summarize** (D12).
+- ~~"no `already_in_your_library`"~~ → **import preview tag** (D10) — reference has it; we adopt it.
+- ~~"no `some_dois_could_not_be_resolved` / `no_entries_matching`"~~ → reference *does* have `some_dois_could_not_be_resolved` (adopt) — keep `no_entries_matching` for the filtered-empty list.
