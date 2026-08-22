@@ -1,5 +1,8 @@
 import bibtexSchema from './bibtex-schema.json'
-import { HUMAN_LABELS } from './overleaf-type-map.ts'
+import {
+  HUMAN_LABELS,
+  CAPTURED_FORM_ROWS,
+} from './overleaf-type-map.ts'
 
 /**
  * BibTeX entry type definition and field metadata.
@@ -196,4 +199,79 @@ export function displayFieldsFor(
   // new entry: required + the small default-optional list
   const fields = [...requiredFlat, ...typeDef.defaultOptionalFields, ...valued]
   return fields.filter((f, i, all) => all.indexOf(f) === i)
+}
+
+/**
+ * C2 form model (Phase C capture parity, PHASE_C_PLAN.md §1.2/§3-C2/§5).
+ *
+ * The form is: Entry type selector (48) → Citation key → per-type main
+ * fields (CAPTURED_FORM_ROWS.mainFields) → Year → Date → per-type postDate
+ * rows (unpublished: Note; electronic/online/www: DOI/Eprint/URL) →
+ * collapsed Optional section.
+ *
+ * Year and Date are ALWAYS present, in that order (48/48 capture).
+ *
+ * Validation stays in the schema (requiredFields may OR-group
+ * author/editor while the form renders both rows — rows and validation
+ * are separate concerns; plan §1.2 note).
+ */
+export function formModelFor(
+  type: string,
+  _valuedFields: Record<string, string>
+): {
+  mainFields: string[]
+  /** rows after Date (unpublished: Note; electronic/online/www: DOI…) */
+  postDate: string[]
+} {
+  const row = CAPTURED_FORM_ROWS[type.toLowerCase()]
+  // mainFields may contain year/date only in degenerate cases; the capture
+  // anatomy puts Year/Date rows explicitly, so strip duplicates and return
+  // main-without-year/date first, then postDate.
+  const main = (row?.mainFields ?? []).filter(f => f !== 'year' && f !== 'date')
+  const postDate = row?.postDate ?? []
+  return { mainFields: main, postDate }
+}
+
+/**
+ * Full ordered row list for the form body: main → Year → Date → postDate.
+ * (C2 unit-tested: field order per type, Year/Date always present.)
+ */
+export function formRowsFor(
+  type: string,
+  valuedFields: Record<string, string>
+): string[] {
+  const { mainFields, postDate } = formModelFor(type, valuedFields)
+  return [...mainFields, 'year', 'date', ...postDate]
+}
+
+/**
+ * The dynamic Optional rows (C2): captured optional fields that currently
+ * have a value OR were explicitly added via the Add-field combobox, in
+ * stable schema order. `abstract` is EXCLUDED unless explicitly added
+ * (the C4 Abstract tab owns it — the capture form has no abstract row).
+ *
+ * The Add-field combobox (same section) offers offeredOptionalFields() —
+ * the taxonomy minus the current type's main/postDate rows and
+ * required-members. Picking one moves it into optionalVisibleFor as
+ * its value appears (or immediately, via the added list).
+ */
+export function optionalVisibleFor(
+  type: string,
+  valuedFields: Record<string, string>,
+  addedFields: string[] = []
+): string[] {
+  const entryType = getEntryType(type)
+  if (!entryType) return []
+  const requiredFlat = new Set(flattenRequired(entryType.requiredFields))
+  const { mainFields, postDate } = formModelFor(type, valuedFields)
+  const formFields = new Set([...mainFields, 'year', 'date', ...postDate])
+  const valued = Object.keys(valuedFields).filter(
+    f => valuedFields[f]?.trim() !== ''
+  )
+  return entryType.optionalFields.filter(f => {
+    if (formFields.has(f)) return false
+    if (requiredFlat.has(f)) return false
+    if (f === 'abstract' && !addedFields.includes(f)) return false
+    return valued.includes(f) || addedFields.includes(f)
+  })
 }

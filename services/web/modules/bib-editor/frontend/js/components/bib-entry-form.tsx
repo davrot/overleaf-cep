@@ -1,20 +1,26 @@
 /**
- * Form component for editing a single BibTeX entry.
+ * Form component for editing a single BibTeX entry (Phase C capture
+ * anatomy, PHASE_C_PLAN.md §1.2/§1.4/§1.5 — captures win over Phase B).
  *
- * One form for both "existing" and "new" entries (REDESIGN_PLAN.md §2.3):
- *  - The primary button is always **Check** (validate only — for a new form
- *    it also materializes the entry into the file).
- *  - **Stars** follow the reviewer rule: a standalone required field shows a
- *    star while empty; every member of an OR-group shows a star while all of
- *    its members are empty. `requiredStarMembers` computes the live stars.
- *  - **Check messages** come from `validateEntry` (pure): standalone →
- *    "X is required"; OR-group → "Either A or B is required" under each empty
- *    member.
- *  - No pseudo-field rows: OR-groups are flattened; `displayFieldsFor` decides
- *    which fields are visible (existing: required + optional + valued;
- *    new: required + common optional; `showAll` reveals everything by type).
+ * Anatomy (both hosts):
+ *   [DOI import row (modal host only)]
+ *   Entry type (48-type dropdown from overleaf-type-map)
+ *   Citation key  (+ capture helper lines)
+ *   per-type main fields (CAPTURED_FORM_ROWS.mainFields)
+ *   Year
+ *   Date
+ *   per-type postDate rows (unpublished: Note; electronic/online/www: DOI…)
+ *   Optional (collapsed) → valued optional rows + "Add field" combobox
+ *   host-provided footer (modal host: Back/Delete + Check; inplace host: none)
+ *
+ * abstract is NOT a form row — the Abstract tab (C4) owns it; optional
+ * contents are DYNAMIC (valued ∪ added), not the Phase B defaultOptional
+ * list (that diff IS the spec — plan §5 risk register).
+ *
+ * Write path unchanged: the guarded write + flush-on-leave (W1/W2/W3, R2)
+ * live in the panel/context — this component only reports form state.
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
@@ -32,11 +38,16 @@ import { fetchEntryFromDoi } from '../utils/doi-fetcher'
 import {
   ENTRY_TYPES,
   getEntryType,
-  displayFieldsFor,
+  formRowsFor,
+  optionalVisibleFor,
   requiredStarMembers,
   flattenRequired,
   isFormRebind,
 } from '../utils/bib-types'
+import {
+  OPTIONAL_FIELD_TAXONOMY,
+  offeredOptionalFields,
+} from '../utils/overleaf-type-map.ts'
 import { validateEntry } from '../utils/bib-validate'
 import type { BibEntry } from '../utils/bib-types'
 
@@ -51,14 +62,60 @@ type Props = {
   /** Called on every form-state change (panel flush bookkeeping) */
   onFormChange: (entry: BibEntry, originalId: string | null) => void
   /** Called when Check is pressed (new: also materializes) */
-  onChecked: (entry: BibEntry, kind: 'existing' | 'new', originalId: string | null) => void
+  onChecked?: (
+    entry: BibEntry,
+    kind: 'existing' | 'new',
+    originalId: string | null
+  ) => void
   onDelete?: () => void
   onBack?: () => void
+  /**
+   * 'modal' (default): DOI import row + Back/Check footer (Add dialog host,
+   * C5 "Enter manually"). 'inplace' (C4 preview): no footer, no DOI row —
+   * commits are flush-on-leave through the host (OQ-7, same as today's R2).
+   */
+  variant?: 'modal' | 'inplace'
 }
 
-/** Human-readable (untranslated) field labels for messages/tooltips */
+/** Display labels for field rows (DATA, not i18n — same decision as the
+ * C1 type labels; labels are captured overleaf.com strings). */
+const FIELD_DISPLAY_LABELS: Record<string, string> = {
+  author: 'Author',
+  editor: 'Editor',
+  editora: 'Editor A',
+  editorb: 'Editor B',
+  editorc: 'Editor C',
+  title: 'Title',
+  subtitle: 'Subtitle',
+  titleaddon: 'Title addon',
+  journal: 'Journal',
+  journaltitle: 'Journal title',
+  year: 'Year',
+  date: 'Date',
+  publisher: 'Publisher',
+  booktitle: 'Book title',
+  chapter: 'Chapter',
+  pages: 'Pages',
+  institution: 'Institution',
+  school: 'School',
+  number: 'Number',
+  type: 'Type',
+  note: 'Note',
+  doi: 'Digital object identifier (DOI)',
+  eprint: 'Eprint',
+  url: 'URL',
+  language: 'Language',
+  volume: 'Volume',
+  volumes: 'Volumes',
+  edition: 'Edition',
+}
+
+/** Human-readable (data) field labels for messages/tooltips */
 function fieldLabel(name: string): string {
-  return name.charAt(0).toUpperCase() + name.slice(1)
+  return (
+    FIELD_DISPLAY_LABELS[name] ||
+    name.charAt(0).toUpperCase() + name.slice(1)
+  )
 }
 
 const LARGE_FIELDS = new Set(['abstract', 'note', 'keywords'])
@@ -72,6 +129,7 @@ export default function BibEntryForm({
   onChecked,
   onDelete,
   onBack,
+  variant = 'modal',
 }: Props) {
   const { t } = useTranslation()
   const [type, setType] = useState(entry.type || 'article')
@@ -79,8 +137,11 @@ export default function BibEntryForm({
   const [fields, setFields] = useState<Record<string, string>>({
     ...entry.fields,
   })
-  const [showAllFields, setShowAllFields] = useState(false)
+  const [optionalExpanded, setOptionalExpanded] = useState(false)
   const [checked, setChecked] = useState(false)
+  // Optional rows added via the "Add field" combobox this session (C2:
+  // Optional is dynamic = valued ∪ added; resets on re-sync).
+  const [addedOptionals, setAddedOptionals] = useState<string[]>([])
   // Notify the panel on every form change (flush bookkeeping).
   useEffect(() => {
     onFormChange({ type, id, fields }, kind === 'existing' ? originalId : null)
@@ -90,9 +151,7 @@ export default function BibEntryForm({
   // (selection change remounts the form — this effect covers it).
   // W3a (§12 P3): a REBIND (parse-confirmed write: new→existing or a
   // rename) re-shows Check results immediately — `checked` is recomputed
-  // from the written values (re-validate, no re-press). A fresh parse of
-  // the SAME bound entry (same kind + originalId) keeps today's behavior:
-  // values sync, `checked` clears.
+  // from the written values (re-validate, no re-press).
   const [entrySig, setEntrySig] = useState(
     () => `${kind}:${originalId ?? ''}:${JSON.stringify(entry)}`
   )
@@ -106,12 +165,13 @@ export default function BibEntryForm({
       setType(entry.type || 'article')
       setId(entry.id || '')
       setFields({ ...entry.fields })
-      setShowAllFields(false)
+      setOptionalExpanded(false)
+      setAddedOptionals([])
       setChecked(rebind)
     }
   }, [entry, kind, originalId, entrySig])
 
-  // DOI fetch state
+  // DOI fetch state (modal host only)
   const [doiInput, setDoiInput] = useState(entry.fields.doi || '')
   const [doiFetching, setDoiFetching] = useState(false)
   const [doiFetchError, setDoiFetchError] = useState<string | null>(null)
@@ -152,17 +212,34 @@ export default function BibEntryForm({
     ? validateEntry({ type, id, fields }, kind)
     : null
 
-  const visibleFields = displayFieldsFor(
-    entryTypeDef,
-    kind,
-    fields,
-    showAllFields
+  // C2 captured anatomy: main rows → Year → Date → postDate rows.
+  const mainRows = formRowsFor(type, fields)
+  const optionalRows = optionalVisibleFor(type, fields, addedOptionals)
+  const offeredFields = useMemo(
+    () =>
+      offeredOptionalFields(
+        type,
+        entryTypeDef?.requiredFields ?? []
+      ).filter(
+        f =>
+          !optionalRows.includes(f.field) &&
+          !mainRows.includes(f.field)
+      ),
+    [type, entryTypeDef?.requiredFields, optionalRows, mainRows]
   )
 
   const requiredStarSet = starMembers
 
   const handleFieldChange = useCallback((name: string, value: string) => {
-    setFields(prev => ({ ...prev, [name]: value }))
+    setFields(prev => {
+      const next = { ...prev }
+      if (value.trim()) {
+        next[name] = value
+      } else {
+        delete next[name]
+      }
+      return next
+    })
   }, [])
 
   const handleGenerateKey = useCallback(() => {
@@ -196,19 +273,26 @@ export default function BibEntryForm({
 
   const handleCheck = useCallback(() => {
     setChecked(true)
-    onChecked({ type, id: id.trim(), fields }, kind, originalId)
+    onChecked?.({ type, id: id.trim(), fields }, kind, originalId)
   }, [type, id, fields, kind, originalId, onChecked])
 
   const handleTypeChange = useCallback((name: string) => {
     setType(name)
     setChecked(false)
+    setAddedOptionals([])
+  }, [])
+
+  const handleAddOptional = useCallback((field: string) => {
+    setAddedOptionals(prev =>
+      prev.includes(field) ? prev : [...prev, field]
+    )
   }, [])
 
   const selectedType = ENTRY_TYPES.find(et => et.name === type)
 
   // Field message after Check.
   //   standalone missing → "<Label> is required"
-  //   OR-group missing   → "Either A or B is required" (one message per empty member)
+  //   OR-group missing   → "Either A or B is required" (one per empty member)
   const messageFor = (fieldName: string): string | null => {
     if (!checkResult) {
       return null
@@ -244,6 +328,21 @@ export default function BibEntryForm({
     }
   }
 
+  // Capture helper lines per row (C2 §1.2)
+  const rowHelper = (fieldName: string): string | null => {
+    if (fieldName === 'author' || fieldName === 'editor') {
+      return t('Separate multiple names with "and"')
+    }
+    if (fieldName === 'pages') return t('Page range')
+    if (fieldName === 'doi') {
+      return t('The identifier only, not the full URL, e.g. 10.1000/xyz123')
+    }
+    if (fieldName === 'eprint') {
+      return t('The preprint archive identifier, e.g. math/0307200v3')
+    }
+    return null
+  }
+
   // Focus D3: on opening an entry, focus the first empty required field,
   // falling back to the citation key.
   const focusOnceRef = useRef(false)
@@ -265,11 +364,9 @@ export default function BibEntryForm({
     return () => cancelAnimationFrame(raf)
   }, [type, fields])
 
-  // W2 (§2.7): Esc while typing in a form FIELD = back to the list (Back
-  // flushes per R2; focus lands on the list's search box via its mount
-  // effect). Scoped to text inputs only — Esc on the Check button, the type
-  // dropdown toggle, or any other control does nothing (no interference
-  // with the UI-kit dropdown's own Esc handling).
+  // W2 (§2.7): Esc while typing in a form FIELD = back (Back flushes per
+  // R2). Scoped to text inputs so the UI-kit dropdown's own Esc handling
+  // is untouched.
   const handleFormKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key !== 'Escape') return
@@ -284,67 +381,128 @@ export default function BibEntryForm({
     [onBack]
   )
 
+  const renderField = (fieldName: string) => {
+    const isStarred = requiredStarSet.has(fieldName)
+    const message = messageFor(fieldName)
+    const helper = rowHelper(fieldName)
+    const value = fields[fieldName] || ''
+    return (
+      <div className="bib-form-row" key={fieldName}>
+        <OLFormLabel
+          className="bib-form-label"
+          htmlFor={`bib-field-${fieldName}`}
+        >
+          {fieldLabel(fieldName)}
+          {isStarred && (
+            <span className="bib-form-required"> *</span>
+          )}
+        </OLFormLabel>
+        {LARGE_FIELDS.has(fieldName) ? (
+          <OLFormControl
+            as="textarea"
+            id={`bib-field-${fieldName}`}
+            className={`bib-form-textarea ${
+              message ? 'bib-form-input-error' : ''
+            }`}
+            maxLength="4096"
+            autoComplete="off"
+            type="text"
+            value={value}
+            onChange={e => handleFieldChange(fieldName, e.target.value)}
+            rows={3}
+          />
+        ) : fieldName === 'author' ? (
+          <BibAuthorField
+            value={value}
+            onChange={val => handleFieldChange(fieldName, val)}
+            error={!!message}
+          />
+        ) : (
+          <OLFormControl
+            id={`bib-field-${fieldName}`}
+            className={`bib-form-input ${
+              message ? 'bib-form-input-error' : ''
+            }`}
+            maxLength="512"
+            type="text"
+            value={value}
+            placeholder={helper || undefined}
+            onChange={e => handleFieldChange(fieldName, e.target.value)}
+          />
+        )}
+        {helper && <span className="bib-form-hint">{helper}</span>}
+        {message && (
+          <span className="bib-form-error">{message}</span>
+        )}
+      </div>
+    )
+  }
+
   return (
-    // W2 (§2.7): Esc while typing in a form FIELD = back to the list (Back
-    // flushes per R2; focus lands on the list's search box via its mount
-    // effect). Scoped to text inputs: Esc on the Check button, the type
-    // dropdown toggle, or any other control does nothing (no interference
-    // with the UI-kit dropdown's own Esc handling). The form div is the
-    // bubbling target (repo pattern for onKeyDown-on-div, e.g.
-    // file-tree-inner, pdf-js-viewer).
+    // W2 (§2.7): Esc while typing in a form FIELD = back to the list.
+    // The form div is the bubbling target (repo pattern for
+    // onKeyDown-on-div).
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
+      id="bibtex-entry-form"
       className="bib-entry-form"
       onKeyDown={handleFormKeyDown}
     >
-      {/* DOI import row */}
-      <div className="bib-form-row">
-        <OLFormLabel className="bib-form-label" htmlFor="bib-doi-import">
-          {t('Import from DOI')}
-        </OLFormLabel>
-        <div className="bib-doi-row">
-          <OLFormControl
-            id="bib-doi-import"
-            className="bib-form-input"
-            maxLength="128"
-            type="text"
-            value={doiInput}
-            onChange={e => {
-              setDoiInput(e.target.value)
-              setDoiFetchSuccess(false)
-              setDoiFetchError(null)
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void handleFetchDoi()
-              }
-            }}
-            placeholder="10.1038/s41586-021-03819-2"
-          />
-          <OLButton
-            variant="secondary"
-            size="sm"
-            disabled={doiFetching || !doiInput.trim()}
-            onClick={() => void handleFetchDoi()}
-          >
-            {doiFetching ? '…' : t('Fetch')}
-          </OLButton>
-        </div>
-        {doiFetchError && (
-          <span className="bib-form-error">{doiFetchError}</span>
-        )}
-        {doiFetchSuccess && (
-          <span className="bib-doi-success">{t('Fields populated from DOI')}</span>
-        )}
-      </div>
+      {variant === 'modal' && (
+        <>
+          {/* DOI import row (modal host only — capture modals have no
+              row; DOI Paste is C5, DOI single-fetch is Phase A). */}
+          <div className="bib-form-row">
+            <OLFormLabel className="bib-form-label" htmlFor="bib-doi-import">
+              {t('Import from DOI')}
+            </OLFormLabel>
+            <div className="bib-doi-row">
+              <OLFormControl
+                id="bib-doi-import"
+                className="bib-form-input"
+                maxLength="128"
+                type="text"
+                value={doiInput}
+                onChange={e => {
+                  setDoiInput(e.target.value)
+                  setDoiFetchSuccess(false)
+                  setDoiFetchError(null)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void handleFetchDoi()
+                  }
+                }}
+                placeholder="10.1038/s41586-021-03819-2"
+              />
+              <OLButton
+                variant="secondary"
+                size="sm"
+                disabled={doiFetching || !doiInput.trim()}
+                onClick={() => void handleFetchDoi()}
+              >
+                {doiFetching ? '…' : t('Fetch')}
+              </OLButton>
+            </div>
+            {doiFetchError && (
+              <span className="bib-form-error">{doiFetchError}</span>
+            )}
+            {doiFetchSuccess && (
+              <span className="bib-doi-success">
+                {t('Fields populated from DOI')}
+              </span>
+            )}
+          </div>
 
-      <hr className="bib-form-divider" />
+          <hr className="bib-form-divider" />
+        </>
+      )}
 
-      {/* Entry type selector */}
+      {/* Entry type selector (48 — overleaf-type-map) */}
       <div className="bib-form-row">
         <OLFormLabel className="bib-form-label" htmlFor="bib-type">
-          {t('Type')}
+          {t('Entry type')}
         </OLFormLabel>
         <Dropdown>
           <DropdownToggle
@@ -353,7 +511,7 @@ export default function BibEntryForm({
             aria-label={t('Choose entry type')}
           >
             <span className="text-truncate" aria-hidden>
-              @{selectedType?.name} — {selectedType?.label}
+              {selectedType?.label || 'Select'}
             </span>
           </DropdownToggle>
 
@@ -364,20 +522,17 @@ export default function BibEntryForm({
                 active={et.name === type}
                 onClick={() => handleTypeChange(et.name)}
               >
-                @{et.name} — {et.label}
+                {et.label}
               </DropdownItem>
             ))}
           </DropdownMenu>
         </Dropdown>
       </div>
 
-      {/* Citation key */}
+      {/* Citation key (capture helpers) */}
       <div className="bib-form-row">
         <OLFormLabel className="bib-form-label" htmlFor="bib-key">
-          {t('Citation Key')}
-          {kind === 'existing' && (
-            <span className="bib-form-required"> *</span>
-          )}
+          {t('Citation key')}
         </OLFormLabel>
         <div className="bib-form-key-row">
           <OLFormControl
@@ -398,131 +553,193 @@ export default function BibEntryForm({
             description={t('Auto-generate from author/year')}
             overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
           >
-            <OLButton
-              variant="secondary"
-              size="sm"
-              onClick={handleGenerateKey}
-            >
+            <OLButton variant="secondary" size="sm" onClick={handleGenerateKey}>
               {t('Generate')}
             </OLButton>
           </OLTooltip>
         </div>
-        {kind === 'new' && (
-          <span className="bib-form-hint">{t('Leave empty to generate on Check')}</span>
-        )}
+        <span className="bib-form-hint">
+          {t('Unique key for citations, no spaces or special characters')}
+        </span>
+        <span className="bib-form-hint">
+          {t('Auto-generated from the author and year, if left blank')}
+        </span>
         {kind === 'existing' && checkResult?.byField.id && (
-          <span className="bib-form-error">
-            {messageFor('id')}
-          </span>
+          <span className="bib-form-error">{messageFor('id')}</span>
         )}
       </div>
 
-      {/* Entry fields */}
-      {visibleFields.map(fieldName => {
-        const isStarred = requiredStarSet.has(fieldName)
-        const message = messageFor(fieldName)
-        return (
-          <div className="bib-form-row" key={fieldName}>
-            <OLFormLabel
-              className="bib-form-label"
-              htmlFor={`bib-field-${fieldName}`}
-            >
-              {fieldLabel(fieldName)}
-              {isStarred && (
-                <span className="bib-form-required"> *</span>
-              )}
-            </OLFormLabel>
-            {LARGE_FIELDS.has(fieldName) ? (
-              <OLFormControl
-                as="textarea"
-                id={`bib-field-${fieldName}`}
-                className={`bib-form-textarea ${
-                  message ? 'bib-form-input-error' : ''
-                }`}
-                maxLength="4096"
-                autoComplete="off"
-                type="text"
-                value={fields[fieldName] || ''}
-                onChange={e => handleFieldChange(fieldName, e.target.value)}
-                rows={3}
+      {/* Per-type main fields → Year → Date → postDate (capture order) */}
+      {mainRows.map(renderField)}
+
+      {/* Collapsed Optional (dynamic): valued ∪ added rows + Add field */}
+      <div className="bib-optional-section">
+        <button
+          type="button"
+          className="bibtex-collapsible-heading"
+          aria-expanded={optionalExpanded}
+          aria-label={optionalExpanded ? t('Collapse Optional') : t('Expand Optional')}
+          onClick={() => setOptionalExpanded(v => !v)}
+        >
+          <span className="bib-form-label">{t('Optional')}</span>
+          <span className="material-symbols" aria-hidden="true">
+            {optionalExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+          </span>
+        </button>
+        {optionalExpanded && (
+          <div className="bib-optional-body">
+            <div className="bib-add-field-row">
+              <span className="form-label">{t('Add optional field')}</span>
+              <BibAddFieldCombobox
+                placeholder={t('Enter field name')}
+                offered={offeredFields.map(f => f.field)}
+                onSelect={handleAddOptional}
               />
-            ) : fieldName === 'author' ? (
-              <BibAuthorField
-                value={fields[fieldName] || ''}
-                onChange={val => handleFieldChange(fieldName, val)}
-                error={!!message}
-              />
-            ) : (
-              <OLFormControl
-                id={`bib-field-${fieldName}`}
-                className={`bib-form-input ${
-                  message ? 'bib-form-input-error' : ''
-                }`}
-                maxLength="512"
-                type="text"
-                value={fields[fieldName] || ''}
-                onChange={e => handleFieldChange(fieldName, e.target.value)}
-              />
-            )}
-            {message && (
-              <span className="bib-form-error">{message}</span>
+            </div>
+            {optionalRows.map(renderField)}
+          </div>
+        )}
+      </div>
+
+      {variant === 'modal' && (
+        /* Footer: Delete (existing only) on left, Back + Check on right */
+        <div className="bib-form-footer">
+          <div className="bib-form-footer-left">
+            {kind === 'existing' && onDelete && (
+              <OLButton variant="danger" size="sm" onClick={onDelete}>
+                {t('delete')}
+              </OLButton>
             )}
           </div>
-        )
-      })}
-
-      {/* Toggle optional fields */}
-      <div className="bib-form-row">
-        <OLButton
-          variant="link"
-          size="sm"
-          className="bib-form-toggle-opt-fields"
-          onClick={() => setShowAllFields(!showAllFields)}
-        >
-          {showAllFields
-            ? t('Show fewer fields')
-            : t('Show all fields')}
-        </OLButton>
-      </div>
-
-      {/* Footer: Delete (existing only) on left, Back + Check on right */}
-      <div className="bib-form-footer">
-        <div className="bib-form-footer-left">
-          {kind === 'existing' && onDelete && (
-            <OLButton
-              variant="danger"
-              size="sm"
-              onClick={onDelete}
-            >
-              {t('delete')}
+          <div className="bib-form-footer-right">
+            <OLButton variant="secondary" size="sm" onClick={onBack}>
+              {t('back')}
             </OLButton>
-          )}
+            <OLButton variant="primary" size="sm" onClick={handleCheck}>
+              {t('Check')}
+            </OLButton>
+          </div>
         </div>
-        <div className="bib-form-footer-right">
-          <OLButton
-            variant="secondary"
-            size="sm"
-            onClick={onBack}
-          >
-            {t('back')}
-          </OLButton>
-          <OLButton
-            variant="primary"
-            size="sm"
-            onClick={handleCheck}
-          >
-            {t('Check')}
-          </OLButton>
-        </div>
-      </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * "Add field" combobox (C2 §1.5): an input with a grouped listbox of the
+ * offered optional fields (8 groups from overleaf-type-map, per-type
+ * excluded). Selecting a field adds it to the dynamic Optional rows.
+ * (Capture uses downshift; minimal equivalent a11y: combobox input +
+ * listbox/option roles, Enter selects the first match, Esc closes.)
+ */
+function BibAddFieldCombobox({
+  placeholder,
+  offered,
+  onSelect,
+}: {
+  placeholder: string
+  offered: string[]
+  onSelect: (field: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listboxId = useMemo(() => `bib-add-field-listbox-${Math.random().toString(36).slice(2)}`, [])
+
+  // group the offered fields by taxonomy order + labels
+  const groups = useMemo(() => {
+    const byField = new Map(offered.map(f => [f, true]))
+    return OPTIONAL_FIELD_TAXONOMY.map(g => ({
+      label: g.label,
+      fields: g.fields.filter(f => byField.has(f.field)),
+    })).filter(g => g.fields.length > 0)
+  }, [offered])
+  const filtered = query.trim()
+    ? groups
+        .map(g => ({
+          label: g.label,
+          fields: g.fields.filter(f =>
+            f.label.toLowerCase().includes(query.trim().toLowerCase())
+          ),
+        }))
+        .filter(g => g.fields.length > 0)
+    : groups
+
+  const firstOffered = filtered.find(g => g.fields.length > 0)?.fields[0].field
+
+  return (
+    <div className="bib-add-field-combobox">
+      <input
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        aria-autocomplete="list"
+        className="bib-form-input"
+        placeholder={placeholder}
+        value={query}
+        onChange={e => {
+          setQuery(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={e => {
+          if (e.key === 'Escape') {
+            setOpen(false)
+            inputRef.current?.blur()
+            return
+          }
+          if (e.key === 'Enter' && firstOffered) {
+            e.preventDefault()
+            onSelect(firstOffered)
+            setQuery('')
+            setOpen(false)
+          }
+        }}
+      />
+      {open && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="bib-add-field-listbox"
+        >
+          {filtered.map((group, gi) => (
+            <React.Fragment key={group.label}>
+              {gi > 0 && <li aria-hidden="true" className="bib-combo-divider" />}
+              <li role="group" aria-label={group.label} className="bib-combo-group">
+                <span className="bib-combo-group-label">{group.label}</span>
+                {group.fields.map(f => (
+                  <button
+                    key={f.field}
+                    type="button"
+                    role="option"
+                    aria-selected={query === f.label ? true : undefined}
+                    className="bib-combo-option"
+                    onClick={() => {
+                      onSelect(f.field)
+                      setQuery('')
+                      setOpen(false)
+                      inputRef.current?.focus()
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </li>
+            </React.Fragment>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
 /**
  * Author field with "and"-separated author management.
- * Internal state handles empty rows; only serializes non-empty authors to onChange.
- * Supports reordering via up/down buttons.
+ * Internal state handles empty rows; only serializes non-empty authors to
+ * onChange. Supports reordering via up/down buttons.
  */
 function BibAuthorField({
   value,
@@ -606,7 +823,7 @@ function BibAuthorField({
               variant="secondary"
               size="sm"
               accessibilityLabel={t('Move down')}
-              onClick={() => moveAuthor(i, 1)}
+              onClick={() => moveAuthor(i, +1)}
               disabled={i === authors.length - 1}
             />
             <OLIconButton
@@ -620,12 +837,7 @@ function BibAuthorField({
           </div>
         </div>
       ))}
-      <OLButton
-        variant="secondary"
-        size="sm"
-        className="bib-author-add"
-        onClick={addAuthor}
-      >
+      <OLButton variant="secondary" size="sm" className="bib-author-add" onClick={addAuthor}>
         {t('Add author')}
       </OLButton>
     </div>
