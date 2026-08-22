@@ -11,11 +11,12 @@
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
-import { getJSON, postJSON } from '@/infrastructure/fetch-json'
+import { postJSON } from '@/infrastructure/fetch-json'
 import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provider'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import { OLModal } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
+import { useLLMModelSelection } from '../hooks/use-llm-model-selection'
 // overleaf-lab: upstream-AI design tokens for the generator modal's result surface
 import '../../stylesheets/llm-ui.scss'
 
@@ -43,46 +44,23 @@ export default function LLMFileMenuCommands() {
     const { isReady } = useWaitForI18n()
     const [kind, setKind] = useState<GenerateKind | null>(null)
     const [phase, setPhase] = useState<Phase>('pick')
-    const [models, setModels] = useState<Array<{ value: string; label: string }>>([])
-    const [modelListError, setModelListError] = useState(false)
-    const [model, setModel] = useState('')
     const [output, setOutput] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
 
+    // overleaf-lab (owner request 2026-08-25): the generator uses ONE shared
+    // model selection — the same value the "Select LLM Model" dialog, the chat
+    // and the Review tab use. Choosing a model here writes it back to the
+    // shared store, so every surface stays in sync.
+    const { options, loaded, selected, apply } = useLLMModelSelection()
+
     const open = useCallback(
-        async (asKind: GenerateKind) => {
+        (asKind: GenerateKind) => {
             setKind(asKind)
             setPhase('pick')
             setError(null)
             setOutput('')
             setCopied(false)
-            setModel('')
-            setModelListError(false)
-            const projectId = getMeta('ol-project_id')
-            if (!projectId) return
-            try {
-                const data: any = await getJSON(`/project/${projectId}/llm/models`)
-                const options: Array<{ value: string; label: string }> = []
-                for (const m of data?.models || []) {
-                    options.push({ value: m.id, label: String(m.name || m.id) })
-                }
-                for (const row of data?.userRows || []) {
-                    const rowName = row.name ? `${row.name} · ` : ''
-                    for (const m of row.models || []) {
-                        options.push({ value: m.id, label: `${rowName}${String(m.name || m.id)}` })
-                    }
-                }
-                setModels(options)
-                setModel(options[0]?.value || '')
-            }
-            catch {
-                // Model list unavailable: keep an empty list; the request will
-                // then use the deployment default lane (empty model ref).
-                setModels([])
-                setModel('')
-                setModelListError(true)
-            }
         },
         [],
     )
@@ -104,7 +82,7 @@ export default function LLMFileMenuCommands() {
         setOutput('')
         try {
             const data = await postJSON(`/project/${projectId}/llm/generate`, {
-                body: { type: kind, ...(model ? { model } : {}) },
+                body: { type: kind, ...(selected ? { model: selected } : {}) },
             })
             const text = String(data?.output ?? data?.text ?? '')
             setOutput(text)
@@ -127,7 +105,7 @@ export default function LLMFileMenuCommands() {
                 t('llm_generate_failed', 'Generation failed — the LLM service may be disabled.'),
             )
         }
-    }, [kind, model, t])
+    }, [kind, selected, t])
 
     useCommandProvider(
         () =>
@@ -189,17 +167,17 @@ export default function LLMFileMenuCommands() {
                             <select
                                 id={`llm-generate-model-${kind}`}
                                 className="form-select"
-                                value={model}
-                                onChange={e => setModel(e.target.value)}
-                                disabled={models.length === 0}
+                                value={selected}
+                                onChange={e => apply(e.target.value)}
+                                disabled={!loaded}
                             >
-                                {models.map(m => (
-                                    <option key={m.value} value={m.value}>
-                                        {m.label}
+                                {options.map(o => (
+                                    <option key={o.value || 'default'} value={o.value}>
+                                        {o.rowName ? `${o.rowName} · ${o.label}` : o.label}
                                     </option>
                                 ))}
                             </select>
-                            {modelListError && (
+                            {!loaded && (
                                 <div className="form-text">
                                     {t(
                                         'llm_generate_models_error',

@@ -5,6 +5,7 @@ import {
     readSelectedModel,
     writeSelectedModel,
 } from '../utils/llm-selected-model'
+import { LLM_MODEL_CHANGED_EVENT } from './use-llm-model-selection'
 
 interface Message {
     role: 'system' | 'user' | 'assistant'
@@ -160,6 +161,18 @@ export const useLLMChat = () => {
         // global key outside project contexts).
         writeSelectedModel(selectedModel, projectId)
     }, [selectedModel, projectId])
+
+    // overleaf-lab (owner request 2026-08-25): the "Select LLM Model" dialog
+    // (and any other AI surface) can change the shared selection — keep the
+    // chat's working model (sent with every request) in sync.
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const value = (e as CustomEvent).detail?.value
+            if (typeof value === 'string') setSelectedModel(value)
+        }
+        window.addEventListener(LLM_MODEL_CHANGED_EVENT, handler)
+        return () => window.removeEventListener(LLM_MODEL_CHANGED_EVENT, handler)
+    }, [])
 
     const sendMessage = useCallback(
         async (userMessage: string, baseMessages?: Message[]) => {

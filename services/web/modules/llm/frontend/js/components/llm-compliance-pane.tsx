@@ -1,8 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import MaterialIcon from '@/shared/components/material-icon'
 import OLButton from '@/shared/components/ol/ol-button'
 import { useLLMCompliance } from '../hooks/use-llm-compliance'
+import { useLLMModelSelection } from '../hooks/use-llm-model-selection'
+import LLMModelSelectModal from './llm-model-select-modal'
 import type {
     ComplianceItem,
     ComplianceStatus,
@@ -74,15 +76,16 @@ function ComplianceReportItem({ item }: { item: ComplianceItem }) {
 
 function LLMCompliancePane() {
     const { t } = useTranslation()
+    const [modelModalOpen, setModelModalOpen] = useState(false)
+    // overleaf-lab (owner request 2026-08-25): the Review run uses the ONE
+    // shared model selection ("Select LLM Model" dialog), same as chat and
+    // the AI Generate items.
+    const { selected: selectedModel, selectedLabel } = useLLMModelSelection()
     const {
         rubrics,
         rubricsLoaded,
         selectedRubricId,
         setSelectedRubricId,
-        // overleaf-lab: model selector (Review tab)
-        models,
-        selectedModel,
-        setSelectedModel,
         phase,
         position,
         progress,
@@ -349,25 +352,29 @@ function LLMCompliancePane() {
                 overflow: 'hidden',
             }}
         >
-            {/* Header row: model selector + rubric selector + run button */}
+            {/* Header row: shared model picker + rubric selector + run button */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <select
-                    className="form-select"
-                    value={selectedModel}
-                    onChange={e => setSelectedModel(e.target.value)}
+                <button
+                    type="button"
+                    className="llm-model-picker"
+                    onClick={() => setModelModalOpen(true)}
                     disabled={isActive}
+                    title={t('llm_select_model', 'Select LLM Model')}
                     aria-label={t('review_model', 'Review model')}
                     style={{ flex: 1, minWidth: 120 }}
                 >
-                    <option value="">
-                        {t('review_model_default', 'Default model')}
-                    </option>
-                    {models.map(m => (
-                        <option key={m.value} value={m.value}>
-                            {m.label}
-                        </option>
-                    ))}
-                </select>
+                    <span className="llm-model-picker-label">{t('model_label', 'Model')}</span>
+                    <span className="llm-model-picker-value" title={selectedLabel}>
+                        {selectedLabel}
+                    </span>
+                    <MaterialIcon type="expand_more" className="llm-model-picker-caret" />
+                </button>
+                {modelModalOpen && (
+                    <LLMModelSelectModal
+                        show={modelModalOpen}
+                        onHide={() => setModelModalOpen(false)}
+                    />
+                )}
                 <select
                     className="form-select"
                     value={selectedRubricId}

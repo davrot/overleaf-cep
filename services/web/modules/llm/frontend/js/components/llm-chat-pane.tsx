@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useLLMChat } from '../hooks/use-llm-chat'
+import { useLLMModelSelection } from '../hooks/use-llm-model-selection'
+import LLMModelSelectModal from './llm-model-select-modal'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import '../../stylesheets/llm-chat.scss'
@@ -25,8 +27,6 @@ const LLMChatPane = React.memo(function LLMChatPane({
         rerunLastMessage,
         clearMessages,
         models,
-        selectedModel,
-        setSelectedModel,
         canRerun,
         modelsLoaded,
         hasModels,
@@ -56,6 +56,12 @@ const LLMChatPane = React.memo(function LLMChatPane({
     const handleRerun = () => {
         rerunLastMessage()
     }
+
+    const [modelModalOpen, setModelModalOpen] = useState(false)
+    // overleaf-lab (owner request 2026-08-25): one shared model selection for
+    // ALL AI surfaces — the header no longer holds its own <select>; it shows
+    // the current choice and opens the shared "Select LLM Model" dialog.
+    const { selectedLabel } = useLLMModelSelection()
 
     const [armedClear, setArmedClear] = useState(false)
     const armedTimer = useRef<number | null>(null)
@@ -88,27 +94,32 @@ const LLMChatPane = React.memo(function LLMChatPane({
     return (
         <aside className="chat" aria-label={t('ai_assistant', 'AI Assistant')}>
             <div className="llm-chat-container">
-                {/* Header with Model Selector and Action Buttons */}
+                {/* Header: shared model selector + action buttons */}
                 <div className="llm-chat-header">
                     {showModelSelector && (
                         <div className="llm-model-selector">
-                            <label htmlFor="model-select">
-                                {t('model_label', 'Model')}
-                            </label>
-                            <select
-                                id="model-select"
-                                value={selectedModel}
-                                onChange={e => setSelectedModel(e.target.value)}
-                                disabled={isLoading}
-                                aria-label={t('model_label', 'Model')}
+                            <button
+                                type="button"
+                                className="llm-model-picker"
+                                onClick={() => setModelModalOpen(true)}
+                                title={t('llm_select_model', 'Select LLM Model')}
+                                aria-label={t('llm_select_model', 'Select LLM Model')}
                             >
-                                {models.map(model => (
-                                    <option key={model.id} value={model.id}>
-                                        {model.name}
-                                    </option>
-                                ))}
-                            </select>
+                                <span className="llm-model-picker-label">
+                                    {t('model_label', 'Model')}
+                                </span>
+                                <span className="llm-model-picker-value" title={selectedLabel}>
+                                    {selectedLabel}
+                                </span>
+                                <MaterialIcon type="expand_more" className="llm-model-picker-caret" />
+                            </button>
                         </div>
+                    )}
+                    {modelModalOpen && (
+                        <LLMModelSelectModal
+                            show={modelModalOpen}
+                            onHide={() => setModelModalOpen(false)}
+                        />
                     )}
 
                     <div className="llm-action-buttons">

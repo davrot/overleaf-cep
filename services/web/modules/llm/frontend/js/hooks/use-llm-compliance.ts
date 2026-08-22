@@ -182,9 +182,9 @@ export const useLLMCompliance = () => {
     const [rubrics, setRubrics] = useState<ComplianceRubric[]>([])
     const [rubricsLoaded, setRubricsLoaded] = useState(false)
     const [selectedRubricId, setSelectedRubricId] = useState('')
-    // overleaf-lab: model selector for the Review tab (mirrors the Chat header).
-    const [models, setModels] = useState<Array<{ value: string; label: string }>>([])
-    const [selectedModel, setSelectedModel] = useState('')
+    // overleaf-lab (owner request 2026-08-25): the Review tab uses the ONE
+    // shared model selection — see use-llm-model-selection (the "Select LLM
+    // Model" dialog). No per-pane model state here.
     const [phase, setPhase] = useState<CompliancePhase>('idle')
     const [position, setPosition] = useState(0)
     const [result, setResult] = useState<ComplianceResult | null>(null)
@@ -270,43 +270,9 @@ export const useLLMCompliance = () => {
         }
     }, [projectId])
 
-    // overleaf-lab: load the model list (site models + the user's BYO rows) for
-    // the Review-tab model selector. Same endpoint as the Chat header; a failure
-    // leaves an empty list and the selector simply offers "default model".
-    useEffect(() => {
-        let cancelled = false
-
-        async function fetchModels() {
-            if (!projectId) {
-                setModels([])
-                return
-            }
-            try {
-                const data: any = await getJSON(`/project/${projectId}/llm/models`)
-                if (cancelled) return
-                const options: Array<{ value: string; label: string }> = []
-                for (const m of data.models || []) {
-                    options.push({ value: m.id, label: String(m.name || m.id) })
-                }
-                for (const row of data.userRows || []) {
-                    const rowName = row.name ? `${row.name} · ` : ''
-                    for (const m of row.models || []) {
-                        options.push({ value: m.id, label: `${rowName}${String(m.name || m.id)}` })
-                    }
-                }
-                setModels(options)
-            } catch (err) {
-                if (cancelled) return
-                setModels([])
-            }
-        }
-
-        fetchModels()
-
-        return () => {
-            cancelled = true
-        }
-    }, [projectId])
+    // overleaf-lab (owner request 2026-08-25): the Review run uses the ONE
+    // shared model selection (the "Select LLM Model" dialog / use-llm-model-
+    // selection hook) — no per-pane model list fetch here anymore.
 
     // overleaf-lab: one poll tick. Updates phase/position/result/errorInfo and
     // stops polling on any terminal state (done/error/cancelled/not_found).
@@ -545,10 +511,6 @@ export const useLLMCompliance = () => {
         rubrics,
         rubricsLoaded,
         hasRubrics: rubrics.length > 0,
-        // overleaf-lab: Review-tab model selector
-        models,
-        selectedModel,
-        setSelectedModel,
         selectedRubricId,
         setSelectedRubricId,
         phase,

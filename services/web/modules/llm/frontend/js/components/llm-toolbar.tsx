@@ -19,6 +19,8 @@ import { readSelectedModel } from '../utils/llm-selected-model'
 import '../../stylesheets/llm-ui.scss'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 import { useLLMPrompts } from '../hooks/use-llm-prompts'
+import LLMModelSelectModal from './llm-model-select-modal'
+import { watchEditorTheme } from '../utils/llm-editor-theme'
 
 export type LLMToolbarHandle = {
     show: (view: EditorView) => void
@@ -110,6 +112,16 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         'hidden' | 'menu' | 'chat' | 'paraphrase'
     >('hidden')
     const [submenu, setSubmenu] = useState<null | 'style'>(null)
+    // overleaf-lab (owner request 2026-08-25): "Select LLM Model" menu item —
+    // the shared model choice used by chat, review, generators and ask-AI.
+    const [modelModalOpen, setModelModalOpen] = useState(false)
+
+    // overleaf-lab (owner request 2026-08-25): this floating overlay follows
+    // the EDITOR theme like the rail panel does.
+    useEffect(() => {
+        const watcher = watchEditorTheme([wrapRef.current])
+        return () => watcher.stop()
+    }, [])
 
     const [query, setQuery] = useState('')
     const [selectionText, setSelectionText] = useState('')
@@ -582,6 +594,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     return (
         <div
             ref={wrapRef}
+            className="llm-wf-editor-scoped"
             style={{
                 position: 'absolute',
                 inset: 0,
@@ -651,8 +664,8 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                     style={{
                                         width: "100%",
                                         fontSize: 11,
-                                        color: "#8fa2bd",
-                                        background: "rgba(255,255,255,0.04)",
+                                        color: 'var(--wf-muted, #8fa2bd)',
+                                        background: 'var(--wf-row-hover, rgba(125,125,125,0.12))',
                                         borderRadius: 6,
                                         padding: "4px 8px",
                                         boxSizing: "border-box",
@@ -694,7 +707,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                             style={{ width: Math.min(220, panelRect.width - 36) }}
                         >
                             <div
-                                style={{ fontSize: 12, color: '#98a3af', padding: '6px 8px' }}
+                                style={{ fontSize: 12, color: 'var(--wf-muted, #98a3af)', padding: '6px 8px' }}
                             >
                                 Context Options
                             </div>
@@ -817,10 +830,37 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                             >
                                 Fix formula syntax
                             </div>
+                            <div className="llm-menu-divider" role="separator" />
+                            <div
+                                className="llm-item"
+                                onClick={() => setModelModalOpen(true)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                e.currentTarget.click()
+                                }
+                                }}
+                            >
+                                Select LLM Model…
+                            </div>
 
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Shared "Select LLM Model" dialog (opened from the menu item) */}
+            {modelModalOpen && (
+                <LLMModelSelectModal
+                    show={modelModalOpen}
+                    onHide={() => {
+                        setModelModalOpen(false)
+                        setPanelMode('hidden')
+                        setAnchorShown(false)
+                    }}
+                />
             )}
 
             {/* Chat panel */}
@@ -842,8 +882,8 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                     style={{
                                         width: "100%",
                                         fontSize: 11,
-                                        color: "#8fa2bd",
-                                        background: "rgba(255,255,255,0.04)",
+                                        color: 'var(--wf-muted, #8fa2bd)',
+                                        background: 'var(--wf-row-hover, rgba(125,125,125,0.12))',
                                         borderRadius: 6,
                                         padding: "4px 8px",
                                         boxSizing: "border-box",
@@ -882,7 +922,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                         </div>
 
                         <div className="llm-paraphrase-card">
-                            <div style={{ fontSize: 13, color: '#9fb0c6' }}>
+                            <div style={{ fontSize: 13, color: 'var(--wf-muted, #9fb0c6)' }}>
                                 {kindTitleMap['chat']}
                             </div>
 
@@ -896,7 +936,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                     }}
                                 >
                                     <Spinner />
-                                    <div style={{ marginLeft: 10, color: '#9aa4b2' }}>
+                                    <div style={{ marginLeft: 10, color: 'var(--wf-muted, #9aa4b2)' }}>
                                         Waiting for AI...
                                     </div>
                                 </div>
@@ -969,7 +1009,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 marginBottom: 8,
                             }}
                         >
-                            <div style={{ fontSize: 13, color: '#9fb0c6' }}>
+                            <div style={{ fontSize: 13, color: 'var(--wf-muted, #9fb0c6)' }}>
                                 {kindTitleMap[kind]}
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
@@ -1006,7 +1046,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }}
                             >
                                 <Spinner />
-                                <div style={{ marginLeft: 10, color: '#9aa4b2' }}>
+                                <div style={{ marginLeft: 10, color: 'var(--wf-muted, #9aa4b2)' }}>
                                     Waiting for AI...
                                 </div>
                             </div>
