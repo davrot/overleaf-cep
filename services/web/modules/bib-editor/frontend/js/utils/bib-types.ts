@@ -1,4 +1,5 @@
 import bibtexSchema from './bibtex-schema.json'
+import { HUMAN_LABELS } from './overleaf-type-map.ts'
 
 /**
  * BibTeX entry type definition and field metadata.
@@ -36,27 +37,15 @@ export type BibtexSchema = {
 
 const schema = bibtexSchema as BibtexSchema
 
-const toLabel = (name: string) => {
-  switch (name) {
-    case 'inbook':
-      return 'In Book'
-    case 'incollection':
-      return 'In Collection'
-    case 'inproceedings':
-      return 'In Proceedings'
-    case 'mastersthesis':
-      return "Master's Thesis"
-    case 'phdthesis':
-      return 'PhD Thesis'
-    case 'techreport':
-      return 'Technical Report'
-    case 'unpublished':
-      return 'Unpublished'
-    case 'misc':
-      return 'Miscellaneous'
-    default:
-      return name.charAt(0).toUpperCase() + name.slice(1)
-  }
+/**
+ * Display label for a machine type. Source of truth: the 48 captured
+ * overleaf.com form labels (overleaf-type-map.ts). Types outside the 48
+ * (custom/legacy machine types) fall back to capitalized first letter.
+ */
+const toLabel = (name: string): string => {
+  const known = HUMAN_LABELS[name.toLowerCase()]
+  if (known) return known
+  return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
 export const ENTRY_TYPES: BibEntryType[] = schema.supportedPublicationTypes.map(
