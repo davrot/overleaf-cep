@@ -57,7 +57,14 @@ export type BibDeleteRequest = {
   expectedSource: string
 }
 
-export type BibEditorActions = {
+export type BibImportRequest = {
+  /** The entries to append (all-or-nothing, C5) */
+  entries: BibEntry[]
+  /** The source snapshot the panel read when it created this request */
+  expectedSource: string
+}
+
+type BibEditorActions = {
   /**
    * Update the parsed state from the editor (also clears writeFailure).
    * `written` (from a guarded write that just succeeded) carries the id the
@@ -88,6 +95,8 @@ export type BibEditorActions = {
   deselect: () => void
   /** Ask the editor to write a flushed entry into the document */
   writeEntry: (request: BibWriteRequest) => void
+  /** Ask the editor to import N entries (C5 Paste flow, all-or-nothing) */
+  importMany: (request: BibImportRequest) => void
   /** Ask the editor to delete an entry from the document */
   deleteEntry: (request: BibDeleteRequest) => void
   /** Set the focus position (entry sourceStart) when returning to Code */
@@ -210,6 +219,10 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
     document.dispatchEvent(new CustomEvent('bib-editor:write', { detail: request }))
   }, [])
 
+  const importMany = useCallback((request: BibImportRequest) => {
+    document.dispatchEvent(new CustomEvent('bib-editor:import', { detail: request }))
+  }, [])
+
   const deleteEntry = useCallback((request: BibDeleteRequest) => {
     document.dispatchEvent(new CustomEvent('bib-editor:delete', { detail: request }))
   }, [])
@@ -235,6 +248,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       updateNewEntryTypePreset,
       deselect,
       writeEntry,
+      importMany,
       deleteEntry,
       scrollTo,
       setWriteFailure,
@@ -254,6 +268,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       updateNewEntryTypePreset,
       deselect,
       writeEntry,
+      importMany,
       deleteEntry,
       scrollTo,
       setWriteFailure,

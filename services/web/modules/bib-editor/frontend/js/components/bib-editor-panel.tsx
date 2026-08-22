@@ -42,6 +42,7 @@ import { useBibEditorContext } from '../context/bib-editor-context'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
 import BibEntryPreview from './bib-entry-preview'
+import BibImportModal from './bib-import-modal'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
@@ -73,6 +74,7 @@ function BibEditorPanel() {
     updateNewEntryTypePreset,
     deselect,
     writeEntry,
+    importMany,
     deleteEntry,
     scrollTo,
     clearWriteFailure,
@@ -81,6 +83,8 @@ function BibEditorPanel() {
   const { openDocName } = useEditorOpenDocContext()
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+ /** C5: the Paste-references import modal is open */
+  const [importOpen, setImportOpen] = useState(false)
   const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
     { entryIds: string[]; expectedSource: string } | null
   >(null)
@@ -272,6 +276,9 @@ function BibEditorPanel() {
   }, [previewIndex, entries, selection, flushCurrentForm, selectEntry])
 
   const handleSelectNew = useCallback(() => {
+    // C5 "Enter manually": opens the Add reference modal (selection 'new'
+    // drives the modal state — flush/rebind semantics unchanged).
+    setImportOpen(false)
     selectNew()
   }, [selectNew])
 
@@ -378,6 +385,15 @@ function BibEditorPanel() {
       deselect()
     }
   }, [deleteEntry, deselect, bulkDeleteGuard])
+
+  // C5 Paste import: one guarded, all-or-nothing append (the extension
+  // re-resolves against the live doc and rejects stale-source/conflict,
+  // surfacing the banner — the modal closes optimistically, like the
+  // W5 bulk delete).
+  const handleImportEntries = useCallback((importEntries: BibEntry[]) => {
+    importMany({ entries: importEntries, expectedSource: sourceMirror.current })
+    setImportOpen(false)
+  }, [importMany])
 
   // Download (OQ-6: whole file). The browser saves the current document
   // text; no range export.
@@ -493,6 +509,8 @@ function BibEditorPanel() {
                   : undefined
               }
               openDocName={openDocName}
+              onAddPaste={() => setImportOpen(true)}
+              onAddManual={() => selectNew()}
             />
             {selection?.kind === 'existing' && previewEntry ? (
               <BibEntryPreview
@@ -541,6 +559,16 @@ function BibEditorPanel() {
         confirmLabel={t('delete')}
         primaryVariant="danger"
         onConfirm={handleConfirmBulkDelete}
+      />
+
+      {/* C5 paste import (the Add dropdown "Paste references") */}
+      <BibImportModal
+        show={importOpen}
+        existingIds={entries.map(e => e.id)}
+        source={source}
+        expectedSource={sourceMirror.current}
+        onImport={handleImportEntries}
+        onHidden={() => setImportOpen(false)}
       />
     </div>
   )

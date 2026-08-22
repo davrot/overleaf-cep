@@ -1,0 +1,338 @@
+/**
+ * Paste-references import modal (Phase C C5, PHASE_C_PLAN.md §1.6/§3-C5).
+ *
+ * Two steps (capture):
+ *  1. "Add reference" modal with `bibtex-import-form`:
+ *     label "Reference" + `bibtex-import-textarea` (rows≈6), helper
+ *     "Paste BibTeX or DOIs here.", footer Cancel + **Preview** (disabled
+ *     until the textarea is non-empty).
+ *  2. "Preview" modal (back arrow → return to the textarea):
+ *     `bibtex-import-preview-header` (Select all + count) and a
+ *     `bibtex-import-preview-list` of `bibtex-import-preview-card` rows:
+ *       - checkbox (label = citation key; OQ-9: conflict rows pre-unchecked)
+ *       - `bibtex-import-preview-card-key` (citation key)
+ *       - `bibtex-import-preview-card-details`: humanized heading
+ *         ("Ernst et al. (2007)") + title line
+ *       - `bibtex-import-preview-card-tags` (type badge)
+ *     footer count + Cancel / **Import**.
+ *
+ * Input is a mix of BibTeX text and `doi:` / bare-DOI lines (split locally,
+ * paste order preserved — bib-import.ts). DOI lines resolve through the
+ * committed client-side `fetchEntryFromDoi` (OQ-8); a failed resolution is
+ * an ERROR row (the good rows still import). Conflict rows (key already in
+ * the file or duplicated in the import — OQ-9) are pre-unchecked and the
+ * planner re-rejects any import that contains one anyway.
+ *
+ * Import = ONE guarded, all-or-nothing write (`importMany` →
+ * planBibImport in the extension; rejected on stale source / conflict).
+ */
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLIconButton from '@/shared/components/ol/ol-icon-button'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import {
+  OLModal,
+  OLModalBody,
+  OLModalFooter,
+  OLModalHeader,
+  OLModalTitle,
+} from '@/shared/components/ol/ol-modal'
+import { fetchEntryFromDoi } from '../utils/doi-fetcher'
+import { generateCitationKey } from '../utils/bib-parser'
+import type { BibEntry } from '../utils/bib-types'
+import {
+  splitImportText,
+  buildImportRows,
+  type BibImportRow,
+} from '../utils/bib-import.ts'
+
+type Props = {
+  show: boolean
+  existingIds: string[]
+  /** The source snapshot the extension guards the import against */
+  expectedSource: string
+  /** Fired for the Import button (the panel dispatches the guarded event) */
+  onImport: (entries: BibEntry[]) => void
+  onHidden: () => void
+}
+
+export default function BibImportModal({
+  show,
+  existingIds,
+  expectedSource,
+  onImport,
+  onHidden,
+}: Props) {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<'paste' | 'preview'>('paste')
+  const [text, setText] = useState('')
+  const [rows, setRows] = useState<BibImportRow[]>([])
+  const [checkedRowIds, setCheckedRowIds] = useState<string[]>([])
+  const [previewDone, setPreviewDone] = useState(false)
+  void expectedSource
+
+  // Reset to a fresh "Add reference" → paste step whenever the modal opens.
+  // `show` is the only remount signal (the component stays mounted to
+  // follow the OLModal show/hide contract).
+  useEffect(() => {
+    if (show) {
+      setMode('paste')
+      setText('')
+      setRows([])
+      setCheckedRowIds([])
+      setPreviewDone(false)
+    }
+  }, [show])
+
+  const handlePreview = useCallback(async () => {
+    if (!text.trim()) return
+    setMode('preview')
+    setPreviewDone(false)
+    setCheckedRowIds([])
+    setRows([])
+
+    const items = splitImportText(text)
+    // Parallel to the 'doi' items of `items` (paste order); `undefined` =
+    // still resolving (the row is transient until its own resolve lands).
+    const doiResults: (string | BibEntry | undefined)[] = items
+      .filter(it => it.kind === 'doi')
+      .map(() => undefined)
+    setRows(buildImportRows(items, doiResults, existingIds))
+
+    let doiIndex = 0
+    for (const it of items) {
+      if (it.kind !== 'doi') continue
+      const raw = it.raw
+      let result: string | BibEntry
+      try {
+        const fetched = await fetchEntryFromDoi(raw)
+        result = {
+          type: fetched.type,
+          id: fetched.id || generateCitationKey(fetched.fields),
+          fields: { ...fetched.fields },
+        }
+      } catch (err) {
+        result = err instanceof Error ? err.message : t('Failed to fetch DOI')
+      }
+      doiResults[doiIndex] = result
+      doiIndex++
+      // Rebuild after each resolution so the row settles live.
+      setRows(buildImportRows(items, doiResults, existingIds))
+    }
+    const finalRows = buildImportRows(items, doiResults, existingIds)
+    setRows(finalRows)
+    setPreviewDone(true)
+    // OQ-9: pre-check every importable (non-conflict) row.
+    setCheckedRowIds(
+      finalRows
+        .filter(r => r.status === 'ok' || r.status === 'doi-ok')
+        .map(r => r.rowId)
+    )
+  }, [text, existingIds, t])
+
+  const importable = useMemo(
+    () => rows.filter(r => r.status === 'ok' || r.status === 'doi-ok'),
+    [rows]
+  )
+  const checkedCount = checkedRowIds.length
+
+  const toggleRow = useCallback((rowId: string) => {
+    setCheckedRowIds(prev =>
+      prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]
+    )
+  }, [])
+
+  const handleToggleSelectAll = useCallback((checked: boolean) => {
+    setCheckedRowIds(checked ? importable.map(r => r.rowId) : [])
+  }, [importable])
+
+  const handleImport = useCallback(() => {
+    onImport(
+      importable
+        .filter(r => checkedRowIds.includes(r.rowId))
+        .map(r => r.entry as BibEntry)
+    )
+  }, [importable, checkedRowIds, onImport])
+
+  return (
+    <OLModal show={show} onHide={onHidden} data-testid="bib-import-modal">
+      <OLModalHeader>
+        {mode === 'preview' ? (
+          <>
+            <OLIconButton
+              icon="arrow_back"
+              variant="ghost"
+              size="sm"
+              accessibilityLabel={t('back')}
+              onClick={() => setMode('paste')}
+            />
+            <OLModalTitle>{t('Preview')}</OLModalTitle>
+          </>
+        ) : (
+          <OLModalTitle>{t('Add reference')}</OLModalTitle>
+        )}
+      </OLModalHeader>
+
+      {mode === 'paste' ? (
+        <>
+          <OLModalBody className="bibtex-import-form">
+            <div className="form-group">
+              <OLFormLabel htmlFor="bib-import-textarea">
+                {t('Reference')}
+              </OLFormLabel>
+              <textarea
+                id="bib-import-textarea"
+                className="bibtex-import-textarea form-control"
+                rows={6}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                aria-describedby="bib-import-help"
+              />
+              <div className="form-text" id="bib-import-help">
+                {t('Paste BibTeX or DOIs here.')}
+              </div>
+            </div>
+          </OLModalBody>
+          <OLModalFooter>
+            <OLButton variant="secondary" onClick={onHidden}>
+              {t('cancel')}
+            </OLButton>
+            <OLButton
+              variant="primary"
+              disabled={text.trim() === ''}
+              onClick={() => void handlePreview()}
+              type="button"
+            >
+              {t('Preview')}
+            </OLButton>
+          </OLModalFooter>
+        </>
+      ) : (
+        <>
+          <OLModalBody>
+            <div className="bibtex-import-preview-header">
+              <label className="bibtex-import-preview-check-all">
+                <input
+                  type="checkbox"
+                  aria-label={t('Select all')}
+                  checked={
+                    importable.length > 0 &&
+                    importable.every(r => checkedRowIds.includes(r.rowId))
+                  }
+                  disabled={importable.length === 0 || !previewDone}
+                  onChange={e => handleToggleSelectAll(e.target.checked)}
+                />
+              </label>
+              <div className="bibtex-import-preview-count">
+                {t('__count__ reference(s)', { count: importable.length })}
+              </div>
+            </div>
+            <div className="bibtex-import-preview-list">
+              {rows.map(row => (
+                <BibImportCard
+                  key={row.rowId}
+                  row={row}
+                  checked={checkedRowIds.includes(row.rowId)}
+                  onToggle={toggleRow}
+                  t={t}
+                />
+              ))}
+            </div>
+          </OLModalBody>
+          <OLModalFooter>
+            <div className="bibtex-import-preview-footer-actions">
+              <div className="bibtex-import-preview-footer-count">
+                {t('__count__ reference(s)', { count: checkedCount })}
+              </div>
+              <div className="bibtex-import-preview-footer-buttons">
+                <OLButton variant="secondary" onClick={onHidden}>
+                  {t('cancel')}
+                </OLButton>
+                <OLButton
+                  variant="primary"
+                  disabled={!previewDone || checkedCount === 0}
+                  onClick={handleImport}
+                >
+                  {t('Import')}
+                </OLButton>
+              </div>
+            </div>
+          </OLModalFooter>
+        </>
+      )}
+    </OLModal>
+  )
+}
+
+function BibImportCard({
+  row,
+  checked,
+  onToggle,
+  t,
+}: {
+  row: BibImportRow
+  checked: boolean
+  onToggle: (rowId: string) => void
+  t: (key: string) => string
+}) {
+  const selectable =
+    row.status === 'ok' || row.status === 'doi-ok' || row.status === 'conflict'
+
+  return (
+    <div className="bibtex-import-preview-card">
+      {selectable && (
+        <div className="bibtex-import-preview-card-check">
+          <input
+            type="checkbox"
+            aria-label={row.entry ? row.entry.id : t('Untitled')}
+            checked={checked}
+            disabled={row.status === 'empty'}
+            onChange={() => onToggle(row.rowId)}
+          />
+        </div>
+      )}
+      <div className="bibtex-import-preview-card-content">
+        <div className="bibtex-import-preview-card-key">
+          {row.status === 'empty'
+            ? t('Resolving…')
+            : row.status === 'error'
+              ? t('Could not import this reference')
+              : (row.entry ? row.entry.id : t('Untitled'))}
+        </div>
+        <div className="bibtex-import-preview-card-details">
+          {row.heading && (
+            <div className="bibtex-import-preview-card-heading">
+              {row.heading}
+            </div>
+          )}
+          {row.title && (
+            <div className="bibtex-import-preview-card-field">
+              {row.title}
+            </div>
+          )}
+          {row.status === 'error' && (
+            <div className="bibtex-import-preview-card-error">
+              {row.error || row.raw}
+            </div>
+          )}
+          {row.status === 'conflict' && (
+            <div className="bibtex-import-preview-card-conflict">
+              {t('Key already exists in the file')}
+            </div>
+          )}
+          {row.status === 'empty' && (
+            <div className="bibtex-import-preview-card-resolving">
+              {row.raw}
+            </div>
+          )}
+        </div>
+        {row.typeLabel && (
+          <div className="bibtex-import-preview-card-tags">
+            <span className="bib-type-tag">{row.typeLabel}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -30,6 +30,7 @@ import {
   planBibWrite,
   planBibDelete,
   planBibBulkDelete,
+  planBibImport,
   isBibDocument,
 } from '../utils/bib-write'
 import type { BibEntry } from '../utils/bib-types'
@@ -41,6 +42,7 @@ import type { BibEntry } from '../utils/bib-types'
 export const BIB_ENTRIES_EVENT = 'bib-editor:entries-updated'
 export const BIB_WRITE_EVENT = 'bib-editor:write'
 export const BIB_DELETE_EVENT = 'bib-editor:delete'
+export const BIB_IMPORT_EVENT = 'bib-editor:import'
 export const BIB_SCROLL_TO_EVENT = 'bib-editor:scroll-to'
 export const BIB_WRITE_FAILED_EVENT = 'bib-editor:write-failed'
 
@@ -69,6 +71,7 @@ class BibEditorPlugin {
     if (this.dispatchHandler) {
       document.removeEventListener(BIB_WRITE_EVENT, this.dispatchHandler)
       document.removeEventListener(BIB_DELETE_EVENT, this.dispatchHandler)
+      document.removeEventListener(BIB_IMPORT_EVENT, this.dispatchHandler)
       this.dispatchHandler = null
     }
     if (this.scrollHandler) {
@@ -139,11 +142,13 @@ class BibEditorPlugin {
       const source = this.view.state.doc.toString()
       const {
         entry,
+        entries,
         mode,
         originalId,
         expectedSource,
       } = detail as {
         entry?: BibEntry
+        entries?: BibEntry[]
         mode: 'existing' | 'new'
         originalId?: string
         expectedSource?: string
@@ -185,6 +190,20 @@ class BibEditorPlugin {
         // rejection (above) no re-emit happens → selection untouched, the
         // banner shows and the form stays for a fix (§2.3 / §12 P1a).
         this.emitState({ id: entry.id as string, mode, originalId })
+      } else if (ev.type === BIB_IMPORT_EVENT) {
+        // C5 Paste import: one guarded, all-or-nothing append of N entries.
+        // A zero-entry plan is a deliberate no-op (nothing to import).
+        const entriesArg = entries ?? []
+        if (entriesArg.length === 0) {
+          return
+        }
+        const guard = planBibImport(source, entriesArg, serializeBibEntry)
+        if (!guard.ok) {
+          this.emitWriteFailed(guard.reason)
+          return
+        }
+        this.view.dispatch({ changes: guard.changes })
+        this.emitState()
       } else if (ev.type === BIB_DELETE_EVENT) {
         const { entryId, entryIds } = detail as {
           entryId?: string
@@ -222,6 +241,7 @@ class BibEditorPlugin {
     }
     document.addEventListener(BIB_WRITE_EVENT, this.dispatchHandler)
     document.addEventListener(BIB_DELETE_EVENT, this.dispatchHandler)
+    document.addEventListener(BIB_IMPORT_EVENT, this.dispatchHandler)
   }
 
   private emitWriteFailed(reason: string) {

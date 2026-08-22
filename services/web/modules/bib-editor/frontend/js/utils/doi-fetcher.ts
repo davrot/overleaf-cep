@@ -11,6 +11,8 @@ import { parseBibEntry } from './bib-parser'
 export interface FetchedBibEntry {
   type: string
   fields: Record<string, string>
+  /** An id when the source BibTeX (doi.org content negotiation) had one */
+  id?: string
 }
 
 // ---- CrossRef helpers --------------------------------------------------
@@ -137,7 +139,7 @@ export async function fetchEntryFromDoi(raw: string): Promise<FetchedBibEntry> {
       if (text.trim().startsWith('@')) {
         const parsed = parseBibEntry(text)
         if (parsed) {
-          return { type: parsed.type, fields: parsed.fields }
+          return { type: parsed.type, fields: parsed.fields, id: parsed.id }
         }
       }
     }

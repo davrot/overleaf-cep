@@ -3,6 +3,7 @@ import {
   planBibWrite,
   planBibDelete,
   planBibBulkDelete,
+  planBibImport,
   isBibDocument,
   serializeBibEntry,
 } from '../../../frontend/js/utils/bib-write.ts'
@@ -185,3 +186,95 @@ describe('planBibBulkDelete (W5, pure)', () => {
     expect(applied).toBe('')
   })
 })
+
+describe('planBibImport (C5 paste import, pure)', () => {
+  const doc = '@misc{seed, title = {Seed}}\n'
+  const ser = e => `@${e.type}{${e.id}}\n` // minimal-but-valid serializer
+
+  it('plans a single append at end-of-file (ok:true, one change)', () => {
+    const g = planBibImport(doc, [{ type: 'article', id: 'k1', fields: { title: 'One' } }], ser)
+    expect(g.ok).toBe(true)
+    expect(g.changes).toHaveLength(1)
+    const c = g.changes[0]
+    // append: from === to === end of the current source
+    expect(c.from).toBe(doc.length)
+    expect(c.to).toBe(doc.length)
+    expect(c.insert).toContain('k1')
+  })
+
+  it('multiple entries → ONE single append (all-or-nothing, byte-compatible)', () => {
+    const g = planBibImport(
+      doc,
+      [
+        { type: 'article', id: 'k1', fields: { title: 'One' } },
+        { type: 'article', id: 'k2', fields: { title: 'Two' } },
+      ],
+      (e) => `@${e.type}${e.id}`
+    )
+    expect(g.ok).toBe(true)
+    expect(g.changes).toHaveLength(1) // ONE write
+    const c = g.changes[0]
+    expect(c.from).toBe(doc.length)
+    expect(c.insert).toContain('k1')
+    expect(c.insert).toContain('k2')
+  })
+
+  it('re-serializes entries with the passed serializer (not the caller copy)', () => {
+    const g = planBibImport(
+      doc,
+      [{ type: 'article', id: 'k3', fields: { title: 'New' } }],
+      (e) => `@${e.type}{${e.id}, title = ${e.fields.title}}\n`
+    )
+    expect(g.ok).toBe(true)
+    expect(g.changes[0].insert).toBe('@article{k3, title = New}\n')
+  })
+
+  it('rejects when the document is NOT a bib file (incl. the empty doc)', () => {
+    expect(
+      planBibImport('just prose\n', [{ type: 'misc', id: 'a', fields: {} }], ser).ok
+    ).toBe(false)
+    expect(planBibImport('', [], ser).ok).toBe(false)
+    expect(planBibImport(doc, [], ser).ok).toBe(true) // empty import into a bib doc is fine
+  })
+
+  it('rejects a conflict: the imported key already exists in the doc (key-conflict)', () => {
+    const g = planBibImport(doc, [{ type: 'article', id: 'seed', fields: {} }], ser)
+    expect(g.ok).toBe(false)
+    expect(g.reason).toBe('key-conflict')
+  })
+
+  it('rejects a keyless entry (an import cannot produce an ID-less entry)', () => {
+    const g = planBibImport(doc, [{ type: 'article', id: '', fields: {} }], ser)
+    expect(g.ok).toBe(false)
+    expect(g.reason).toBe('key-conflict')
+  })
+
+  it('dedups duplicate keys in the import (the second copy conflicts)', () => {
+    const g = planBibImport(
+      doc,
+      [
+        { type: 'article', id: 'k1', fields: {} },
+        { type: 'article', id: 'k1', fields: {} },
+      ],
+      ser
+    )
+    expect(g.ok).toBe(false)
+    expect(g.reason).toBe('key-conflict')
+  })
+
+  it('appends with a leading separator when the source lacks a trailing newline', () => {
+    const s = '@misc{only}' // no trailing newline
+    const g = planBibImport(s, [{ type: 'misc', id: 'a', fields: {} }], ser)
+    expect(g.ok).toBe(true)
+    const c = g.changes[0]
+    expect(c.from).toBe(s.length)
+    expect(c.insert.startsWith('\n')).toBe(true) // byte-compatible with planBibWrite 'new'
+  })
+
+  it('empty import into a bib doc → no-op (no changes, ok:true)', () => {
+    const g = planBibImport(doc, [], ser)
+    expect(g.ok).toBe(true)
+    expect(g.changes).toHaveLength(0)
+  })
+})
+

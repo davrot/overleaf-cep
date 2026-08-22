@@ -20,6 +20,12 @@
  */
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownToggle,
+} from '@/shared/components/dropdown/dropdown-menu'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { getEntryType, getMissingRequiredFields } from '../utils/bib-types'
 import {
@@ -43,6 +49,9 @@ type Props = {
   onBulkDelete?: () => void
   /** Open document filename (dynamic "Search <file>" placeholder) */
   openDocName?: string
+  /** C5: add actions (Paste references / Enter manually / Library stub) */
+  onAddPaste: () => void
+  onAddManual: () => void
 }
 
 export default function BibEntryList({
@@ -54,6 +63,8 @@ export default function BibEntryList({
   onToggleSelectAll,
   onBulkDelete,
   openDocName,
+  onAddPaste,
+  onAddManual,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -132,19 +143,48 @@ export default function BibEntryList({
   return (
     <div className="bibtex-entry-list">
       <div className="bibtex-entry-list-toolbar">
-        <input
-          id="bib-list-search"
-          ref={searchRef}
-          type="search"
-          className="bibtex-search"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          placeholder={t('Search __fileName__', {
-            fileName: openDocName || '.bib',
-          })}
-          aria-label={t('search')}
-        />
+        <div className="bibtex-toolbar-row">
+          <input
+            id="bib-list-search"
+            ref={searchRef}
+            type="search"
+            className="bibtex-search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={t('Search __fileName__', {
+              fileName: openDocName || '.bib',
+            })}
+            aria-label={t('search')}
+          />
+          {/* C5 Add dropdown (capture bibtex-add-button): Paste references
+              ["BibTeX, DOI"] / Enter manually. "Import from Library" (C9)
+              stub lands here too (disabled + tooltip). */}
+          <Dropdown align="end">
+            <DropdownToggle
+              className="bibtex-add-button btn-secondary btn-sm"
+              aria-label={t('Add')}
+              aria-expanded={false}
+            >
+              <span className="material-symbols" aria-hidden="true">
+                add
+              </span>
+              {t('Add')}
+            </DropdownToggle>
+            <DropdownMenu>
+              <DropdownItem description={t('BibTeX, DOI')} onClick={onAddPaste}>
+                {t('Paste references')}
+              </DropdownItem>
+              <DropdownItem onClick={onAddManual}>
+                {t('Enter manually')}
+              </DropdownItem>
+              {/* C9 stub — reserve the menu slot (user-confirmed) */}
+              <DropdownItem disabled>
+                <span title={t('Library import is not available in this build yet.')}>{t('Import from Library')}</span>
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        </div>
       </div>
 
       {/* Bulk bar (C3 capture): select-all ("Select all entries") +

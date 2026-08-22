@@ -215,3 +215,73 @@ export function planBibBulkDelete(
     changes: ranges.map(r => ({ from: r.from, to: r.to, insert: '' })),
   }
 }
+
+export type BibImportInsert = {
+  from: number
+  to: number
+  insert: string
+}
+
+export type BibImportGuard =
+  | { ok: true; changes: BibImportInsert[] }
+  | { ok: false; reason: string }
+
+const KEY_CONFLICT_REASON = 'key-conflict'
+
+/**
+ * Plan a multi-entry import (C5 "Paste references"): append N entries as
+ * ONE guarded, all-or-nothing write at the end of the current source.
+ *
+ * The guard is the same family as planBibWrite (guarded on
+ * `expectedSource` by the extension) plus the import-specific rejection:
+ * ANY entry whose citation key is not non-empty and unique within the
+ * import AND the current document is a `key-conflict` (all-or-nothing — the
+ * preview step pre-unchecks conflicts, so a conflict here means the user
+ * re-checked one after the source changed).
+ *
+ * Insert layout is byte-compatible with successive single-appends
+ * (planBibWrite 'new'): a leading separator newline is inserted only when
+ * the source is non-empty and does not already end with one.
+ */
+export function planBibImport(
+  source: string,
+  entries: BibEntry[],
+  serialize: (entry: BibEntry) => string
+): BibImportGuard {
+  if (!isBibDocument(source)) {
+    return { ok: false, reason: NOT_A_BIB_REASON }
+  }
+  if (entries.length === 0) {
+    return { ok: true, changes: [] }
+  }
+  const existingKeys = parseBibFile(source).map(e => e.id)
+  const seen = new Set<string>()
+  const body: string[] = []
+  for (const entry of entries) {
+    const id = (entry.id || '').trim()
+    if (id === '') {
+      // A keyless paste/imported entry must materialize with a key —
+      // nothing else is importable.
+      return { ok: false, reason: KEY_CONFLICT_REASON }
+    }
+    if (seen.has(id)) {
+      return { ok: false, reason: KEY_CONFLICT_REASON }
+    }
+    seen.add(id)
+    if (existingKeys.includes(id)) {
+      return { ok: false, reason: KEY_CONFLICT_REASON }
+    }
+    body.push(serialize(entry))
+  }
+  // SerializeBibOutput ends every entry in exactly one '\n'; entries stay
+  // adjacent inside the append, and the leading '\n' separates the batch
+  // from the document's last line (mirror of planBibWrite 'new').
+  const insert =
+    source.length === 0 || source.endsWith('\n')
+      ? body.join('')
+      : `\n${body.join('')}`
+  return {
+    ok: true,
+    changes: [{ from: source.length, to: source.length, insert }],
+  }
+}
