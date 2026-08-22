@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "eslint": {
+      "command": ["vscode-eslint-language-server", "--stdio"],
+      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
+    }
+  }
+}

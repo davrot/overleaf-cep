@@ -15,6 +15,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import getMeta from '@/utils/meta'
 import { postJSON } from '@/infrastructure/fetch-json'
+import MaterialIcon from '@/shared/components/material-icon'
 import { readSelectedModel } from '../utils/llm-selected-model'
 import '../../stylesheets/llm-ui.scss'
 import { useLLMFeatures } from '../hooks/use-llm-features'
@@ -608,17 +609,23 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         .llm-anchor{position:absolute;width:28px;height:28px;border-radius:999px;background:var(--wf-accent,#28518f);color:#fff;font-weight:700;font-size:12px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(2,6,23,0.35);cursor:pointer;pointer-events:auto}
         .llm-anchor:hover{background:var(--wf-accent-hi,#214475)}
         .llm-panel{position:absolute;pointer-events:auto;user-select:none}
-        .llm-input-card{width:100%;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:12px 12px 12px 56px;position:relative;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
-        .llm-badge{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;background:var(--wf-accent-soft,rgba(40,81,143,0.08));display:flex;align-items:center;justify-content:center;color:var(--wf-accent,#28518f)}
-        .llm-input{width:100%;min-height:40px;max-height:160px;padding:8px 84px 8px 10px;border-radius:8px;background:transparent;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-border-in,#dfe5ec);outline:none;resize:none;line-height:20px;font-size:14px;box-sizing:border-box}
+        .llm-input-card{width:100%;display:flex;flex-direction:column;gap:6px;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:10px;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
+        .llm-ask-meta{font-size:11.5px;color:var(--wf-muted,#8fa2bd);padding:2px 4px}
+        .llm-ask-row{display:flex;align-items:center;gap:8px}
+        .llm-ask-icon{display:inline-flex;color:var(--wf-accent,#28518f);flex:0 0 auto}
+        .llm-input{flex:1;min-height:36px;max-height:150px;padding:7px 10px;border-radius:8px;background:transparent;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-border-in,#dfe5ec);outline:none;resize:none;line-height:18px;font-size:14px;box-sizing:border-box}
         .llm-input:focus{border-color:var(--wf-accent,#28518f)}
-        .llm-send{position:absolute;right:44px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:8px;background:var(--wf-accent,#28518f);border:1px solid var(--wf-accent,#28518f);color:#fff;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-send{width:32px;height:32px;flex:0 0 32px;border-radius:8px;background:var(--wf-accent,#28518f);border:1px solid var(--wf-accent,#28518f);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
         .llm-send:hover{background:var(--wf-accent-hi,#214475)}
-        .llm-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:8px;background:transparent;border:1px solid var(--wf-border-in,#dfe5ec);color:var(--wf-panel-text,#1e293b);font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .llm-close{width:32px;height:32px;flex:0 0 32px;border-radius:8px;background:transparent;border:1px solid var(--wf-border-in,#dfe5ec);color:var(--wf-panel-text,#1e293b);font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
         .llm-close:hover{background:var(--wf-row-hover,#eef1f5)}
-        .llm-menu{margin-top:0;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:8px;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-panel-border,#e3e8ef);box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12))}
-        .llm-item{height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;cursor:pointer;color:var(--wf-panel-text,#1e293b)}
+        .llm-menu{background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:8px;color:var(--wf-panel-text,#1e293b);border:1px solid var(--wf-panel-border,#e3e8ef);box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12))}
+        .llm-item{min-height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;cursor:pointer;color:var(--wf-panel-text,#1e293b)}
         .llm-item:hover{background:var(--wf-row-hover,#eef1f5)}
+        .llm-item .material-symbols{font-size:18px;color:var(--wf-accent,#28518f);flex:0 0 auto}
+        .llm-item-chevron{margin-left:auto;color:var(--wf-muted,#8fa2bd)}
+        .llm-menu-divider{height:1px;background:var(--wf-border-in,#dfe5ec);margin:6px 4px}
+        .llm-anchor .material-symbols{font-size:15px}
         .llm-paraphrase-card{pointer-events:auto;width:100%;background:var(--wf-panel-bg,#fafafa);border-radius:12px;padding:12px;box-shadow:var(--wf-panel-shadow,0 10px 30px rgba(2,8,20,0.12));border:1px solid var(--wf-panel-border,#e3e8ef);color:var(--wf-panel-text,#1e293b)}
         .llm-paraphrase-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
         .llm-btn{padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--wf-border-in,#dfe5ec);background:var(--wf-row-hi,#fff);color:var(--wf-panel-text,#1e293b)}
@@ -640,8 +647,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                     style={{ top: anchorPos.top, left: anchorPos.left }}
                     onClick={() => setPanelMode('menu')}
                     title="AI"
+                    aria-label="Ask AI (selection)"
                 >
-                    AI
+                    <MaterialIcon type="smart_toy" style={{ fontSize: 15 }} />
                 </button>
             )}
 
@@ -657,64 +665,58 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                     }}
                 >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* overleaf-lab (owner 2026-08, upstream reference):
+                            single ask row — smart_toy mark, free-form input,
+                            send icon; the selection chip is a quiet meta line
+                            above it (no more 'AI' text badge). */}
                         <div className="llm-input-card">
-                            <div className="llm-badge">AI</div>
                             {selectionChip ? (
-                                <div
-                                    style={{
-                                        width: "100%",
-                                        fontSize: 11,
-                                        color: 'var(--wf-muted, #8fa2bd)',
-                                        background: 'var(--wf-row-hover, rgba(125,125,125,0.12))',
-                                        borderRadius: 6,
-                                        padding: "4px 8px",
-                                        boxSizing: "border-box",
-                                    }}
-                                >
-                                    {selectionChip}
-                                </div>
+                                <div className="llm-ask-meta">{selectionChip}</div>
                             ) : null}
-                            <textarea
-                                ref={inputRef}
-                                className="llm-input"
-                                placeholder="Ask AI for help"
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                onKeyDown={onInputKeyDown}
-                                rows={1}
-                            />
-                            <button
-                                className="llm-send"
-                                onClick={() => startFetch(0, 'chat')}
-                                title="Send"
-                            >
-                                ↑
-                            </button>
-                            <button
-                                className="llm-close"
-                                onClick={() => {
-                                    setPanelMode('hidden')
-                                    setAnchorShown(false)
-                                }}
-                                title="Close"
-                            >
-                                ×
-                            </button>
+                            <div className="llm-ask-row">
+                                <span className="llm-ask-icon" aria-hidden="true">
+                                    <MaterialIcon type="smart_toy" style={{ fontSize: 20 }} />
+                                </span>
+                                <textarea
+                                    ref={inputRef}
+                                    className="llm-input"
+                                    placeholder="Ask AI for help with anything"
+                                    value={query}
+                                    onChange={e => setQuery(e.target.value)}
+                                    onKeyDown={onInputKeyDown}
+                                    rows={1}
+                                />
+                                <button
+                                    className="llm-send"
+                                    onClick={() => startFetch(0, 'chat')}
+                                    title="Send"
+                                    aria-label="Send"
+                                >
+                                    <MaterialIcon type="send" style={{ fontSize: 17 }} />
+                                </button>
+                                <button
+                                    className="llm-close"
+                                    onClick={() => {
+                                        setPanelMode('hidden')
+                                        setAnchorShown(false)
+                                    }}
+                                    title="Close"
+                                    aria-label="Close"
+                                >
+                                    ×
+                                </button>
+                            </div>
                         </div>
 
                         <div
                             className="llm-menu"
                             style={{ width: Math.min(220, panelRect.width - 36) }}
+                            role="menu"
                         >
-                            <div
-                                style={{ fontSize: 12, color: 'var(--wf-muted, #98a3af)', padding: '6px 8px' }}
-                            >
-                                Context Options
-                            </div>
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(1, 'paraphrase')}
-                                role="button"
+                                role="menuitem"
                                 tabIndex={0}
                                 onKeyDown={e => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -723,6 +725,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }
                                 }}
                             >
+                                <span aria-hidden="true"><MaterialIcon type="transform" /></span>
                                 Paraphrase
                             </div>
 
@@ -731,7 +734,13 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 onMouseEnter={() => setSubmenu('style')}
                                 onMouseLeave={() => setSubmenu(null)}
                             >
-                                <div className="llm-item">Change style</div>
+                                <div className="llm-item">
+                                    <span aria-hidden="true"><MaterialIcon type="palette" /></span>
+                                    Change style
+                                    <span aria-hidden="true" className="llm-item-chevron">
+                                        <MaterialIcon type="chevron_right" style={{ fontSize: 18 }} />
+                                    </span>
+                                </div>
                                 {submenu === 'style' && (
                                     <div
                                         style={{
@@ -754,6 +763,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                             }
                                             }}
                                         >
+                                        <span aria-hidden="true"><MaterialIcon type="science" style={{ fontSize: 14 }} /></span>
                                             Scientific
                                         </div>
                                         <div
@@ -768,6 +778,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                             }
                                             }}
                                         >
+                                        <span aria-hidden="true"><MaterialIcon type="subject" style={{ fontSize: 14 }} /></span>
                                             Concise
                                         </div>
                                         <div
@@ -782,6 +793,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                             }
                                             }}
                                         >
+                                        <span aria-hidden="true"><MaterialIcon type="edit" style={{ fontSize: 14 }} /></span>
                                             Punchy
                                         </div>
                                     </div>
@@ -791,7 +803,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(7, 'summarize')}
-                                role="button"
+                                role="menuitem"
                                 tabIndex={0}
                                 onKeyDown={e => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -800,12 +812,13 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }
                                 }}
                             >
+                                <span aria-hidden="true"><MaterialIcon type="science" /></span>
                                 Summarize
                             </div>
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(8, 'explain')}
-                                role="button"
+                                role="menuitem"
                                 tabIndex={0}
                                 onKeyDown={e => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -814,12 +827,13 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }
                                 }}
                             >
+                                <span aria-hidden="true"><MaterialIcon type="school" /></span>
                                 Explain
                             </div>
                             <div
                                 className="llm-item"
                                 onClick={() => startFetch(11, 'mathfix')}
-                                role="button"
+                                role="menuitem"
                                 tabIndex={0}
                                 onKeyDown={e => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -828,13 +842,14 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }
                                 }}
                             >
+                                <span aria-hidden="true"><MaterialIcon type="calculate" /></span>
                                 Fix formula syntax
                             </div>
                             <div className="llm-menu-divider" role="separator" />
                             <div
                                 className="llm-item"
                                 onClick={() => setModelModalOpen(true)}
-                                role="button"
+                                role="menuitem"
                                 tabIndex={0}
                                 onKeyDown={e => {
                                 if (e.key === "Enter" || e.key === " ") {

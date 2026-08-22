@@ -1142,13 +1142,21 @@ module.exports = {
         '../modules/template-gallery/frontend/js/features/template/components/menubar-manage-template'
       ),
       // overleaf-lab: LLM whole-document generators (title/abstract/keywords) registered
-      // for the Generate section (see insertMenuSections below).
+      // for the Generate group (see insertMenuSections below).
       Path.resolve(
         __dirname,
         '../modules/llm/frontend/js/extensions/llm-file-menu-commands'
       ),
     ],
-    insertMenuSections: [],
+    insertMenuSections: [
+      // overleaf-lab (owner request 2026-08): the "AI Generate" group
+      // (smart_toy icon + Title/Abstract/Keywords) moved from the File menu
+      // to the INSERT menu — upstream-style placement for AI tools.
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/extensions/llm-insert-menu-section'
+      ),
+    ],
     // overleaf-lab: BYO LLM provider management embedded in Account Settings (reviewer #2);
     // the core section renders it when present, else falls back to a link card.
     llmUserSettingsSection: [
@@ -1221,7 +1229,12 @@ module.exports = {
     referenceSearchSetting: [],
     settingsModalEditorTabSections: [],
     settingsModalSpellcheckSections: [],
-    editorFloatingMenuActions: [],
+    editorFloatingMenuActions: [
+        Path.resolve(
+            __dirname,
+            '../modules/llm/frontend/js/extensions/llm-fm-ask-ai.tsx'
+        ),
+    ],
     errorLogsComponents: [],
     referenceIndices: [
       Path.resolve(
