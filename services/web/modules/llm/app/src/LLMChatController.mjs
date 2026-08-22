@@ -22,10 +22,11 @@ import Settings from '@overleaf/settings'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
 import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
 import { decryptSecret } from './LLMCrypto.mjs'
-import { chatText, normalizeProviderSpec, detectProviderType, assertNonEmpty } from './LLMClient.mjs'
+import { chatText, chatObject, normalizeProviderSpec, detectProviderType, assertNonEmpty } from './LLMClient.mjs'
 import { isUserSettingsAllowed, loadProviders } from './LLMSettingsController.mjs'
 import { parseModelRef } from './LLMModelRef.mjs'
 import { guardLLMCall } from './LLMBudget.mjs' // overleaf-lab: per-user rate + daily token budget (F4)
+import { compileFixSchema, validateCompileFixObject, buildCompileFixMessages } from './LLMCompileFix.mjs' // overleaf-lab: AI Error Assist
 
 /*
  * Build the model list for the editor picker: site models (bare ids) plus
@@ -469,6 +470,189 @@ async function getPrompts(req, res) {
     })
 }
 
+// overleaf-lab: AI Error Assist — suggested fix per compile log entry
+// (upstream-style: explanation + exact suggested code, driven by the shared
+// "Select LLM Model" choice — site lane or any BYO row).
+async function compileFix(req, res) {
+    const projectId = req.params.Project_id
+    const userId = SessionManager.getLoggedInUserId(req.session)
+
+    if (Settings.llm && !Settings.llm.enabled) {
+        return res.status(503).json({ ok: false, error: 'llm-disabled', message: 'LLM service is disabled' })
+    }
+    const flags = await getLLMFeatureFlags()
+    if (!flags.chatEnabled) {
+        return res.status(403).json({ ok: false, error: 'feature_disabled', message: 'The LLM assist feature is disabled' })
+    }
+
+    const body = req.body || {}
+    const file = String(body.file || '')
+    const line = parseInt(body.line, 10)
+    const level = String(body.level || 'error')
+    const message = String(body.message || '').slice(0, 2000)
+    // "Suggest a different fix": the previous suggestion, to be avoided.
+    const hint =
+        body.hint && typeof body.hint === 'object'
+            ? { old: String(body.hint.old || '').slice(0, 3000), new: String(body.hint.new || '').slice(0, 3000) }
+            : null
+    if (!file || !Number.isFinite(line) || line < 1) {
+        return res.status(400).json({ ok: false, error: 'bad_request', message: 'file and line are required' })
+    }
+
+    // overleaf-lab: the same per-user rate + daily token budget gate as chat.
+    let budget
+    try {
+        budget = await guardLLMCall(userId)
+    }
+    catch (err) {
+        return sendError(res, err, 429)
+    }
+
+    let lane
+    let spec
+    let model
+    try {
+        const resolved = await resolveLane(userId, parseModelRef(body.model))
+        lane = resolved.lane
+        spec = resolved.spec
+        model = resolved.model
+    }
+    catch (err) {
+        return sendError(res, err, 400)
+    }
+
+    // Numbered source window around the failing line (same matching logic
+    // as /llm/source-context, inlined to keep one round trip).
+    const norm = p => String(p || '').replace(/^\/?compile\//, '').replace(/^\.\//, '').replace(/^\//, '')
+    let ctx
+    try {
+        const radius = 12
+        const docsByPath = await ProjectEntityHandler.promises.getAllDocs(projectId)
+        const target = norm(file)
+        const targetBase = target.split('/').pop()
+        let match = null
+        let baseMatch = null
+        for (const [docPath, value] of Object.entries(docsByPath || {})) {
+            if (!value) continue
+            const np = norm(docPath)
+            if (np === target || np.endsWith('/' + target) || target.endsWith('/' + np)) {
+                match = { path: docPath, lines: value.lines || [] }
+                break
+            }
+            if (!baseMatch && np.split('/').pop() === targetBase) {
+                baseMatch = { path: docPath, lines: value.lines || [] }
+            }
+        }
+        match = match || baseMatch
+        if (!match) {
+            return res.status(404).json({ ok: false, error: 'not_found', message: 'Source file not found in the project' })
+        }
+        const lines = match.lines
+        const idx = line - 1
+        const start = Math.max(0, idx - radius)
+        const end = Math.min(lines.length, idx + radius + 1)
+        const numbered = []
+        for (let i = start; i < end; i++) {
+            numbered.push(`${i === idx ? '>' : ' '} ${i + 1}: ${lines[i]}`)
+        }
+        ctx = { path: match.path, line, startLine: start + 1, snippet: numbered.join('\n') }
+    }
+    catch (err) {
+        logger.warn({ projectId, err }, '[LLM] compile-fix: source context failed')
+        return res.status(500).json({ ok: false, error: 'failed', message: 'Could not read the source file' })
+    }
+
+    // The admin-editable error prompt (site lane only) sets the spirit of the
+    // answer; the JSON contract from LLMCompileFix.mjs is always enforced.
+    const prompts = await getLLMPrompts()
+    const adminPrompt = lane === 'site' ? prompts.errorPrompt || '' : ''
+    const messages = buildCompileFixMessages({
+        level,
+        file: ctx.path,
+        line: ctx.line,
+        message,
+        snippet: ctx.snippet,
+        hint: hint ? { old: hint.old, new: hint.new } : '',
+        adminPrompt
+    })
+
+    const started = Date.now()
+    logger.info(
+        { projectId, lane, model, file: ctx.path, line: ctx.line },
+        '[LLM] compile-fix: sending request'
+    )
+    // overleaf-lab: small provider retry — structured-output misses on
+    // prompt-based backends ("No object generated" / empty response) are
+    // flaky, so give the model one more chance before failing the request.
+    let lastErr = null
+    const nudged = [
+        messages[0],
+        {
+            role: 'user',
+            content:
+                messages[1].content +
+                '\n\nREMINDER: answer with ONLY the JSON object described in the system prompt — no fences, no prose, all four fields.'
+        }
+    ]
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const { object, usage } = await chatObject(
+                spec,
+                attempt === 1 ? messages : nudged,
+                compileFixSchema,
+                {
+                    temperature: 0.4,
+                    maxOutputTokens: 8000,
+                    timeoutMs: 180000
+                }
+            )
+            const clean = validateCompileFixObject(object)
+            budget.record(usage?.outputTokens)
+            logger.info(
+                { projectId, lane, model, attempt, duration: `${Date.now() - started}ms`, chars: clean.suggestedNew.length },
+                '[LLM] compile-fix: ok'
+            )
+            return res.json({
+                ok: true,
+                file: ctx.path,
+                line: ctx.line,
+                startLine: ctx.startLine,
+                snippet: ctx.snippet,
+                explanation: clean.explanation,
+                suggestedOld: clean.suggestedOld,
+                suggestedNew: clean.suggestedNew,
+                span: clean.span,
+                lane,
+                model
+            })
+        }
+        catch (err) {
+            lastErr = err
+            const flaky = err && (err.code === 'empty-response' || /did not match schema|No object generated/i.test(err.message || ''))
+            if (flaky && attempt < 2) {
+                logger.warn({ projectId, err: err?.message }, '[LLM] compile-fix: retrying (structured-output miss)')
+                continue
+            }
+            break
+        }
+    }
+    if (lastErr && lastErr.code === 'llm-bad-fix') {
+        return res.status(422).json({
+            ok: false,
+            error: 'llm-bad-fix',
+            message: 'The model did not return a usable suggestion — please try again.'
+        })
+    }
+    if (lastErr && (lastErr.code === 'empty-response' || /did not match schema|No object generated/i.test(lastErr.message || ''))) {
+        return res.status(422).json({
+            ok: false,
+            error: 'llm-bad-fix',
+            message: 'The model did not return a usable suggestion — please try again.'
+        })
+    }
+    sendError(res, lastErr, 502)
+}
+
 // overleaf-lab: whole-document generators (title/abstract/keywords).
 // Budgets raised for reasoning models (thinking consumes output budget).
 const GENERATOR_TYPES = {
@@ -613,5 +797,6 @@ export default {
     getFeatures: expressify(getFeatures),
     getSourceContext: expressify(getSourceContext),
     getPrompts: expressify(getPrompts),
+    compileFix: expressify(compileFix),
     generateDocument: expressify(generateDocument)
 }

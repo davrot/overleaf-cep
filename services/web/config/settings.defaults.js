@@ -1079,7 +1079,12 @@ module.exports = {
         '../modules/llm/frontend/js/components/pdf-log-entry-ask-ai-button'
       ),
     ],
-    pdfLogEntryComponents: [],
+    pdfLogEntryComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/llm/frontend/js/components/pdf-llm-compile-fix-card'
+      ),
+    ],
     pdfLogEntriesComponents: [],
     pdfPreviewPromotions: [],
     diagnosticActions: [],

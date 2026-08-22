@@ -27,6 +27,14 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/chat')
 
+        // overleaf-lab: AI Error Assist — suggested fix per compile log entry.
+        webRouter.post(
+            '/project/:Project_id/llm/compile-fix',
+            AuthorizationMiddleware.ensureUserCanReadProject,
+            LLMChatController.compileFix
+        )
+        logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/compile-fix')
+
         webRouter.get(
             '/project/:Project_id/llm/models',
             AuthorizationMiddleware.ensureUserCanReadProject,
