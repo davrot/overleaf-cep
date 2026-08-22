@@ -42,6 +42,8 @@
   "Add field": "Add field",
   "Add reference": "Add reference",
   "Library import is not available in this build yet.": "Library import is not available in this build yet.",
+  "Edit reference": "Edit reference",
+  "Delete __count__ references? This action cannot be undone.": "Delete __count__ references? This action cannot be undone.",
   "Search __fileName__": "Search __fileName__",
   "Common": "Common",
   "Contributors": "Contributors",

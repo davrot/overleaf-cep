@@ -2,12 +2,29 @@
  * BibEditor visual component — rendered in the main editor window when
  * the user switches to "Visual" mode on a .bib file.
  *
- * The open form is the draft (REDESIGN_PLAN.md §2.2–§2.3): there is no draft
- * persistence machinery. Whenever the panel is about to stop being relevant
- * for this document (Code toggle, Back, file switch, unmount) the current
- * form is flushed into the CodeMirror buffer via a GUARDED write request
- * (the extension re-resolves ranges against the live document and rejects
- * stale writes — see bib-editor-extension.ts).
+ * Layout (Phase C capture, PHASE_C_PLAN.md §1.3/§1.4/§3-C4):
+ *   .bibtex-entry-list-panel
+ *     └─ .bibtex-list-and-preview
+ *          ├─ .bibtex-entry-list        (C3 compact windowed rows; its
+ *          │                            toolbar = search + Add (C5), and
+ *          │                            the bulk bar = select-all + count
+ *          │                            + bulk-Delete (W5 core))
+ *          └─ .bibtex-entry-preview-
+ *             panel (C4: Details form / Abstract tab)  — hidden until a
+ *                card is previewed (selection kind 'existing')
+ *
+ * Selection === preview (C4): the context `selection` (kind 'existing')
+ * IS the previewed entry; prev/next chevrons walk the current parse list
+ * (file order). Bulk row-checkbox selection is panel-local state — never
+ * document state.
+ *
+ * Draft model (REDESIGN_PLAN.md R2, capture OQ-7): there is no draft
+ * persistence machinery. The open form (preview Details tab, or the C5
+ * "Enter manually" modal) is the draft; whenever the panel is about to stop
+ * being relevant for this document (Code toggle, Close/back, file switch,
+ * unmount) the current form is flushed into the CodeMirror buffer via a
+ * GUARDED write request (the extension re-resolves ranges against the live
+ * document and rejects stale writes — see bib-editor-extension.ts).
  *
  * Flush compares the form against the *freshly parsed* entry, so leaving
  * with no effective change writes nothing; a type-only "new" form
@@ -24,9 +41,11 @@ import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-ope
 import { useBibEditorContext } from '../context/bib-editor-context'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
+import BibEntryPreview from './bib-entry-preview'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
+import { downloadBibFilename, bulkDeleteIds, nextEntry, prevEntry } from '../utils/preview-model.ts'
 import '../../stylesheets/bib-editor-panel.css'
 
 function shallowEntriesEqual(
@@ -62,6 +81,11 @@ function BibEditorPanel() {
   const { openDocName } = useEditorOpenDocContext()
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
+    { entryIds: string[]; expectedSource: string } | null
+  >(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const selectedIdsRef = useRef(selectedIds)
 
   /** Latest form values (written there by BibEntryForm on every change). */
   const formRef = useRef<{
@@ -79,13 +103,14 @@ function BibEditorPanel() {
   useEffect(() => { selectionMirror.current = selection }, [selection])
   useEffect(() => { sourceMirror.current = source }, [source])
   useEffect(() => { entriesMirror.current = entries }, [entries])
-  useEffect(() => { openDocNameMirror.current = openDocName })
+  useEffect(() => { openDocNameMirror.current = openDocName }, [openDocName])
 
   /**
-   * Flush the open form into the current document (REDESIGN_PLAN.md R2).
-   * The request carries `expectedSource`; the extension rejects it (and
-   * surfaces a banner) when the document is no longer this bibliography.
-   * Skips everything that is already the document (no-op writes).
+   * Flush the open form into the current document (REDESIGN_PLAN.md R2,
+   * OQ-7: flush-on-leave — the preview has no Save button). The request
+   * carries `expectedSource`; the extension rejects it (and surfaces a
+   * banner) when the document is no longer this bibliography. Skips
+   * everything that is already the document (no-op writes).
    */
   const flushCurrentForm = useCallback(() => {
     const form = formRef.current
@@ -112,15 +137,17 @@ function BibEditorPanel() {
         expectedSource: sourceMirror.current,
       })
       // The extension re-emits the fresh parse with `written` and the
-      // context re-binds the selection to the written entry — but only when
-      // it actually landed (parse-confirmed, §2.3 / §12 P1a). On rejection
-      // nothing changes: the banner shows and the form stays for a fix.
+      // context re-binds the selection to the written entry — but only
+      // when it actually landed (parse-confirmed, §2.3 / §12 P1a). On
+      // rejection nothing changes: the banner shows and the form stays
+      // for a fix.
       return
     }
 
-    // existing: write only when the form actually diverged from the
-    // freshly parsed entry (no no-op rewrites on every Back). The anchor
-    // is the ORIGINAL key (a renamed entry is not parsed by its new key).
+    // existing (preview Details): write only when the form actually
+    // diverged from the freshly parsed entry (no no-op rewrites on every
+    // Close). The anchor is the ORIGINAL key (a renamed entry is not
+    // parsed by its new key).
     const original = entriesMirror.current.find(
       e => e.id === (form.originalId ?? sel.entryId)
     )
@@ -148,7 +175,7 @@ function BibEditorPanel() {
     })
   }, [writeEntry])
 
-  // ── R2 leave watcher: flush whenever we stop being shown ──────────────
+  // ── R2 leave watchers: flush whenever we stop being shown ─────────────
 
   // 1. showVisual: true → false (Code toggle): flush + reveal the entry in
   //    Code (same behavior as the old code-switch capture, now side-
@@ -177,6 +204,8 @@ function BibEditorPanel() {
       // the write and the panel surfaces the banner. No corruption possible.
       flushCurrentForm()
       deselect()
+      setBulkDeleteGuard(null)
+      setSelectedIds([])
     }
     prevDocName.current = openDocName
   }, [openDocName, flushCurrentForm, deselect])
@@ -188,7 +217,63 @@ function BibEditorPanel() {
     }
   }, [flushCurrentForm])
 
-  // ── Selection handlers ──────────────────────────────────────────────────
+  // Bulk selection: drop ids that no longer resolve in the current parse
+  // (e.g. after a Code-mode edit or a delete).
+  useEffect(() => {
+    setSelectedIds(prev => {
+      const present = new Set(entries.map(e => e.id))
+      const next = prev.filter(id => present.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [entries])
+
+  // ── Preview (C4): the context selection (existing) drives it ─────────
+
+  const previewEntry = useMemo<ParsedBibEntry | null>(() => {
+    if (selection?.kind === 'existing') {
+      return entries.find(e => e.id === selection.entryId) || null
+    }
+    return null
+  }, [selection, entries])
+  const previewIndex = useMemo(() => {
+    if (selection?.kind !== 'existing') return -1
+    return entries.findIndex(e => e.id === selection.entryId)
+  }, [selection, entries])
+
+  const handlePreviewClose = useCallback(() => {
+    setShowDeleteConfirm(false)
+    flushCurrentForm()
+    formRef.current = null
+    deselect()
+  }, [flushCurrentForm, deselect])
+
+  // Prev/next = prev/next entry in the current parse list (file order,
+  // wrap-to-ends per the preview-model tests). Crossing the boundary
+  // flushes (R2) and then re-selects — leave-then-select ordering keeps
+  // the R2 guarantee.
+  const handlePrev = useCallback(() => {
+    const prev = prevEntry(entries, previewIndex)
+    if (!prev || (selection?.kind === 'existing' && prev.id === selection.entryId)) {
+      return
+    }
+    flushCurrentForm()
+    formRef.current = null
+    selectEntry(prev)
+  }, [previewIndex, entries, selection, flushCurrentForm, selectEntry])
+
+  const handleNext = useCallback(() => {
+    const next = nextEntry(entries, previewIndex)
+    if (!next || (selection?.kind === 'existing' && next.id === selection.entryId)) {
+      return
+    }
+    flushCurrentForm()
+    formRef.current = null
+    selectEntry(next)
+  }, [previewIndex, entries, selection, flushCurrentForm, selectEntry])
+
+  const handleSelectNew = useCallback(() => {
+    selectNew()
+  }, [selectNew])
 
   const handleBack = useCallback(() => {
     setShowDeleteConfirm(false)
@@ -196,10 +281,6 @@ function BibEditorPanel() {
     formRef.current = null
     deselect()
   }, [flushCurrentForm, deselect])
-
-  const handleSelectNew = useCallback(() => {
-    selectNew()
-  }, [selectNew])
 
   const handleFormChange = useCallback(
     (entry: BibEntry, originalId: string | null) => {
@@ -229,10 +310,11 @@ function BibEditorPanel() {
           entry.id.trim() !== ''
             ? { ...entry, id: entry.id.trim() }
             : { ...entry, id: generateCitationKey(entry.fields) }
-        // Materialize (append). The extension re-emits the fresh parse with
-        // the written id and the context re-binds to it only when the entry
-        // actually landed (parse-confirmed, §2.3 / §12 P1a). On rejection
-        // the banner shows and this form stays in "new" mode for a fix.
+        // Materialize (append). The extension re-emits the fresh parse
+        // with the written id and the context re-binds to it only when the
+        // entry actually landed (parse-confirmed, §2.3 / §12 P1a). On
+        // rejection the banner shows and this form stays in "new" mode
+        // for a fix.
         writeEntry({
           entry: finalEntry,
           mode: 'new',
@@ -243,6 +325,8 @@ function BibEditorPanel() {
     },
     [writeEntry]
   )
+
+  // ── Delete: single (preview Actions) + bulk (bulk bar, W5 core) ───────
 
   const handleConfirmDelete = useCallback(() => {
     const sel = selectionMirror.current
@@ -257,12 +341,75 @@ function BibEditorPanel() {
     deselect()
   }, [deleteEntry, deselect])
 
-  const existingEntry: ParsedBibEntry | null = useMemo(() => {
-    if (selection?.kind === 'existing') {
-      return entries.find(e => e.id === selection.entryId) || null
+  // Guard before the bulk write: snapshot { source, ids } so the confirm
+  // action re-checks both against the live context at dispatch time
+  // (W5 all-or-nothing, no partial deletes on a stale source).
+  const handleAskBulkDelete = useCallback(() => {
+    setBulkDeleteGuard({
+      entryIds: bulkDeleteIds(
+        entriesMirror.current,
+        selectedIdsRef.current
+      ),
+      expectedSource: sourceMirror.current,
+    })
+  }, [])
+
+  const handleConfirmBulkDelete = useCallback(() => {
+    const guard = bulkDeleteGuard
+    setBulkDeleteGuard(null)
+    if (!guard) return
+    const liveSource = sourceMirror.current
+    // Stale source since the ask → abort (the extension guard is the
+    // second line of defense; here we avoid the confirm dance on a doc
+    // that already changed).
+    if (liveSource !== guard.expectedSource) {
+      return
     }
-    return null
-  }, [selection, entries])
+    deleteEntry({
+      entryIds: guard.entryIds,
+      expectedSource: liveSource,
+    })
+    setSelectedIds([])
+    formRef.current = null
+    // The preview for a deleted row closes (the context also clears a
+    // vanished selection — same result).
+    const sel = selectionMirror.current
+    if (sel?.kind === 'existing' && guard.entryIds.includes(sel.entryId)) {
+      deselect()
+    }
+  }, [deleteEntry, deselect, bulkDeleteGuard])
+
+  // Download (OQ-6: whole file). The browser saves the current document
+  // text; no range export.
+  const handleDownload = useCallback(() => {
+    const blob = new Blob([sourceMirror.current], {
+      type: 'text/plain',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = downloadBibFilename(openDocNameMirror.current)
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [])
+
+  // Bulk selection handlers (lifted into the panel — C4: the preview must
+  // close for a deleted previewed row, and the confirm modal lives here).
+  useEffect(() => { selectedIdsRef.current = selectedIds }, [selectedIds])
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }, [])
+
+  const handleToggleSelectAll = useCallback((kind: 'all' | 'none') => {
+    setSelectedIds(
+      kind === 'all' ? entries.map(e => e.id) : []
+    )
+  }, [entries])
 
   return (
     <div className="bib-editor-panel">
@@ -286,7 +433,18 @@ function BibEditorPanel() {
       )}
 
       <div className="bib-editor-visual-nav">
-        {selection !== null && (
+        {selection === null && (
+          <OLButton
+            className="bib-editor-add-btn"
+            size="sm"
+            variant="primary"
+            leadingIcon="add"
+            onClick={handleSelectNew}
+          >
+            {t('Add new entry')}
+          </OLButton>
+        )}
+        {selection?.kind === 'new' && (
           <OLButton
             className="bib-editor-back-btn"
             size="sm"
@@ -297,42 +455,18 @@ function BibEditorPanel() {
             {t('back')}
           </OLButton>
         )}
-        {selection === null && (
-          <OLButton size="sm" variant="primary" onClick={handleSelectNew}>
-            {t('Add new entry')}
-          </OLButton>
-        )}
         <span className="bib-editor-visual-nav-title">
-          {selection?.kind === 'existing'
-            ? t('Edit Entry')
-            : selection?.kind === 'new'
-              ? t('New Entry')
-              : ''}
+          {selection?.kind === 'new' ? t('New Entry') : ''}
         </span>
-        {/* Plain Code/Visual toggle — the leave watchers above handle
+        {/* Code/Visual toggle — the leave watchers above handle
             "leaving visual" (no click interception, R2). */}
         <EditorSwitch />
       </div>
 
       <div className="bib-editor-panel-content">
-        {selection === null ? (
-          <BibEntryList entries={entries} onSelect={selectEntry} />
-        ) : selection.kind === 'existing' && existingEntry ? (
-          <BibEntryForm
-            entry={{
-              type: existingEntry.type,
-              id: existingEntry.id,
-              fields: { ...existingEntry.fields },
-            }}
-            kind="existing"
-            originalId={existingEntry.id}
-            existingIds={entries.map(e => e.id)}
-            onFormChange={handleFormChange}
-            onChecked={handleChecked}
-            onDelete={() => setShowDeleteConfirm(true)}
-            onBack={handleBack}
-          />
-        ) : selection.kind === 'new' ? (
+        {selection?.kind === 'new' ? (
+          // C5 replaces this full-view form with the "Enter manually"
+          // Add-dropdown modal. Kept until then (C4 is revertible alone).
           <BibEntryForm
             entry={selection.draft}
             kind="new"
@@ -342,10 +476,48 @@ function BibEditorPanel() {
             onChecked={handleChecked}
             onBack={handleBack}
           />
-        ) : null}
+        ) : (
+          <div className="bibtex-list-and-preview">
+            <BibEntryList
+              entries={entries}
+              onSelect={selectEntry}
+              previewId={
+                selection?.kind === 'existing' ? selection.entryId : null
+              }
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onToggleSelectAll={handleToggleSelectAll}
+              onBulkDelete={
+                selectedIds.length > 0
+                  ? handleAskBulkDelete
+                  : undefined
+              }
+              openDocName={openDocName}
+            />
+            {selection?.kind === 'existing' && previewEntry ? (
+              <BibEntryPreview
+                entries={entries}
+                entry={{
+                  type: previewEntry.type,
+                  id: previewEntry.id,
+                  fields: { ...previewEntry.fields },
+                }}
+                previewIndex={previewIndex}
+                onPrev={handlePrev}
+                onNext={handleNext}
+                onClose={handlePreviewClose}
+                onDownload={handleDownload}
+                onDelete={() => setShowDeleteConfirm(true)}
+                onFormChange={handleFormChange}
+                existingIds={entries.map(e => e.id)}
+                canDelete
+              />
+            ) : null}
+          </div>
+        )}
       </div>
 
-      {/* Delete confirmation */}
+      {/* Single-entry delete confirm (preview Actions) */}
       <GenericConfirmModal
         show={showDeleteConfirm}
         onHide={() => setShowDeleteConfirm(false)}
@@ -356,6 +528,19 @@ function BibEditorPanel() {
         confirmLabel={t('delete')}
         primaryVariant="danger"
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Bulk delete confirm (W5 core, bulk bar) */}
+      <GenericConfirmModal
+        show={bulkDeleteGuard !== null}
+        onHide={() => setBulkDeleteGuard(null)}
+        title={t('Delete entry')}
+        message={t('Delete __count__ references? This action cannot be undone.', {
+          count: bulkDeleteGuard?.entryIds.length ?? 0,
+        })}
+        confirmLabel={t('delete')}
+        primaryVariant="danger"
+        onConfirm={handleConfirmBulkDelete}
       />
     </div>
   )

@@ -39,6 +39,8 @@ type Props = {
   selectedIds?: string[]
   onToggleSelect?: (id: string) => void
   onToggleSelectAll?: (kind: 'all' | 'none') => void
+  /** Bulk delete (C4/W5): the panel wires this to the guarded W5 write */
+  onBulkDelete?: () => void
   /** Open document filename (dynamic "Search <file>" placeholder) */
   openDocName?: string
 }
@@ -50,6 +52,7 @@ export default function BibEntryList({
   selectedIds = [],
   onToggleSelect,
   onToggleSelectAll,
+  onBulkDelete,
   openDocName,
 }: Props) {
   const { t } = useTranslation()
@@ -144,7 +147,9 @@ export default function BibEntryList({
         />
       </div>
 
-      {/* Bulk bar (C3): select-all + count */}
+      {/* Bulk bar (C3 capture): select-all ("Select all entries") +
+          "N reference(s)" = the count of entries in view. Delete (C4
+          wire-up over W5 core) appears when any row is checked. */}
       <div className="bibtex-bulk-actions-bar">
         <label className="bibtex-bulk-actions-select-all">
           <input
@@ -161,8 +166,20 @@ export default function BibEntryList({
           />
           <span>{t('Select all')}</span>
         </label>
+        {selectedIds.length > 0 && onBulkDelete ? (
+          <button
+            type="button"
+            className="bibtex-bulk-actions-delete btn btn-danger btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onBulkDelete?.()
+            }}
+          >
+            {t('delete')}
+          </button>
+        ) : null}
         <span className="bibtex-bulk-actions-count">
-          {t('__count__ reference(s)', { count: selectedIds.length })}
+          {t('__count__ reference(s)', { count: filtered.length })}
         </span>
       </div>
 
