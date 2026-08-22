@@ -19,14 +19,18 @@ const LLMModelSelectModal = React.memo(function LLMModelSelectModal({
     onHide,
 }: LLMModelSelectModalProps) {
     const { t } = useTranslation()
+    // overleaf-lab (owner request 2026-08-26): the "Deployment default" pseudo
+    // option is gone — only concrete models (site + BYO rows) are selectable.
     const { options, loaded, selected, apply } = useLLMModelSelection()
     const [local, setLocal] = useState('')
 
-    // Re-seed the list each time the modal opens (and live if another surface
-    // changed the selection while it is open).
+    // Re-seed each time the modal opens (and live if another surface changed
+    // the selection while it is open). When nothing is selected yet, preselect
+    // the first concrete model (site default) so "Use this model" always picks
+    // a real model.
     useEffect(() => {
-        if (show) setLocal(selected)
-    }, [show, selected])
+        if (show) setLocal(selected || (loaded ? options[0]?.value || '' : ''))
+    }, [show, selected, loaded, options])
 
     const save = () => {
         apply(local)
@@ -55,7 +59,7 @@ const LLMModelSelectModal = React.memo(function LLMModelSelectModal({
                 <p className="llm-model-hint">
                     {t(
                         'llm_select_model_hint',
-                        'This model is used everywhere: AI Assistant chat, Review, the AI Generate menu items and ask-AI on selected text.',
+                        'This model is used everywhere — AI Assistant chat, Review, the AI Generate menu items and ask-AI on selected text. The choice is saved to your profile and follows you across projects.',
                     )}
                 </p>
                 <div className="llm-model-option-list" role="radiogroup">

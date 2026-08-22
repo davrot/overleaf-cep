@@ -24,6 +24,7 @@ import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts
 import { decryptSecret } from './LLMCrypto.mjs'
 import { chatText, chatObject, normalizeProviderSpec, detectProviderType, assertNonEmpty } from './LLMClient.mjs'
 import { isUserSettingsAllowed, loadProviders } from './LLMSettingsController.mjs'
+import { User } from '../../../../app/src/models/User.mjs'
 import { parseModelRef } from './LLMModelRef.mjs'
 import { guardLLMCall } from './LLMBudget.mjs' // overleaf-lab: per-user rate + daily token budget (F4)
 import { compileFixSchema, validateCompileFixObject, buildCompileFixMessages } from './LLMCompileFix.mjs' // overleaf-lab: AI Error Assist
@@ -156,8 +157,22 @@ async function resolveUserLane(userId, ref) {
  * Map a client model ref (or none) to { spec, model, lane }. A bare/missing
  * model on the site lane wins over user rows ONLY when user rows do not
  * exist - users keep their preference for their own backends (old behavior).
+ *
+ * overleaf-lab (owner request 2026-08-26): an EMPTY model ref now first falls
+ * back to the user's SHARED selection stored on the profile
+ * (User.llmSelectedModel — File → "Select LLM Model"), so every surface
+ * (chat, review, generators, compile-fix) honors the one user-scoped choice
+ * without the client repeating it in each request. An explicit request ref
+ * always still wins.
  */
 async function resolveLane(userId, modelRef) {
+    if (!modelRef.model) {
+        const profile = await User.findOne({ _id: userId }).lean().catch(() => null)
+        const profileRef = typeof profile?.llmSelectedModel === 'string' ? profile.llmSelectedModel.trim() : ''
+        if (profileRef) {
+            modelRef = parseModelRef(profileRef)
+        }
+    }
     if (modelRef.kind === 'user') {
         return { ...(await resolveUserLane(userId, modelRef)), lane: 'user' }
     }

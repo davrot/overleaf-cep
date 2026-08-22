@@ -245,6 +245,109 @@
    styles (F13). Rules are scoped under the page container for specificity
    over the OL/bootstrap component base classes they override. */
 .ol-llm-admin-settings {
+  // overleaf-lab (owner request 2026-08-26): admin/user-style console layout —
+  // full-width grid: sticky left sidebar + content column. (Overrides the
+  // centered 800px column of the .llm-settings base used by the user pages.)
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  max-width: none;
+
+  .llm-settings-header {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+
+  .llm-admin-content {
+    min-width: 0;
+  }
+
+  // Hide every section except the active one (data-active is set on the
+  // container, data-sec on each section).
+  [data-sec] {
+    display: none;
+  }
+  
+  &[data-active='features'] [data-sec='features'],
+  &[data-active='connection'] [data-sec='connection'],
+  &[data-active='models'] [data-sec='models'],
+  &[data-active='prompt'] [data-sec='prompt'],
+  &[data-active='compliance'] [data-sec='compliance'],
+  &[data-active='prompts'] [data-sec='prompts'] {
+    display: block;
+  }
+
+  // overleaf-lab: sidebar navigation — console-style list, active highlight.
+  .llm-admin-sidebar {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.5rem;
+    border: 1px solid var(--wf-border-in, #dfe5ec);
+    border-radius: 10px;
+    background-color: var(--wf-row-hi, #fff);
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+
+    .llm-admin-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      width: 100%;
+      padding: 0.5rem 0.625rem;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--content-primary, #1b222c);
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+
+      .llm-admin-nav-icon {
+        font-size: 18px;
+        color: var(--content-secondary, #475569);
+        flex-shrink: 0;
+      }
+
+      &:hover {
+        background-color: rgba(40, 81, 143, 0.06);
+      }
+
+      &.active {
+        background-color: rgba(40, 81, 143, 0.1);
+        color: var(--wf-accent, #28518f);
+        font-weight: 600;
+
+        .llm-admin-nav-icon {
+          color: var(--wf-accent, #28518f);
+        }
+      }
+    }
+  }
+
+  .llm-settings-section {
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+
+    .llm-admin-sidebar {
+      position: static;
+      flex-direction: row;
+      flex-wrap: wrap;
+      max-height: none;
+
+      .llm-admin-nav-item {
+        width: auto;
+      }
+    }
+  }
+
   /* ── toggle switch (Features section) ── */
   .ol-llm-admin-settings__switch {
     position: relative;

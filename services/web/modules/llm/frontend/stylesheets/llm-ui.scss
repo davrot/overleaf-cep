@@ -261,6 +261,7 @@
   font-size: 13px;
   line-height: 1.5;
   margin: 0 0 10px;
+  color: inherit;
   p { margin: 0 0 6px; }
   p:last-child { margin-bottom: 0; }
   code {
@@ -269,6 +270,27 @@
     border-radius: 4px;
     font-size: 12px;
   }
+}
+// The explanation renders model markdown through the shared `.llm-result-html`
+// class, whose rules carry a fixed light theme color (#1e293b) and win the
+// cascade against plain `.llm-cfx-explanation` selectors. Re-assert the
+// inherited (log-pane themed) color with higher specificity so the text is
+// readable in ANY app theme — including dark.
+.llm-cfx-explanation.llm-result-html,
+.llm-cfx-explanation.llm-result-html p,
+.llm-cfx-explanation.llm-result-html li,
+.llm-cfx-explanation.llm-result-html h1,
+.llm-cfx-explanation.llm-result-html h2,
+.llm-cfx-explanation.llm-result-html h3,
+.llm-cfx-explanation.llm-result-html h4 {
+  color: inherit;
+}
+.llm-cfx-explanation.llm-result-html pre {
+  color: inherit;
+  background: var(--bg-tertiary-themed, #f1f4f8);
+}
+.llm-cfx-explanation.llm-result-html code {
+  background: var(--bg-tertiary-themed, #f1f4f8);
 }
 .llm-cfx-code {
   border: 1px solid var(--border-primary-themed, #d9dfe7);

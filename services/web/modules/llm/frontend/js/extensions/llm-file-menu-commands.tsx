@@ -1,13 +1,15 @@
-// overleaf-lab: File-menu commands for the whole-document LLM generators
-// (reviewer #13: "Title/Abstract generators need to know the whole content of
-// the file (or even the project). The context menu is not an appropriate place
-// for them.") — like on the Overleaf site, they live in the File menu and the
-// backend reads the whole project (LLMChatController.generateDocument).
+// overleaf-lab: File-menu LLM commands:
+//  - "Select LLM Model" (smart_toy) — the ONE and ONLY model selection entry
+//    point (owner request 2026-08-26); opens the shared modal; the choice is
+//    user-scoped (profile) and drives every AI surface.
+//  - AI Generate (Title/Abstract/Keywords, in the INSERT menu) —
+//    overleaf-lab (owner request 2026-08-26): automatic again — clicking a
+//    generator item immediately runs it with the currently selected model
+//    (no per-generation model picker / Generate button, no implicit lane:
+//    the model is whatever the user made the shared selection).
 //
-// User flow (owner decision 2026-08-21): clicking a menu item opens a modal
-// with an EXPLICIT model selector + Generate button — the user chooses the
-// backend/model (site or BYO) and starts the run, like the AI Assistant chat
-// window. No implicit "just runs with whatever lane wins" behavior.
+// (reviewer #13 origin: whole-document generators read the whole project —
+// LLMChatController.generateDocument.)
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
@@ -16,12 +18,13 @@ import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provi
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import { OLModal } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
-import { useLLMModelSelection } from '../hooks/use-llm-model-selection'
+import MaterialIcon from '@/shared/components/material-icon'
+import LLMModelSelectModal from '../components/llm-model-select-modal'
 // overleaf-lab: upstream-AI design tokens for the generator modal's result surface
 import '../../stylesheets/llm-ui.scss'
 
 type GenerateKind = 'title' | 'abstract' | 'keywords'
-type Phase = 'pick' | 'busy' | 'result' | 'error'
+type Phase = 'busy' | 'result' | 'error'
 
 const KINDS: GenerateKind[] = ['title', 'abstract', 'keywords']
 
@@ -43,46 +46,46 @@ export default function LLMFileMenuCommands() {
     const { t } = useTranslation()
     const { isReady } = useWaitForI18n()
     const [kind, setKind] = useState<GenerateKind | null>(null)
-    const [phase, setPhase] = useState<Phase>('pick')
+    // overleaf-lab (owner request 2026-08-26): the File → "Select LLM Model"
+    // modal lives here (this component mounts in the menubar tree via
+    // menubarExtraComponents).
+    const [modelModalOpen, setModelModalOpen] = useState(false)
+    const [phase, setPhase] = useState<Phase>('busy')
     const [output, setOutput] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
 
-    // overleaf-lab (owner request 2026-08-25): the generator uses ONE shared
-    // model selection — the same value the "Select LLM Model" dialog, the chat
-    // and the Review tab use. Choosing a model here writes it back to the
-    // shared store, so every surface stays in sync.
-    const { options, loaded, selected, apply } = useLLMModelSelection()
-
-    const open = useCallback(
-        (asKind: GenerateKind) => {
-            setKind(asKind)
-            setPhase('pick')
-            setError(null)
-            setOutput('')
-            setCopied(false)
-        },
-        [],
-    )
-
-    const close = useCallback(() => {
-        setKind(null)
-        setPhase('pick')
+    // overleaf-lab (owner request 2026-08-26): auto-run — a menu click starts
+    // the generation immediately with the shared (user-scoped) selection that
+    // the backend resolves from the user profile; no model picker in the
+    // modal anymore.
+    const start = useCallback((asKind: GenerateKind) => {
+        setKind(asKind)
+        setPhase('busy')
         setError(null)
         setOutput('')
         setCopied(false)
     }, [])
 
-    const run = useCallback(async () => {
-        if (!kind) return
+    const close = useCallback(() => {
+        setKind(null)
+        setPhase('busy')
+        setError(null)
+        setOutput('')
+        setCopied(false)
+    }, [])
+
+    const run = useCallback(async (asKind: GenerateKind) => {
         const projectId = getMeta('ol-project_id')
         if (!projectId) return
         setPhase('busy')
         setError(null)
         setOutput('')
         try {
+            // overleaf-lab: no `model` field anymore — the backend reads the
+            // user's profile selection (or the deployment default).
             const data = await postJSON(`/project/${projectId}/llm/generate`, {
-                body: { type: kind, ...(selected ? { model: selected } : {}) },
+                body: { type: asKind },
             })
             const text = String(data?.output ?? data?.text ?? '')
             setOutput(text)
@@ -92,7 +95,7 @@ export default function LLMFileMenuCommands() {
             else {
                 setPhase('error')
                 setError(
-                    t('llm_generate_empty', 'The model returned an empty result — pick another model or try again.'),
+                    t('llm_generate_empty', 'The model returned an empty result — try again or check the model selection.'),
                 )
             }
         }
@@ -105,19 +108,43 @@ export default function LLMFileMenuCommands() {
                 t('llm_generate_failed', 'Generation failed — the LLM service may be disabled.'),
             )
         }
-    }, [kind, selected, t])
+    }, [t])
+
+    // overleaf-lab: opening a generator = start immediately (automatic).
+    const open = useCallback(
+        (asKind: GenerateKind) => {
+            start(asKind)
+            void run(asKind)
+        },
+        [start, run],
+    )
 
     useCommandProvider(
         () =>
             isReady
-                ? KINDS.map(k => ({
-                      type: 'command' as const,
-                      id: `llm_generate_${k}`,
-                      label: t(`llm_file_generate_${k}`, MENU_LABEL[k]),
-                      handler: () => {
-                          void open(k)
-                      },
-                  }))
+                ? [
+                    ...KINDS.map(k => ({
+                        type: 'command' as const,
+                        id: `llm_generate_${k}`,
+                        label: t(`llm_file_generate_${k}`, MENU_LABEL[k]),
+                        handler: () => {
+                            void open(k)
+                        },
+                    })),
+                    // overleaf-lab (owner request 2026-08-26): the ONE model
+                    // selection entry point — File → "Select LLM Model" with the
+                    // AI icon in front of the label (leadingIcon is a ReactNode
+                    // in the core Command type).
+                    {
+                        type: 'command' as const,
+                        id: 'llm_select_model',
+                        label: t('llm_select_model', 'Select LLM Model'),
+                        leadingIcon: <MaterialIcon type="smart_toy" />,
+                        handler: () => {
+                            setModelModalOpen(true)
+                        },
+                    },
+                ]
                 : undefined,
         [isReady, open, t],
     )
@@ -132,11 +159,16 @@ export default function LLMFileMenuCommands() {
         catch { /* clipboard unavailable (non-secure context) — the text stays selectable */ }
     }
 
-    // The Generate button is available on the pick view and on the error view
-    // (retry with the same or a different model).
-    const showPicker = phase === 'pick' || phase === 'busy' || phase === 'error'
-
     return (
+        <>
+        {/* overleaf-lab (owner request 2026-08-26): the ONE shared model selection
+            modal — opened from File → "Select LLM Model". */}
+        {modelModalOpen && (
+            <LLMModelSelectModal
+                show={modelModalOpen}
+                onHide={() => setModelModalOpen(false)}
+            />
+        )}
         <OLModal show={kind !== null} onHide={close} size="lg" aria-label={t('llm_generate_title', 'Generate with AI')}>
             <div className="modal-header">
                 <h5 className="modal-title">
@@ -160,33 +192,7 @@ export default function LLMFileMenuCommands() {
                     </div>
                 ) : (
                     <div>
-                        <div className="mb-2">
-                            <label className="form-label" htmlFor={`llm-generate-model-${kind}`}>
-                                {t('llm_model_label', 'Model')}
-                            </label>
-                            <select
-                                id={`llm-generate-model-${kind}`}
-                                className="form-select"
-                                value={selected}
-                                onChange={e => apply(e.target.value)}
-                                disabled={!loaded}
-                            >
-                                {options.map(o => (
-                                    <option key={o.value || 'default'} value={o.value}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
-                            {!loaded && (
-                                <div className="form-text">
-                                    {t(
-                                        'llm_generate_models_error',
-                                        'No models could be listed — the deployment default will be used.',
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        {phase === 'error' && error && <p className="text-danger mb-0">{error}</p>}
+                        {error && <p className="text-danger mb-0">{error}</p>}
                     </div>
                 )}
             </div>
@@ -197,21 +203,20 @@ export default function LLMFileMenuCommands() {
                 {phase === 'result' && (
                     <>
                         <OLButton variant="tertiary" onClick={() => void open(kind || 'title')}>
-                            {t('llm_generate_again', 'Generate with another model')}
+                            {t('llm_generate_again', 'Generate again')}
                         </OLButton>
                         <OLButton variant="secondary" disabled={!output} onClick={() => void copy()}>
                             {copied ? t('llm_copied', 'Copied') : t('copy', 'Copy')}
                         </OLButton>
                     </>
                 )}
-                {showPicker && (
-                    <OLButton variant="secondary" disabled={phase === 'busy'} onClick={() => void run()}>
-                        {phase === 'busy'
-                            ? t('llm_generate_running', 'Generating…')
-                            : t('llm_generate_run', 'Generate')}
+                {phase === 'error' && (
+                    <OLButton variant="secondary" onClick={() => void open(kind || 'title')}>
+                        {t('llm_generate_retry', 'Try again')}
                     </OLButton>
                 )}
             </div>
         </OLModal>
+        </>
     )
 }

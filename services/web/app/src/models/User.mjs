@@ -261,6 +261,10 @@ export const UserSchema = new Schema(
     llmModels: { type: [String], default: [] },
     llmModelNames: { type: [String], default: [] },
     llmCompletionModels: { type: [String], default: [] },
+    // overleaf-lab: user-scoped shared LLM model selection (File → "Select
+    // LLM Model"): model id or `u:<rowId>:<model>`; '' = deployment default.
+    // Written by LLMSettingsController.saveSelectedModel (module:llm).
+    llmSelectedModel: { type: String, default: '' },
     // Each row is a free-form document shaped by the module's row schema
     // (id/name/providerType/baseUrl/apiKey[encrypted]/models/completionModel/enabled).
     llmProviders: { type: [Object], default: [] },

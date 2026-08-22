@@ -1,30 +1,40 @@
 // overleaf-lab: shared LLM model selection (owner request): ONE model choice,
-// made via the "Select LLM Model" menu item / modal, is used by ALL AI
-// surfaces — Chat AI Assistant, Review, AI Generate (Title/Abstract/Keywords)
-// and the ask-AI selection context menu.
+// made via File → "Select LLM Model" (the menu's only selection entry point),
+// is used by ALL AI surfaces — Chat AI Assistant, Review, AI Generate
+// (Title/Abstract/Keywords) and the ask-AI selection context menu.
 //
-// Storage stays per-project localStorage (utils/llm-selected-model.ts — the
-// pre-existing bridge between the chat and the context menu); the surfaces
-// subscribe to a window event so a change in one pane updates the others
-// immediately (no reload).
+// overleaf-lab (owner request 2026-08-26): the selection is USER-SCOPED, not
+// project-scoped: it is stored on the user profile (server-side,
+// GET/POST /user/llm/selected-model) and applies across every project and
+// browser. localStorage is kept only as the same-tab instant bridge between
+// the surfaces (chat hook, toolbar) that live in separate React trees.
 import { useCallback, useEffect, useState } from 'react'
 import getMeta from '@/utils/meta'
-import { getJSON } from '@/infrastructure/fetch-json'
+import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { readSelectedModel, writeSelectedModel } from '../utils/llm-selected-model'
 
 export const LLM_MODEL_CHANGED_EVENT = 'overleaf-llm-model-changed'
 
 export interface LLMModelOption {
-    value: string // '' = deployment default, else model id / `u:<rowId>:<model>`
+    value: string // model id / `u:<rowId>:<model>` (no '' pseudo-option anymore)
     label: string
     rowName?: string
 }
 
+async function fetchServerSelection(): Promise<string> {
+    try {
+        const data: any = await getJSON('/user/llm/selected-model')
+        const value = typeof data?.selected === 'string' ? data.selected : ''
+        return value
+    }
+    catch {
+        return ''
+    }
+}
+
 export function useLLMModelSelection() {
     const projectId = (getMeta('ol-project_id') as string | undefined) || undefined
-    const [options, setOptions] = useState<LLMModelOption[]>([
-        { value: '', label: 'Deployment default' },
-    ])
+    const [options, setOptions] = useState<LLMModelOption[]>([])
     const [loaded, setLoaded] = useState(false)
     const [selected, setSelected] = useState<string>(() => readSelectedModel(projectId))
 
@@ -43,7 +53,7 @@ export function useLLMModelSelection() {
                     userRows?: Array<{ id: string; name: string; models: Array<{ id: string; name?: string }> }>
                 }>(`/project/${projectId}/llm/models`)
                 if (cancelled) return
-                const opts: LLMModelOption[] = [{ value: '', label: 'Deployment default' }]
+                const opts: LLMModelOption[] = []
                 for (const m of data.models || []) {
                     opts.push({ value: m.id, label: m.name || m.id })
                 }
@@ -59,16 +69,34 @@ export function useLLMModelSelection() {
                     }
                 }
                 setOptions(opts)
-                // A stored selection that no longer exists (row deleted, model
-                // renamed) falls back to the deployment default so the label
-                // never dangles.
-                setSelected(prev => (prev && opts.some(o => o.value === prev)) ? prev : '')
+
+                // overleaf-lab (owner request): user-scoped selection — the
+                // profile value is authoritative. A stored value that no
+                // longer exists (row deleted, model renamed) is dropped.
+                const serverValue = await fetchServerSelection()
+                if (cancelled) return
+                const storedValue = readSelectedModel(projectId)
+                const next =
+                    (serverValue && opts.some(o => o.value === serverValue) && serverValue) ||
+                    (storedValue && opts.some(o => o.value === storedValue) && storedValue) ||
+                    ''
+                if (next !== storedValue) {
+                    writeSelectedModel(next, projectId)
+                    setSelected(next)
+                    if (next) {
+                        // Tell the other surfaces (chat hook) about the
+                        // restored user selection.
+                        window.dispatchEvent(
+                            new CustomEvent(LLM_MODEL_CHANGED_EVENT, { detail: { value: next } }),
+                        )
+                    }
+                }
                 setLoaded(true)
             }
             catch {
                 if (!cancelled) {
                     // Model list unavailable (LLM disabled for this project?):
-                    // keep "Deployment default" as the only option.
+                    // no options; requests fall back to the deployment default.
                     setLoaded(true)
                 }
             }
@@ -96,6 +124,12 @@ export function useLLMModelSelection() {
             window.dispatchEvent(
                 new CustomEvent(LLM_MODEL_CHANGED_EVENT, { detail: { value } }),
             )
+            // Persist to the user profile (best-effort; the local bridge
+            // already made the choice live everywhere in this tab).
+            void postJSON('/user/llm/selected-model', { body: { selected: value } })
+                .catch(() => {
+                    /* profile write failed — local selection still works */
+                })
         },
         [projectId],
     )
@@ -105,9 +139,9 @@ export function useLLMModelSelection() {
         ? selectedOption.rowName
             ? `${selectedOption.rowName} · ${selectedOption.label}`
             : selectedOption.label
-        : selected
-            ? selected
-            : 'Deployment default'
+        : options.length
+            ? 'Default'
+            : ''
 
     return {
         projectId,

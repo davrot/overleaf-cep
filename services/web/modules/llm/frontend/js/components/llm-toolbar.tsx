@@ -20,7 +20,6 @@ import { readSelectedModel } from '../utils/llm-selected-model'
 import '../../stylesheets/llm-ui.scss'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 import { useLLMPrompts } from '../hooks/use-llm-prompts'
-import LLMModelSelectModal from './llm-model-select-modal'
 import { watchEditorTheme } from '../utils/llm-editor-theme'
 
 export type LLMToolbarHandle = {
@@ -113,9 +112,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         'hidden' | 'menu' | 'chat' | 'paraphrase'
     >('hidden')
     const [submenu, setSubmenu] = useState<null | 'style'>(null)
-    // overleaf-lab (owner request 2026-08-25): "Select LLM Model" menu item —
-    // the shared model choice used by chat, review, generators and ask-AI.
-    const [modelModalOpen, setModelModalOpen] = useState(false)
+    // overleaf-lab (owner request 2026-08-26): the "Select LLM Model" menu item is
+    // gone — that choice lives ONLY under File → "Select LLM Model" (the one
+    // user-scoped selection used by every AI surface).
 
     // overleaf-lab (owner request 2026-08-25): this floating overlay follows
     // the EDITOR theme like the rail panel does.
@@ -845,40 +844,10 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 <span aria-hidden="true"><MaterialIcon type="calculate" /></span>
                                 Fix formula syntax
                             </div>
-                            <div className="llm-menu-divider" role="separator" />
-                            <div
-                                className="llm-item"
-                                onClick={() => setModelModalOpen(true)}
-                                role="menuitem"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                <span className="material-symbols" style={{ fontSize: 18 }} aria-hidden="true" translate="no">
-                                    model_training
-                                </span>
-                                Select LLM Model…
-                            </div>
 
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* Shared "Select LLM Model" dialog (opened from the menu item) */}
-            {modelModalOpen && (
-                <LLMModelSelectModal
-                    show={modelModalOpen}
-                    onHide={() => {
-                        setModelModalOpen(false)
-                        setPanelMode('hidden')
-                        setAnchorShown(false)
-                    }}
-                />
             )}
 
             {/* Chat panel */}

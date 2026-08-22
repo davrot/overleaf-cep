@@ -2,8 +2,6 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useLLMChat } from '../hooks/use-llm-chat'
-import { useLLMModelSelection } from '../hooks/use-llm-model-selection'
-import LLMModelSelectModal from './llm-model-select-modal'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import '../../stylesheets/llm-chat.scss'
@@ -26,7 +24,6 @@ const LLMChatPane = React.memo(function LLMChatPane({
         stopGeneration,
         rerunLastMessage,
         clearMessages,
-        models,
         canRerun,
         modelsLoaded,
         hasModels,
@@ -57,12 +54,6 @@ const LLMChatPane = React.memo(function LLMChatPane({
         rerunLastMessage()
     }
 
-    const [modelModalOpen, setModelModalOpen] = useState(false)
-    // overleaf-lab (owner request 2026-08-25): one shared model selection for
-    // ALL AI surfaces — the header no longer holds its own <select>; it shows
-    // the current choice and opens the shared "Select LLM Model" dialog.
-    const { selectedLabel } = useLLMModelSelection()
-
     const [armedClear, setArmedClear] = useState(false)
     const armedTimer = useRef<number | null>(null)
     const armClear = () => {
@@ -89,39 +80,15 @@ const LLMChatPane = React.memo(function LLMChatPane({
     }
 
     const displayMessages = messages.filter(m => m.role !== 'system')
-    const showModelSelector = models.length > 0
 
     return (
         <aside className="chat" aria-label={t('ai_assistant', 'AI Assistant')}>
             <div className="llm-chat-container">
-                {/* Header: shared model selector + action buttons */}
+                {/* overleaf-lab (owner request 2026-08-26): the per-pane model picker is
+                    gone — the ONLY selection entry point is File → "Select LLM Model".
+                    The chat keeps using the shared (user-scoped) selection, synced
+                    inside use-llm-chat via the LLM_MODEL_CHANGED_EVENT bridge. */}
                 <div className="llm-chat-header">
-                    {showModelSelector && (
-                        <div className="llm-model-selector">
-                            <button
-                                type="button"
-                                className="llm-model-picker"
-                                onClick={() => setModelModalOpen(true)}
-                                title={t('llm_select_model', 'Select LLM Model')}
-                                aria-label={t('llm_select_model', 'Select LLM Model')}
-                            >
-                                <span className="llm-model-picker-label">
-                                    {t('model_label', 'Model')}
-                                </span>
-                                <span className="llm-model-picker-value" title={selectedLabel}>
-                                    {selectedLabel}
-                                </span>
-                                <MaterialIcon type="expand_more" className="llm-model-picker-caret" />
-                            </button>
-                        </div>
-                    )}
-                    {modelModalOpen && (
-                        <LLMModelSelectModal
-                            show={modelModalOpen}
-                            onHide={() => setModelModalOpen(false)}
-                        />
-                    )}
-
                     <div className="llm-action-buttons">
                         {canRerun && !isLoading && (
                             <button

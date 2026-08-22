@@ -302,8 +302,13 @@ export default function LLMAdminSettingsPage() {
 
     const allModels = Array.from(new Set([...knownModels, ...availableModels, ...allowedModels]))
 
+    // overleaf-lab (owner request 2026-08-26): admin page reorganized like the
+    // admin/user console — a left sidebar lists the sections, the right column
+    // shows the active one (CSS hides the rest via data-active/data-sec).
+    const [activeSection, setActiveSection] = useState('features')
+
     return (
-        <div className="container llm-settings ol-llm-admin-settings">
+        <div className="container llm-settings ol-llm-admin-settings" data-active={activeSection}>
           {/* Page header */}
           <div className="llm-settings-header">
               <h1 className="llm-settings-header-title">
@@ -318,10 +323,36 @@ export default function LLMAdminSettingsPage() {
               </p>
           </div>
 
-          <form onSubmit={handleSave}>
+          {/* overleaf-lab: sidebar navigation (admin/user-style layout) */}
+          <nav className="llm-admin-sidebar" aria-label={t('llm_admin_sections', 'LLM settings sections')}>
+              {[
+                  { id: 'features', icon: 'toggle_on', label: t('llm_features', 'Features') },
+                  { id: 'connection', icon: 'link', label: t('api_connection', 'API Connection') },
+                  { id: 'models', icon: 'model_training', label: t('model_selection', 'Model Selection') },
+                  { id: 'prompt', icon: 'description', label: t('system_prompt', 'System Prompt') },
+                  { id: 'compliance', icon: 'fact_check', label: t('compliance_review', 'Compliance Review') },
+                  { id: 'prompts', icon: 'edit_note', label: t('ai_prompts', 'AI Prompts') },
+              ].map(s => (
+                  <button
+                      key={s.id}
+                      type="button"
+                      role="tab"
+                      className={`llm-admin-nav-item${activeSection === s.id ? ' active' : ''}`}
+                      aria-current={activeSection === s.id ? 'page' : undefined}
+                      onClick={() => setActiveSection(s.id)}
+                  >
+                      <span aria-hidden="true">
+                          <MaterialIcon type={s.icon} className="llm-admin-nav-icon" />
+                      </span>
+                      {s.label}
+                  </button>
+              ))}
+          </nav>
+
+          <form onSubmit={handleSave} className="llm-admin-content">
               {/* ── Section 1: Features ── */}
               {/* overleaf-lab: master on/off switches per AI feature */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="features">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">1</span>
                       <MaterialIcon type="toggle_on" />
@@ -356,7 +387,7 @@ export default function LLMAdminSettingsPage() {
               </div>
 
               {/* ── Section 2: API Connection ── */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="connection">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">2</span>
                       <MaterialIcon type="link" />
@@ -509,7 +540,7 @@ export default function LLMAdminSettingsPage() {
               </div>
 
               {/* ── Section 3: Model Selection ── */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="models">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">3</span>
                       <MaterialIcon type="model_training" />
@@ -672,7 +703,7 @@ export default function LLMAdminSettingsPage() {
               </div>
 
               {/* ── Section 4: System Prompt ── */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="prompt">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">4</span>
                       <MaterialIcon type="description" />
@@ -719,7 +750,7 @@ export default function LLMAdminSettingsPage() {
               </div>
 
               {/* ── Section 5: Compliance Review ── */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="compliance">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">5</span>
                       <MaterialIcon type="fact_check" />
@@ -919,7 +950,7 @@ export default function LLMAdminSettingsPage() {
 
               {/* ── Section 6: AI Prompts ── */}
               {/* overleaf-lab: editable prompts behind each AI feature; empty means built-in default */}
-              <div className="llm-settings-section">
+              <div className="llm-settings-section" data-sec="prompts">
                   <div className="llm-settings-section-header">
                       <span className="llm-settings-section-badge">6</span>
                       <MaterialIcon type="edit_note" />

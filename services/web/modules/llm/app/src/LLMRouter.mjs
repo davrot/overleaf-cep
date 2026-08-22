@@ -111,6 +111,23 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/compliance/cancel/:jobId')
 
+        // overleaf-lab (owner request 2026-08-26): user-scoped shared LLM model
+        // selection — the File → "Select LLM Model" modal persists here, on the
+        // user profile, and follows the user across projects and browsers.
+        webRouter.get(
+            '/user/llm/selected-model',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.getSelectedModel
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm/selected-model')
+
+        webRouter.post(
+            '/user/llm/selected-model',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.saveSelectedModel
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm/selected-model')
+
         // overleaf-lab: BYO provider rows (user-scoped). Every handler enforces
         // the LLM_ALLOW_USER_SETTINGS gate itself (F1): the router registers them
         // unconditionally, and disabled deployments answer 403, so there is no

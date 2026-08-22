@@ -426,6 +426,41 @@ async function llmSettingsPage(req, res) {
     res.render(new URL('../../app/views/llm-settings.pug', import.meta.url).pathname, context)
 }
 
+/*
+ * overleaf-lab (owner request 2026-08-26): user-scoped shared LLM model
+ * selection. The single "Select LLM Model" choice (File menu) drives every AI
+ * surface (chat, review, generators, ask-AI). The selection is stored on the
+ * user profile (llmSelectedModel) so it follows the user across projects and
+ * browsers — not per project. Value is a model id, a namespaced
+ * `u:<rowId>:<model>` BYO id, or '' (deployment default). No BYO gate here:
+ * picking the site model is always allowed; a BYO value simply 403s at run
+ * time on deployments without LLM_ALLOW_USER_SETTINGS.
+ */
+const SELECTED_MODEL_MAX = 500
+
+async function getSelectedModel(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) {
+        return res.status(401).json({ ok: false, error: 'unauthorized', message: 'Login required' })
+    }
+    const userDoc = await User.findOne({ _id: userId }).lean()
+    const selected = typeof userDoc?.llmSelectedModel === 'string' ? userDoc.llmSelectedModel : ''
+    res.json({ ok: true, selected })
+}
+
+async function saveSelectedModel(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) {
+        return res.status(401).json({ ok: false, error: 'unauthorized', message: 'Login required' })
+    }
+    const value = typeof req.body?.selected === 'string' ? req.body.selected.trim() : ''
+    if (value.length > SELECTED_MODEL_MAX) {
+        return res.status(400).json({ ok: false, error: 'bad-request', message: 'Model value too long' })
+    }
+    await User.updateOne({ _id: userId }, { $set: { llmSelectedModel: value } })
+    res.json({ ok: true, selected: value })
+}
+
 export default {
     isUserSettingsAllowed,
     requireUserSettingsAllowed,
@@ -436,5 +471,8 @@ export default {
     updateProvider: expressify(updateProvider),
     deleteProvider: expressify(deleteProvider),
     checkProviderConnection: expressify(checkProviderConnection),
-    scanProviderModels: expressify(scanProviderModels)
+    scanProviderModels: expressify(scanProviderModels),
+    // overleaf-lab: user-scoped shared model selection (File → "Select LLM Model")
+    getSelectedModel: expressify(getSelectedModel),
+    saveSelectedModel: expressify(saveSelectedModel)
 }
