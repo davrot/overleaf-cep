@@ -52,6 +52,39 @@
     --llm-suggestions-max-width: 350px;
 }
 
+// overleaf-lab (owner request 2026-08-25): the `--llm-chat-*` chain has to be
+// re-resolved INSIDE the editor-theme scope. Custom properties are resolved
+// where they are DEFINED (:root), so the two-hop lookup
+// (--llm-chat-bg → --wf-panel-bg → --wf-editor-bg) froze the :root values
+// for everything rendered in the rail/toolbar scope. Defining the same names
+// one level closer (on .llm-wf-editor-scoped itself) makes the chain resolve
+// against the editor-derived --wf-* values on that element — the chat pane and
+// every chat surface then follow the Editor theme, exactly like the toolbar.
+.llm-wf-editor-scoped {
+    --llm-chat-bg: var(--wf-panel-bg, #fafafa);
+    --llm-chat-color: var(--wf-panel-text, #1e293b);
+    --llm-chat-text-color: var(--wf-panel-text, #1e293b);
+    --llm-chat-instructions-color: var(--wf-muted, #475569);
+    --llm-chat-new-message-bg: transparent;
+    --llm-chat-new-message-textarea-color: var(--wf-panel-text, #1e293b);
+    --llm-chat-new-message-textarea-bg: var(--wf-row-hi, #fff);
+    --llm-chat-new-message-textarea-border: var(--wf-border-in, #dfe5ec);
+    --llm-chat-new-message-border: var(--wf-panel-border, #e3e8ef);
+    --llm-chat-message-user-bg: var(--wf-accent, #28518f);
+    --llm-chat-message-user-text: #fff;
+    --llm-chat-message-assistant-bg: var(--wf-row-hi, #fff);
+    --llm-chat-message-assistant-text: var(--wf-panel-text, #1e293b);
+    --llm-chat-code-bg: var(--wf-code-bg, #f1f4f8);
+    --llm-chat-code-text: var(--wf-panel-text, #1e293b);
+    --llm-chat-suggestions-bg: var(--wf-row-hi, #fff);
+    --llm-chat-suggestions-color: var(--wf-panel-text, #1e293b);
+    --llm-chat-suggestions-title-color: var(--wf-muted, #475569);
+    --llm-chat-suggestion-item-bg: var(--wf-row-hi, #fff);
+    --llm-chat-suggestion-item-color: var(--wf-panel-text, #1e293b);
+    --llm-model-selector-label-color: var(--wf-muted, #475569);
+    --llm-model-selector-select-color: var(--wf-panel-text, #1e293b);
+}
+
 // overleaf-lab: dark-theme values for the --wf-* tokens. Top-level
 // [data-bs-theme=dark] (attribute on <html>, the same selector shape the app
 // itself uses) so the variables flip in place and everything below inherits.
