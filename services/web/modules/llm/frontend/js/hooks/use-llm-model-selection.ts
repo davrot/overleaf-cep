@@ -49,8 +49,10 @@ export function useLLMModelSelection() {
                 }
                 for (const row of data.userRows || []) {
                     for (const m of row.models || []) {
+                        // overleaf-lab: the backend already returns fully
+                        // namespaced ids (u:<rowId>:<model>) — use as-is.
                         opts.push({
-                            value: `u:${row.id}:${m.id}`,
+                            value: m.id,
                             label: m.name || m.id,
                             rowName: row.name,
                         })
