@@ -16,7 +16,6 @@ import DOMPurify from 'dompurify'
 import getMeta from '@/utils/meta'
 import { postJSON } from '@/infrastructure/fetch-json'
 import MaterialIcon from '@/shared/components/material-icon'
-import { readSelectedModel } from '../utils/llm-selected-model'
 import '../../stylesheets/llm-ui.scss'
 import { useLLMFeatures } from '../hooks/use-llm-features'
 import { useLLMPrompts } from '../hooks/use-llm-prompts'
@@ -35,6 +34,9 @@ type ParaphraseKind =
     | 'mathfix'
     | 'summarize'
     | 'explain'
+    | 'translate'
+    | 'synonyms'
+    | 'checkCitations'
     | 'title'
     | 'abstract'
     | 'keywords'
@@ -46,11 +48,83 @@ const kindTitleMap: Record<ParaphraseKind, string> = {
     summarize: 'Summarize',
     explain: 'Explain',
     mathfix: 'Fix formula syntax',
+    translate: 'Translate',
+    synonyms: 'Synonyms',
+    checkCitations: 'Check citations',
     title: 'Title Generator',
     abstract: 'Abstract Generator',
     keywords: 'Keyword Generator',
     chat: 'AI Response',
 }
+
+// overleaf-lab (2026-08, reference-synced): the context menu is now CONTEXT-
+// SENSITIVE like the reference product: with a selection → text
+// transformations (Rephrase / Shorten / More scientific / Translate→language /
+// Synonyms / Check citations); without a selection → the whole-document
+// generators (Title / Abstract / Keywords).
+const TRANSLATE_LANGUAGES: string[] = [
+    'Albanian',
+    'Arabic',
+    'Bulgarian',
+    'Chinese (Simplified)',
+    'Chinese (Traditional)',
+    'Czech',
+    'Dutch',
+    'English',
+    'Filipino',
+    'French',
+    'German',
+    'Greek',
+    'Hebrew',
+    'Hindi',
+    'Hungarian',
+    'Indonesian',
+    'Italian',
+    'Japanese',
+    'Korean',
+    'Malay',
+    'Persian (Farsi)',
+    'Polish',
+    'Portuguese',
+    'Romanian',
+    'Russian',
+    'Serbian',
+    'Spanish',
+    'Swedish',
+    'Turkish',
+    'Ukrainian',
+    'Vietnamese',
+]
+
+const askAiMenuKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        e.currentTarget.click()
+    }
+}
+
+const AskAiMenuItem = ({
+    icon,
+    label,
+    onClick,
+}: {
+    icon?: string
+    label: string
+    onClick: () => void
+}) => (
+    <div
+        className="llm-item"
+        onClick={onClick}
+        role="menuitem"
+        tabIndex={0}
+        onKeyDown={askAiMenuKeyDown}
+    >
+        <span aria-hidden="true" className={icon ? undefined : 'llm-item-icon-spacer'}>
+            {icon ? <MaterialIcon type={icon} /> : null}
+        </span>
+        {label}
+    </div>
+)
 
 function escapeHtml(s: string) {
     return s.replace(
@@ -136,12 +210,20 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     const [kind, setKind] = useState<ParaphraseKind>('paraphrase')
 
     const viewRef = useRef<EditorView | null>(null)
+    // overleaf-lab: the imperative API (show/openMenu) captured each render so
+    // the editor toolbar "Ask AI" button can open the context menu via event.
+    const apiRef = useRef<{
+        show: (view: EditorView) => void
+        openMenu: () => void
+        hide: () => void
+        getSelectedText: () => string
+    } | null>(null)
     const wrapRef = useRef<HTMLDivElement | null>(null)
     const panelRef = useRef<HTMLDivElement | null>(null)
     const inputRef = useRef<HTMLTextAreaElement | null>(null)
     const editRef = useRef<HTMLTextAreaElement | null>(null)
 
-    const postToAPI = async (mode: number, ask: string) => {
+    const postToAPI = async (mode: number, ask: string, vars?: Record<string, string>) => {
         const projectId = getMeta('ol-project_id')
 
         // overleaf-lab: PR item 13 — title/abstract are document-level generators:
@@ -165,6 +247,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             9: `Propose one concise, specific academic title for the following content. Output only the title text: no quotes, no label, no trailing period.\n\n${basisText}`,
             10: `Write a single self-contained academic abstract (about 150 to 250 words) for the following content. Output only the abstract text: no heading, no label, and no code fences.\n\n${basisText}`,
             11: `Fix ONLY the LaTeX/math syntax problems in the following selection (mismatched braces or delimiters, invalid operators, wrong or missing math environments). Preserve the meaning and wording exactly. Output only the corrected LaTeX, with no preamble, no explanation, and no code fences.\n\n${basisText}`,
+            12: `Translate the following LaTeX text into {{language}}. Keep every LaTeX command, math, and citation key exactly as-is (translate only the natural-language text). Output only the translated text, with no preamble and no code fences.\n\n${basisText}`,
+            13: `Suggest two or three well-chosen academic synonyms or phrasings for each key content word in the following LaTeX text, one per line, in the format "word — alternative(s)". Keep every LaTeX command intact and do not rewrite the whole text. Output only the list, with no preamble and no code fences.\n\n${basisText}`,
+            14: `Check the citations in the following LaTeX selection (\\cite, \\citep, \\citet and similar). Report, only if there is a problem: malformed or suspicious bibliography keys, duplicate keys, or missing keys. If everything looks fine, reply exactly: OK. Keep the answer short and specific.\n\n${basisText}`,
         }
 
         // overleaf-lab: numeric transform modes map to admin action keys. Mode 0
@@ -181,6 +266,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             9: 'title',
             10: 'abstract',
             11: 'mathFix',
+            12: 'translate',
+            13: 'synonyms',
+            14: 'checkCitations',
         }
 
         // overleaf-lab: hardcoded system prompt kept verbatim as the fallback
@@ -202,6 +290,15 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         // appending it when the template omits the placeholder), and fall back
         // to the hardcoded modePrompts entry when no admin template exists.
         let userContent: string
+        const fillVars = (template: string, base: string) => {
+            let out = template.includes('{{selection}}')
+                ? template.split('{{selection}}').join(base)
+                : template
+            for (const [key, value] of Object.entries(vars || {})) {
+                out = out.split(`{{${key}}}`).join(value)
+            }
+            return out
+        }
         if (mode >= 1) {
             const actionKey = modeActionKey[mode]
             const template = actionKey
@@ -209,10 +306,10 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                 : undefined
             if (typeof template === 'string' && template.trim() !== '') {
                 userContent = template.includes('{{selection}}')
-                    ? template.split('{{selection}}').join(basisText)
+                    ? fillVars(template, basisText)
                     : `${template}\n\n${basisText}`
             } else {
-                userContent = modePrompts[mode] || ask
+                userContent = fillVars(modePrompts[mode] || ask, basisText)
             }
         } else {
             // overleaf-lab: PR item 10 — when the user asks while a passage is
@@ -236,17 +333,13 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             },
         ]
 
-        // overleaf-lab: reuse the model currently selected in the chat panel so
-        // "Ask AI" follows the same model. When nothing is stored (chat never
-        // opened / storage disabled) we omit `model`, keeping the previous
-        // behavior: the backend uses the user's personal model or the shared one.
-        const selectedModelId = readSelectedModel(projectId)
-
+        // overleaf-lab (owner decision 2026-08-26): the request carries NO
+        // explicit model — the backend resolves the user's profile selection
+        // (File → "Select LLM Model") itself, so every surface always runs on
+        // exactly the user's chosen model (no stale local bridge values).
         try {
             const json = await postJSON('/project/' + projectId + '/llm/chat', {
-                body: selectedModelId
-                    ? { messages, model: selectedModelId }
-                    : { messages },
+                body: { messages },
             })
             if (json && typeof json.content === 'string') {
                 return json.content
@@ -260,7 +353,8 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
     const startFetch = async (
         mode: number,
         k: ParaphraseKind,
-        ask?: string
+        ask?: string,
+        vars?: Record<string, string>
     ) => {
         setKind(k)
         setPanelMode(k === 'chat' ? 'chat' : 'paraphrase')
@@ -269,7 +363,7 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         setShowDiff(false)
         setResult('')
 
-        const resp = await postToAPI(mode, (ask ?? query).trim())
+        const resp = await postToAPI(mode, (ask ?? query).trim(), vars)
         setResult(resp)
         setLoading(false)
     }
@@ -345,11 +439,29 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         return () => root.removeEventListener('click', handler)
     }, [])
 
-    useImperativeHandle(ref, () => ({
+    useImperativeHandle(ref, () => {
+        const api = {
         show: (view: EditorView) => {
             viewRef.current = view
             const sel = view.state.selection.main
-            if (sel.empty) return
+            // overleaf-lab (2026-08): allow opening with NO selection (editor
+            // toolbar "Ask AI" button) — the menu then shows the generators,
+            // matching the reference's context sensitivity.
+            const isEmpty = sel.empty
+            if (isEmpty) {
+                const containerW = wrapRef.current?.getBoundingClientRect()?.width ?? window.innerWidth
+                const width = Math.max(320, Math.min(560, containerW - 24))
+                setPanelRect({ top: 12, left: Math.round(containerW - width - 12), width })
+                setSelectionText('')
+                setSelectionRange(null)
+                setAnchorShown(false)
+                setPanelMode('hidden')
+                document.dispatchEvent(
+                    new CustomEvent('llm-toolbar-active', { detail: { active: true } })
+                )
+                // the toolbar button's caller immediately opens the menu
+                return
+            }
 
             const wrapRect = wrapRef.current?.getBoundingClientRect()
             const editorRect = view.dom.getBoundingClientRect()
@@ -432,7 +544,24 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
             setPanelMode('menu')
         },
         getSelectedText: () => selectionText,
-    }))
+        }
+        apiRef.current = api
+        return api
+    })
+
+    // overleaf-lab (2026-08): the editor toolbar "Ask AI" button (a module in
+    // sourceEditorToolbarStartButtons, rendered outside this React tree) asks
+    // for the context menu via this document event, passing its view.
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const view = (e as CustomEvent).detail?.view as EditorView | undefined
+            if (!view) return
+            apiRef.current?.show(view)
+            apiRef.current?.openMenu()
+        }
+        document.addEventListener('ol-llm-open-ask-ai', handler)
+        return () => document.removeEventListener('ol-llm-open-ask-ai', handler)
+    }, [])
 
     useEffect(() => {
         if (panelMode !== 'hidden') {
@@ -512,6 +641,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         mathfix: 11,
         summarize: 7,
         explain: 8,
+        translate: 12,
+        synonyms: 13,
+        checkCitations: 14,
         title: 9,
         abstract: 10,
         keywords: 0, // overleaf-lab: whole-document generator (see startGenerate)
@@ -622,6 +754,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
         .llm-item{min-height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;cursor:pointer;color:var(--wf-panel-text,#1e293b)}
         .llm-item:hover{background:var(--wf-row-hover,#eef1f5)}
         .llm-item .material-symbols{font-size:18px;color:var(--wf-accent,#28518f);flex:0 0 auto}
+        /* overleaf-lab (2026-08): keep labels aligned when an item has no icon
+           (e.g. the Translate language submenu). */
+        .llm-item-icon-spacer{width:18px;flex:0 0 auto;display:inline-block}
         .llm-item-chevron{margin-left:auto;color:var(--wf-muted,#8fa2bd)}
         .llm-menu-divider{height:1px;background:var(--wf-border-in,#dfe5ec);margin:6px 4px}
         .llm-anchor .material-symbols{font-size:15px}
@@ -712,138 +847,60 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                             style={{ width: Math.min(220, panelRect.width - 36) }}
                             role="menu"
                         >
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(1, 'paraphrase')}
-                                role="menuitem"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                <span aria-hidden="true"><MaterialIcon type="transform" /></span>
-                                Paraphrase
-                            </div>
+                            {selectionText ? (
+                                <>
 
-                            <div
-                                style={{ position: 'relative' }}
-                                onMouseEnter={() => setSubmenu('style')}
-                                onMouseLeave={() => setSubmenu(null)}
-                            >
-                                <div className="llm-item">
-                                    <span aria-hidden="true"><MaterialIcon type="palette" /></span>
-                                    Change style
-                                    <span aria-hidden="true" className="llm-item-chevron">
-                                        <MaterialIcon type="chevron_right" style={{ fontSize: 18 }} />
-                                    </span>
-                                </div>
-                                {submenu === 'style' && (
+                                    <AskAiMenuItem icon="transform" label="Rephrase" onClick={() => startFetch(1, 'paraphrase')} />
+                                    <AskAiMenuItem icon="text_fields" label="Shorten" onClick={() => startFetch(3, 'style')} />
+                                    <AskAiMenuItem icon="school" label="More scientific" onClick={() => startFetch(2, 'style')} />
                                     <div
-                                        style={{
-                                            position: 'absolute',
-                                            left: '104%',
-                                            top: 0,
-                                            minWidth: 120,
-                                        }}
-                                        className="llm-menu"
+                                        style={{ position: 'relative' }}
+                                        onMouseEnter={() => setSubmenu('style')}
+                                        onMouseLeave={() => setSubmenu(null)}
                                     >
-                                        <div
-                                            className="llm-item"
-                                            onClick={() => startFetch(2, 'style')}
-                                            role="button"
-                                            tabIndex={0}
-                                            onKeyDown={e => {
-                                            if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault()
-                                            e.currentTarget.click()
-                                            }
-                                            }}
-                                        >
-                                        <span aria-hidden="true"><MaterialIcon type="science" style={{ fontSize: 14 }} /></span>
-                                            Scientific
+                                        <div className="llm-item">
+                                            <span aria-hidden="true"><MaterialIcon type="translate" /></span>
+                                            Translate
+                                            <span aria-hidden="true" className="llm-item-chevron">
+                                                <MaterialIcon type="chevron_right" style={{ fontSize: 18 }} />
+                                            </span>
                                         </div>
-                                        <div
-                                            className="llm-item"
-                                            onClick={() => startFetch(3, 'style')}
-                                            role="button"
-                                            tabIndex={0}
-                                            onKeyDown={e => {
-                                            if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault()
-                                            e.currentTarget.click()
-                                            }
-                                            }}
-                                        >
-                                        <span aria-hidden="true"><MaterialIcon type="subject" style={{ fontSize: 14 }} /></span>
-                                            Concise
-                                        </div>
-                                        <div
-                                            className="llm-item"
-                                            onClick={() => startFetch(4, 'style')}
-                                            role="button"
-                                            tabIndex={0}
-                                            onKeyDown={e => {
-                                            if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault()
-                                            e.currentTarget.click()
-                                            }
-                                            }}
-                                        >
-                                        <span aria-hidden="true"><MaterialIcon type="edit" style={{ fontSize: 14 }} /></span>
-                                            Punchy
-                                        </div>
+                                        {submenu === 'style' && (
+                                            <div
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: '104%',
+                                                    top: 0,
+                                                    minWidth: 160,
+                                                    maxHeight: 320,
+                                                    overflowY: 'auto',
+                                                }}
+                                                className="llm-menu"
+                                            >
+                                                {TRANSLATE_LANGUAGES.map(lang => (
+                                                    <AskAiMenuItem
+                                                        key={lang}
+                                                        icon=""
+                                                        label={lang}
+                                                        onClick={() => startFetch(12, 'translate', undefined, { language: lang })}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(7, 'summarize')}
-                                role="menuitem"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                <span aria-hidden="true"><MaterialIcon type="science" /></span>
-                                Summarize
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(8, 'explain')}
-                                role="menuitem"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                <span aria-hidden="true"><MaterialIcon type="school" /></span>
-                                Explain
-                            </div>
-                            <div
-                                className="llm-item"
-                                onClick={() => startFetch(11, 'mathfix')}
-                                role="menuitem"
-                                tabIndex={0}
-                                onKeyDown={e => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                e.currentTarget.click()
-                                }
-                                }}
-                            >
-                                <span aria-hidden="true"><MaterialIcon type="calculate" /></span>
-                                Fix formula syntax
-                            </div>
+                                    <div className="llm-menu-divider" role="separator" />
+                                    <AskAiMenuItem icon="search" label="Synonyms" onClick={() => startFetch(13, 'synonyms')} />
+                                    <AskAiMenuItem icon="fact_check" label="Check citations" onClick={() => startFetch(14, 'checkCitations')} />
+                                </>
+                            ) : (
+                                <>
+                                    {/* overleaf-lab (reference-synced): nothing selected —
+                                        whole-document generators (like the reference menu) */}
+                                    <AskAiMenuItem icon="password" label="Title Generator" onClick={() => startGenerate('title')} />
+                                    <AskAiMenuItem icon="subject" label="Abstract Generator" onClick={() => startGenerate('abstract')} />
+                                    <AskAiMenuItem icon="label" label="Keywords Generator" onClick={() => startGenerate('keywords')} />
+                                </>
+                            )}
 
                         </div>
                     </div>

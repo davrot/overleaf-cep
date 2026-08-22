@@ -1044,7 +1044,7 @@ export default function LLMAdminSettingsPage() {
                                       'Each template runs on the selected text. Use {{selection}} where the selected text should be inserted; if omitted, it is appended.'
                                   )}
                               </OLFormText>
-                              {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'mathFix', 'title', 'abstract'].map(key => (
+                              {['paraphrase', 'academic', 'concise', 'punchy', 'split', 'join', 'summarize', 'explain', 'mathFix', 'translate', 'synonyms', 'checkCitations', 'title', 'abstract'].map(key => (
                                   <div key={key} className="ol-llm-admin-settings__mb-lg">
                                       <OLFormGroup controlId={`llm-action-${key}`} className="ol-llm-admin-settings__mb-xs">
                                           <OLFormLabel>

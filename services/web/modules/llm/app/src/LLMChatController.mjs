@@ -675,14 +675,14 @@ const GENERATOR_TYPES = {
         maxOutputTokens: 4000,
         temperature: 0.4,
         instruction:
-            'Write ONE concise, grammatically correct title for the document below. ' +
+            'Write ONE concise, grammatically correct title for the document below, in the same language as the document\'s main body text. ' +
             'Return ONLY the title text — no quotes, no numbering, no explanation.'
     },
     abstract: {
         maxOutputTokens: 8000,
         temperature: 0.3,
         instruction:
-            'Write a structured abstract (150–250 words) for the document below: ' +
+            'Write a structured abstract (150–250 words) for the document below, in the same language as the document\'s main body text: ' +
             'purpose, methods, key results/findings, and conclusion in that order. ' +
             'Return ONLY the abstract text — no heading, no quotes, no explanation.'
     },
@@ -691,7 +691,7 @@ const GENERATOR_TYPES = {
         temperature: 0.2,
         instruction:
             'Generate 5–8 keyword phrases for the document below that capture its ' +
-            'core topics, methods, and domain. Return ONLY the keywords, ' +
+            'core topics, methods, and domain, in the same language as the document\'s main body text. Return ONLY the keywords, ' +
             'separated by commas, in order of importance.'
     }
 }

@@ -9,7 +9,6 @@
 // lane or any BYO row — the BYO-first stance of this deployment.
 import { postJSON } from '@/infrastructure/fetch-json'
 import getMeta from '@/utils/meta'
-import { readSelectedModel } from './llm-selected-model'
 
 export interface CompileFixResult {
     ok: true
@@ -96,13 +95,16 @@ export async function requestCompileFix(
 
     // overleaf-lab: the SHARED "Select LLM Model" choice drives every LLM
     // surface, Error Assist included (empty = deployment default lane).
-    const model = readSelectedModel(projectId)
+    // overleaf-lab (owner item 2026-08-26): NO explicit model here — the
+    // backend resolves the user's profile selection (File → "Select LLM
+    // Model") for every surface, so "Suggest a fix" always runs on exactly
+    // the user's chosen model (previously a stale local bridge value could
+    // win over it).
     const body: Record<string, unknown> = {
         file: entry.file,
         line: entry.line,
         level: entry.level || 'error',
         message: entry.message || entry.raw || '',
-        ...(model ? { model } : {})
     }
     if (previous && (previous.old || previous.new)) {
         body.hint = { old: previous.old, new: previous.new }

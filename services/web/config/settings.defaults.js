@@ -1095,7 +1095,14 @@ module.exports = {
         '../modules/symbol-palette/frontend/components/symbol-palette'
       ),
     ],
-    sourceEditorToolbarStartButtons: [],
+    sourceEditorToolbarStartButtons: [
+        // overleaf-lab (2026-08, reference-synced): the editor toolbar "Ask AI"
+        // (smart_toy) button — opens the LLM context menu.
+        Path.resolve(
+            __dirname,
+            '../modules/llm/frontend/js/extensions/llm-editor-toolbar-ask-ai'
+        ),
+    ],
     sourceEditorToolbarButtonGroups: [],
     sourceEditorToolbarComponents: [],
     sourceEditorToolbarEndButtons: [],

@@ -197,8 +197,11 @@ export const useLLMChat = () => {
                 // the UI would hang on "loading").
                 const data: LLMResponse = await postJSON('/project/' + projectId + '/llm/chat', {
                     body: {
+                        // overleaf-lab (2026-08-26): no explicit model — the
+                        // backend resolves the user's profile selection, so
+                        // chat, ask-AI, review, generators and compile-fix all
+                        // run on exactly the user's chosen model.
                         messages: newMessages,
-                        model: selectedModel,
                     },
                     signal: abortControllerRef.current.signal,
                     swallowAbortError: false,
@@ -238,7 +241,7 @@ export const useLLMChat = () => {
                 abortControllerRef.current = null
             }
         },
-        [projectId, selectedModel]
+        [projectId]
     )
 
     const stopGeneration = useCallback(() => {
