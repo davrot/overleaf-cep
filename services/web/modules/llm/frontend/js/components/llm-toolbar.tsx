@@ -843,6 +843,9 @@ const LLMToolbar = forwardRef<LLMToolbarHandle, Record<string, never>>((_, ref) 
                                 }
                                 }}
                             >
+                                <span className="material-symbols" style={{ fontSize: 18 }} aria-hidden="true" translate="no">
+                                    model_training
+                                </span>
                                 Select LLM Model…
                             </div>
 

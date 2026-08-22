@@ -38,6 +38,24 @@ export function applyEditorThemeVars(scope: HTMLElement | null): void {
     const { bg, fg } = readEditorThemeColors()
     if (bg) scope.style.setProperty('--wf-editor-bg', bg)
     if (fg) scope.style.setProperty('--wf-editor-fg', fg)
+    // Keep the accent legible on DARK editor themes (e.g. dracula/monokai
+    // chosen while the overall UI stays light): navy on near-black is
+    // unreadable, so switch to the light blue accent automatically.
+    if (bg) {
+        const m = bg.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/)
+        if (m) {
+            const lum = (0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])) / 255
+            if (lum < 0.5) {
+                scope.style.setProperty('--wf-accent', '#6597e0')
+                scope.style.setProperty('--wf-accent-hi', '#7dabec')
+                scope.style.setProperty('--wf-accent-soft', 'rgba(101, 151, 224, 0.16)')
+                return
+            }
+        }
+    }
+    scope.style.setProperty('--wf-accent', '#28518f')
+    scope.style.setProperty('--wf-accent-hi', '#214475')
+    scope.style.setProperty('--wf-accent-soft', 'rgba(40, 81, 143, 0.10)')
 }
 
 export interface EditorThemeWatcher {

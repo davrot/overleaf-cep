@@ -173,7 +173,7 @@ export default function LLMFileMenuCommands() {
                             >
                                 {options.map(o => (
                                     <option key={o.value || 'default'} value={o.value}>
-                                        {o.rowName ? `${o.rowName} · ${o.label}` : o.label}
+                                        {o.label}
                                     </option>
                                 ))}
                             </select>
