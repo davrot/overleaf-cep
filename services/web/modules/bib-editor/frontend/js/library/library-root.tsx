@@ -8,6 +8,10 @@
  * my Library app inside `project-ds-nav-main` so the core DS stylesheets
  * (main-style.css) position it exactly like the project list.
  *
+ * Provider split (like project-list-root): the chrome's theme hooks
+ * (`useActiveOverallTheme` → SplitTest + UserSettings contexts) run in
+ * `LibraryChrome`, INSIDE the provider elements.
+ *
  * The context owns the Library/Trash view state (client-side switch);
  * the initial view comes from the `ol-libraryView` meta tag set by the
  * page routes (libraryPage → 'library', libraryTrashPage → 'trash').
@@ -35,19 +39,13 @@ function initialView(): LibraryView {
   return meta?.getAttribute('content') === 'trash' ? 'trash' : 'library'
 }
 
-export default function LibraryRoot() {
-  // The meta tag is static per page load; read it once.
-  const view = React.useMemo(() => initialView(), [])
+function LibraryChrome({ initialView }: { initialView: LibraryView }) {
   const activeOverallTheme = useActiveOverallTheme()
   const navbarProps = getMeta('ol-navbar')
   const footerProps = getMeta('ol-footer')
 
   return (
-    /* Core DS chrome (navbar/sidebar/theme toggle) needs the same context
-       stack /project uses (project-list-root): SplitTest + UserSettings. */
-    <SplitTestProvider>
-      <UserSettingsProvider>
-        <div className="project-ds-nav-page website-redesign library-enabled">
+    <div className="project-ds-nav-page website-redesign library-enabled">
       <SystemMessages />
       <DefaultNavbar
         {...navbarProps}
@@ -68,17 +66,27 @@ export default function LibraryRoot() {
           <div className="project-ds-nav-content">
             <div className="project-ds-nav-main">
               <main aria-labelledby="main-content">
-                <LibraryProvider initialView={view}>
+                <LibraryProvider initialView={initialView}>
                   <LibraryPage />
                 </LibraryProvider>
               </main>
             </div>
-            <Footer {...(footerProps as object)} />
+            <Footer {...footerProps} />
           </div>
           <CookieBanner />
         </div>
       </div>
-        </div>
+    </div>
+  )
+}
+
+export default function LibraryRoot() {
+  // The meta tag is static per page load; read it once.
+  const view = React.useMemo(() => initialView(), [])
+  return (
+    <SplitTestProvider>
+      <UserSettingsProvider>
+        <LibraryChrome initialView={view} />
       </UserSettingsProvider>
     </SplitTestProvider>
   )
