@@ -107,6 +107,22 @@ describe('C5: buildImportRows (rows + conflicts)', () => {
     expect(rows[2].status).toBe('conflict')
   })
 
+  it('a library collision (key already in the document) is flagged kind:library (D10 Already-in-library tag)', () => {
+    const rows = buildImportRows(
+      [{ kind: 'bibtex', entry: { type: 'article', id: 'already', fields: {} } }],
+      [],
+      ['already']
+    )
+    expect(rows[0].status).toBe('conflict')
+    expect(rows[0].kind).toBe('library')
+  })
+
+  it('a duplicate key within the import is kind:duplicate', () => {
+    const rows = buildImportRows(items, [], [])
+    expect(rows[2].status).toBe('conflict')
+    expect(rows[2].kind).toBe('duplicate')
+  })
+
   it('an unresolved DOI line is a transient empty row', () => {
     const rows = buildImportRows(
       [{ kind: 'doi', raw: 'doi:10.1000/xyz' }],

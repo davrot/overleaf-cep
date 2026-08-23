@@ -155,6 +155,12 @@ export default function BibImportModal({
     )
   }, [importable, checkedRowIds, onImport])
 
+  // Reference D10 affordances:
+  //  - empty state (`bibtex-import-preview-empty`) when the paste yields
+  //    nothing importable (previewDone + zero importable rows)
+  //  - footer-warning when nothing is checked (Import shows why it's idle)
+  const previewEmpty = previewDone && importable.length === 0
+
   return (
     <OLModal show={show} onHide={onHidden} data-testid="bib-import-modal">
       <OLModalHeader>
@@ -211,51 +217,69 @@ export default function BibImportModal({
       ) : (
         <>
           <OLModalBody>
-            <div className="bibtex-import-preview-header">
-              <label className="bibtex-import-preview-check-all">
-                <input
-                  type="checkbox"
-                  aria-label={t('Select all')}
-                  checked={
-                    importable.length > 0 &&
-                    importable.every(r => checkedRowIds.includes(r.rowId))
-                  }
-                  disabled={importable.length === 0 || !previewDone}
-                  onChange={e => handleToggleSelectAll(e.target.checked)}
-                />
-              </label>
-              <div className="bibtex-import-preview-count">
-                {t('__count__ reference(s)', { count: importable.length })}
+            {previewEmpty ? (
+              <div className="bibtex-import-preview-empty">
+                {t('No references')}
               </div>
-            </div>
-            <div className="bibtex-import-preview-list">
-              {rows.map(row => (
-                <BibImportCard
-                  key={row.rowId}
-                  row={row}
-                  checked={checkedRowIds.includes(row.rowId)}
-                  onToggle={toggleRow}
-                  t={t}
-                />
-              ))}
-            </div>
+            ) : (
+              <>
+                <div className="bibtex-import-preview-header">
+                  <label className="bibtex-import-preview-check-all">
+                    <input
+                      type="checkbox"
+                      aria-label={t('Select all')}
+                      checked={
+                        importable.length > 0 &&
+                        importable.every(r => checkedRowIds.includes(r.rowId))
+                      }
+                      disabled={importable.length === 0 || !previewDone}
+                      onChange={e => handleToggleSelectAll(e.target.checked)}
+                    />
+                  </label>
+                  <div className="bibtex-import-preview-count">
+                    {t('__count__ reference(s)', { count: importable.length })}
+                  </div>
+                </div>
+                <div className="bibtex-import-preview-list">
+                  {rows.map(row => (
+                    <BibImportCard
+                      key={row.rowId}
+                      row={row}
+                      checked={checkedRowIds.includes(row.rowId)}
+                      onToggle={toggleRow}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </OLModalBody>
           <OLModalFooter>
-            <div className="bibtex-import-preview-footer-actions">
-              <div className="bibtex-import-preview-footer-count">
-                {t('__count__ reference(s)', { count: checkedCount })}
-              </div>
-              <div className="bibtex-import-preview-footer-buttons">
-                <OLButton variant="secondary" onClick={onHidden}>
-                  {t('cancel')}
-                </OLButton>
-                <OLButton
-                  variant="primary"
-                  disabled={!previewDone || checkedCount === 0}
-                  onClick={handleImport}
-                >
-                  {t('Import')}
-                </OLButton>
+            <div className="bibtex-import-preview-footer">
+              {checkedCount === 0 && !previewEmpty && (
+                <div className="bibtex-import-preview-footer-warning" role="alert">
+                  <span aria-hidden="true" className="material-symbols">error</span>
+                  <span>{t('Select at least 1 reference')}</span>
+                </div>
+              )}
+              <div className="bibtex-import-preview-footer-actions">
+                {!previewEmpty && (
+                  <div className="bibtex-import-preview-footer-count">
+                    {t('__count__ reference(s)', { count: checkedCount })}
+                  </div>
+                )}
+                <div className="bibtex-import-preview-footer-buttons">
+                  <OLButton variant="secondary" onClick={onHidden}>
+                    {t('cancel')}
+                  </OLButton>
+                  <OLButton
+                    variant="primary"
+                    disabled={previewEmpty || !previewDone || checkedCount === 0}
+                    onClick={handleImport}
+                  >
+                    {t('Import')}
+                  </OLButton>
+                </div>
               </div>
             </div>
           </OLModalFooter>
@@ -278,6 +302,11 @@ function BibImportCard({
 }) {
   const selectable =
     row.status === 'ok' || row.status === 'doi-ok' || row.status === 'conflict'
+  // D10: a library conflict (key already in the document) shows the
+  // "Already in your library" tag (reference capture); a duplicate
+  // (same key pasted twice in one batch) keeps the error line.
+  const alreadyInLibrary =
+    row.status === 'conflict' && row.kind === 'library'
 
   return (
     <div className="bibtex-import-preview-card">
@@ -316,7 +345,7 @@ function BibImportCard({
               {row.error || row.raw}
             </div>
           )}
-          {row.status === 'conflict' && (
+          {row.status === 'conflict' && !alreadyInLibrary && (
             <div className="bibtex-import-preview-card-conflict">
               {t('Key already exists in the file')}
             </div>
@@ -327,9 +356,16 @@ function BibImportCard({
             </div>
           )}
         </div>
-        {row.typeLabel && (
+        {(row.typeLabel || alreadyInLibrary) && (
           <div className="bibtex-import-preview-card-tags">
-            <span className="bib-type-tag">{row.typeLabel}</span>
+            {row.typeLabel && (
+              <span className="bib-type-tag">{row.typeLabel}</span>
+            )}
+            {alreadyInLibrary && (
+              <span className="bibtex-already-in-library">
+                {t('Already in your library')}
+              </span>
+            )}
           </div>
         )}
       </div>

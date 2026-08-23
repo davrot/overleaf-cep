@@ -114,7 +114,10 @@ export type BibImportRow = {
    * 'ok'       — BibTeX entry, importable
    * 'doi-ok'   — resolved from a DOI line (importable)
    * 'error'    — parse failure / failed DOI (NOT importable)
-   * 'conflict' — key collides with the doc or another row (pre-unchecked)
+   * 'conflict' — key collides with the doc or another row (pre-unchecked;
+   *               `kind: 'library'` marks keys already in the doc — the
+   *               import card shows the "Already in your library" tag, and
+   *               `kind: 'duplicate'` marks keys duplicated in the batch)
    * 'empty'    — transient: the DOI line is still resolving
    */
   status: 'ok' | 'doi-ok' | 'error' | 'conflict' | 'empty'
@@ -132,6 +135,9 @@ export type BibImportRow = {
   typeLabel: string
   /** Collision: the colliding key */
   conflictWith?: string
+  /** Which conflict: 'library' = key in the document ("Already in your
+      library" tag), 'duplicate' = key duplicated inside the batch */
+  kind?: 'library' | 'duplicate'
 }
 
 /**
@@ -211,6 +217,7 @@ export function buildImportRows(
           ...row,
           status: 'conflict',
           conflictWith: id === '' ? '(no citation key)' : id,
+          kind: id !== '' && existingIds.includes(id) ? 'library' : 'duplicate',
         }
       } else {
         seen.add(id)
