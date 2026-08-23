@@ -2744,5 +2744,8 @@
   "zotero_reference_loading_error_not_linked": "",
   "zotero_sync_description": "",
   "zotero_upgrade_prompt_content": "",
-  "zotero_upgrade_prompt_title": ""
+  "zotero_upgrade_prompt_title": "",
+  "No references": "",
+  "Select at least 1 reference": "",
+  "Already in your library": ""
 }
