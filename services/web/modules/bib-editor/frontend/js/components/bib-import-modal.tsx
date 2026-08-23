@@ -50,19 +50,27 @@ import {
 type Props = {
   show: boolean
   existingIds: string[]
+  /** The open document's source (context; the extension guards against
+   *  `expectedSource`). */
+  source?: string
   /** The source snapshot the extension guards the import against */
   expectedSource: string
   /** Fired for the Import button (the panel dispatches the guarded event) */
   onImport: (entries: BibEntry[]) => void
   onHidden: () => void
+  /** Library (SaaS): pre-fill the paste step (Upload .bib file → same
+   *  pipeline). Default empty string. */
+  initialText?: string
 }
 
 export default function BibImportModal({
   show,
   existingIds,
+  source,
   expectedSource,
   onImport,
   onHidden,
+  initialText = '',
 }: Props) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'paste' | 'preview'>('paste')
@@ -71,6 +79,7 @@ export default function BibImportModal({
   const [checkedRowIds, setCheckedRowIds] = useState<string[]>([])
   const [previewDone, setPreviewDone] = useState(false)
   void expectedSource
+  void source
 
   // Reset to a fresh "Add reference" → paste step whenever the modal opens.
   // `show` is the only remount signal (the component stays mounted to
@@ -78,11 +87,12 @@ export default function BibImportModal({
   useEffect(() => {
     if (show) {
       setMode('paste')
-      setText('')
+      setText(initialText)
       setRows([])
       setCheckedRowIds([])
       setPreviewDone(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show])
 
   const handlePreview = useCallback(async () => {

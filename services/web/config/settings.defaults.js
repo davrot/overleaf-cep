@@ -841,7 +841,15 @@ module.exports = {
 
     showSubscriptionLink: false,
 
-    header_extras: [],
+    // Top-nav links. Library entry: the bib-editor module's per-user
+    // reference library (/library, LIBRARY_PLAN.md D-C4), gated by the
+    // same env var as the module itself (default: enabled).
+    header_extras:
+      process.env.OVERLEAF_BIB_LIBRARY !== 'false'
+        ? [
+            { text: 'Library', url: '/library', class: 'subdued' },
+          ]
+        : [],
   },
   // Example:
   //   header_extras: [{text: "Some Page", url: "http://example.com/some/page", class: "subdued"}]

@@ -9,6 +9,10 @@ import type { BibEntry } from './bib-types'
 
 /**
  * A BibEntry plus its positional info in the source string.
+ *
+ * `libId` / `updatedAt` (optional) are set by the Library page (API rows)
+ * for stable row identity across duplicate citation keys (SaaS allows
+ * duplicates) and the `Updated __date__` line (LIBRARY_PLAN.md §5).
  */
 export type ParsedBibEntry = BibEntry & {
   /** Start offset in the source string (inclusive) */
@@ -17,6 +21,10 @@ export type ParsedBibEntry = BibEntry & {
   sourceEnd: number
   /** Raw source text for this entry */
   raw: string
+  /** Library: stable API row id (Mongo _id) — unique key for selection. */
+  libId?: string
+  /** Library: last-updated ISO date (SaaS `bibtex-entry-card-updated-at`). */
+  updatedAt?: string | null
 }
 
 /** Entry types that are parsed but not editable bibliographies entries. */

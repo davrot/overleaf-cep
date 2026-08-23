@@ -43,6 +43,7 @@ import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
 import BibEntryPreview from './bib-entry-preview'
 import BibImportModal from './bib-import-modal'
+import BibImportFromLibrary from './bib-import-from-library'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
@@ -85,6 +86,8 @@ function BibEditorPanel() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
  /** C5: the Paste-references import modal is open */
   const [importOpen, setImportOpen] = useState(false)
+  // C9: "Import from Library" (LIBRARY_PLAN.md — the one deliberate deviation)
+  const [libraryImportOpen, setLibraryImportOpen] = useState(false)
   const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
     { entryIds: string[]; expectedSource: string } | null
   >(null)
@@ -395,6 +398,12 @@ function BibEditorPanel() {
     setImportOpen(false)
   }, [importMany])
 
+  // C9: Import-from-Library uses the SAME guarded, all-or-nothing write.
+  const handleLibraryImport = useCallback((importEntries: BibEntry[]) => {
+    importMany({ entries: importEntries, expectedSource: sourceMirror.current })
+    setLibraryImportOpen(false)
+  }, [importMany])
+
   // Download (OQ-6: whole file). The browser saves the current document
   // text; no range export.
   const handleDownload = useCallback(() => {
@@ -511,6 +520,7 @@ function BibEditorPanel() {
               openDocName={openDocName}
               onAddPaste={() => setImportOpen(true)}
               onAddManual={() => selectNew()}
+              onAddFromLibrary={() => setLibraryImportOpen(true)}
             />
             {selection?.kind === 'existing' && previewEntry ? (
               <BibEntryPreview
@@ -569,6 +579,15 @@ function BibEditorPanel() {
         expectedSource={sourceMirror.current}
         onImport={handleImportEntries}
         onHidden={() => setImportOpen(false)}
+      />
+
+      {/* C9 (LIBRARY_PLAN.md): Import from Library — the Add dropdown item
+          (enabled; the pre-L disabled stub is the no-wire fallback). */}
+      <BibImportFromLibrary
+        show={libraryImportOpen}
+        existingIds={entries.map(e => e.id)}
+        onImport={handleLibraryImport}
+        onHidden={() => setLibraryImportOpen(false)}
       />
     </div>
   )

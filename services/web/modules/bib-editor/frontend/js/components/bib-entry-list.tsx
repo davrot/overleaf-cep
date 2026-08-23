@@ -17,6 +17,16 @@
  *
  * Selection state is lifted (props) so the C4 preview panel can close a
  * previewed row's preview on bulk delete and keep preview consistent.
+ *
+ * Library variants (LIBRARY_PLAN.md §5, variant='library'|'trash'):
+ *  - the page owns the toolbar (hideToolbar) — SaaS `library-toolbar`
+ *  - cardLayout 'full': title line + author/year meta + `Updated __date__`
+ *  - rowIdOf: stable row identity for duplicate-key rows (SaaS allows
+ *    duplicate keys; the row's _id — parsed as `libId` — is the key)
+ *  - bulk actions: library = Download + Delete; trash = Restore +
+ *    "Delete permanently"
+ *  - duplicateIds rows show a `bibtex_duplicates_keys` warning badge
+ * In-project behavior (variant 'project', all defaults) is unchanged.
  */
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -40,6 +50,11 @@ import {
 
 const ROW_HEIGHT = 47
 
+/** Default stable row identity = citation key (in-project usage). */
+function defaultRowIdOf(entry: ParsedBibEntry): string {
+  return entry.id
+}
+
 type Props = {
   entries: ParsedBibEntry[]
   onSelect: (entry: ParsedBibEntry) => void
@@ -56,6 +71,27 @@ type Props = {
   /** C5: add actions (Paste references / Enter manually / Library stub) */
   onAddPaste: () => void
   onAddManual: () => void
+  /** Library variants (LIBRARY_PLAN.md §5) — all optional, in-project
+   *  defaults keep the Phase C behavior exactly. */
+  variant?: 'project' | 'library' | 'trash'
+  /** library/trash: the page renders its own SaaS toolbar row */
+  hideToolbar?: boolean
+  /** SaaS library rows: title line + author/year meta (default 'compact') */
+  cardLayout?: 'compact' | 'full'
+  /** 'Updated __date__' line (SaaS `bibtex-entry-card-updated-at`) */
+  showUpdatedAt?: boolean
+  /** Stable row identity (duplicate keys) — default `entry.id` */
+  rowIdOf?: (entry: ParsedBibEntry) => string
+  /** Rows whose citation key is used by more than one row (SaaS warning) */
+  duplicateIds?: Set<string>
+  /** library view: bulk Download (selection) */
+  onBulkDownload?: () => void
+  /** trash view: bulk Restore */
+  onBulkRestore?: () => void
+  /** label for the bulk Delete button (trash: "Delete permanently") */
+  bulkDeleteLabel?: string
+  /** C9 (project side): functional Add-menu "Import from Library" */
+  onAddFromLibrary?: () => void
 }
 
 export default function BibEntryList({
@@ -69,6 +105,16 @@ export default function BibEntryList({
   openDocName,
   onAddPaste,
   onAddManual,
+  variant = 'project',
+  hideToolbar = false,
+  cardLayout = 'compact',
+  showUpdatedAt = false,
+  rowIdOf = defaultRowIdOf,
+  duplicateIds,
+  onBulkDownload,
+  onBulkRestore,
+  bulkDeleteLabel,
+  onAddFromLibrary,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -124,6 +170,7 @@ export default function BibEntryList({
 
   return (
     <div className="bibtex-entry-list">
+      {!hideToolbar && (
       <div className="bibtex-entry-list-toolbar">
         <div className="bibtex-toolbar-row">
           <input
@@ -160,18 +207,29 @@ export default function BibEntryList({
               <DropdownItem onClick={onAddManual}>
                 {t('Enter manually')}
               </DropdownItem>
-              {/* C9 stub — reserve the menu slot (user-confirmed) */}
-              <DropdownItem disabled>
-                <span title={t('Library import is not available in this build yet.')}>{t('Import from Library')}</span>
-              </DropdownItem>
+              {/* C9 — "Import from Library" (LIBRARY_PLAN.md): enabled when
+                  the host wires it (project panel); the disabled stub is
+                  the pre-L behavior fallback. */}
+              {onAddFromLibrary ? (
+                <DropdownItem onClick={onAddFromLibrary}>
+                  {t('Import from Library')}
+                </DropdownItem>
+              ) : (
+                <DropdownItem disabled>
+                  <span title={t('Library import is not available in this build yet.')}>{t('Import from Library')}</span>
+                </DropdownItem>
+              )}
             </DropdownMenu>
           </Dropdown>
         </div>
       </div>
+      )}
 
       {/* Bulk bar (C3 capture): select-all ("Select all entries") +
           "N reference(s)" = the count of entries in view. Delete (C4
-          wire-up over W5 core) appears when any row is checked. */}
+          wire-up over W5 core) appears when any row is checked.
+          library variants (SaaS): Download + Delete; trash: Restore +
+          "Delete permanently". */}
       <div className="bibtex-bulk-actions-bar">
         <label className="bibtex-bulk-actions-select-all">
           <input
@@ -181,23 +239,47 @@ export default function BibEntryList({
               filtered.length > 0 &&
               selectedIds.length > 0 &&
               selectedIds.every(id =>
-                filtered.some(e => e.id === id)
+                filtered.some(e => rowIdOf(e) === id)
               )
             }
             onChange={e => onToggleSelectAll?.(e.target.checked ? 'all' : 'none')}
           />
           <span>{t('Select all')}</span>
         </label>
+        {selectedIds.length > 0 && variant === 'trash' && onBulkRestore ? (
+          <button
+            type="button"
+            className="bibtex-bulk-actions-restore-btn library-bulk-actions-restore-btn btn btn-secondary btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onBulkRestore?.()
+            }}
+          >
+            {t('Restore')}
+          </button>
+        ) : null}
+        {selectedIds.length > 0 && variant === 'library' && onBulkDownload ? (
+          <button
+            type="button"
+            className="bibtex-bulk-actions-download-btn library-bulk-actions-download-btn btn btn-secondary btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onBulkDownload?.()
+            }}
+          >
+            {t('Download')}
+          </button>
+        ) : null}
         {selectedIds.length > 0 && onBulkDelete ? (
           <button
             type="button"
-            className="bibtex-bulk-actions-delete btn btn-danger btn-sm"
+            className={`bibtex-bulk-actions-delete library-bulk-actions-delete-btn btn ${variant === 'trash' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
             onClick={(e) => {
               e.stopPropagation()
               onBulkDelete?.()
             }}
           >
-            {t('delete')}
+            {bulkDeleteLabel ?? t('delete')}
           </button>
         ) : null}
         <span className="bibtex-bulk-actions-count">
@@ -211,13 +293,13 @@ export default function BibEntryList({
           : `${filtered.length} / ${entries.length}`}
       </div>
 
-      {(filtered.length === 0 || entries.length === 0) && (
+      {(variant === 'project') && ((filtered.length === 0 || entries.length === 0) && (
         <div className="bib-list-empty">
           {entries.length === 0
             ? t('No bibliography entries yet. Click "Add new entry" to create one.')
             : t('No entries match your search.')}
         </div>
-      )}
+      ))}
 
       {/* Windowed list body (capture: role=list, absolute rows, data-index) */}
       <div
@@ -233,7 +315,7 @@ export default function BibEntryList({
         <div className="bibtex-list-spacer" style={{ height: spacers.top }} />
         {filtered.slice(window.start, window.end).map((entry, i) => (
           <div
-            key={`${entry.id}-${entry.sourceStart}`}
+            key={`${rowIdOf(entry)}-${entry.sourceStart}`}
             data-index={window.start + i}
             className="bibtex-entry-card-row"
             role="listitem"
@@ -243,10 +325,14 @@ export default function BibEntryList({
               entry={entry}
               index={window.start + i}
               onSelect={onSelect}
-              previewing={previewId === entry.id}
-              checked={selectedIds.includes(entry.id)}
+              previewing={previewId === rowIdOf(entry)}
+              checked={selectedIds.includes(rowIdOf(entry))}
               onToggleSelect={onToggleSelect}
               search={search}
+              rowId={rowIdOf(entry)}
+              fullLayout={cardLayout === 'full'}
+              showUpdatedAt={showUpdatedAt}
+              duplicate={duplicateIds?.has(rowIdOf(entry)) ?? false}
             />
           </div>
         ))}
@@ -263,6 +349,10 @@ function BibEntryCard({
   checked,
   onToggleSelect,
   search,
+  rowId,
+  fullLayout,
+  showUpdatedAt,
+  duplicate,
 }: {
   entry: ParsedBibEntry
   index: number
@@ -272,6 +362,13 @@ function BibEntryCard({
   onToggleSelect?: (id: string) => void
   /** D15: the raw search text (per-row `<mark>` highlight) */
   search: string
+  /** Stable row identity (duplicate-key safe) */
+  rowId: string
+  /** SaaS library row layout (title line + meta line + Updated date) */
+  fullLayout?: boolean
+  showUpdatedAt?: boolean
+  /** SaaS `bibtex_duplicates_keys` warning (duplicate citation key) */
+  duplicate?: boolean
 }) {
   const t = useTranslation().t
   const typeDef = getEntryType(entry.type)
@@ -283,6 +380,18 @@ function BibEntryCard({
   const title = entry.fields.title || t('Untitled')
   const author = entry.fields.author || ''
   const year = entry.fields.year || entry.fields.date || ''
+
+  // SaaS `Updated __date__` (full layout only)
+  const updatedDate = useMemo(() => {
+    if (!showUpdatedAt || !entry.updatedAt) return null
+    try {
+      const d = new Date(entry.updatedAt)
+      if (Number.isNaN(d.getTime())) return null
+      return d.toLocaleDateString()
+    } catch {
+      return null
+    }
+  }, [showUpdatedAt, entry.updatedAt])
 
   // Truncate long author lists
   const authorDisplay = useMemo(() => {
@@ -302,12 +411,14 @@ function BibEntryCard({
     [entry, onSelect]
   )
 
+  const toggleId = rowId || entry.id
+
   return (
     <div
-      id={`bibtex-entry-card-${entry.id}#${index}`}
+      id={`bibtex-entry-card-${toggleId}#${index}`}
       className={[
         'bibtex-entry-card',
-        'bibtex-entry-card-compact',
+        fullLayout ? 'bibtex-entry-card-full' : 'bibtex-entry-card-compact',
         'bibtex-entry-card-clickable',
         hasErrors ? 'bibtex-entry-card-errors' : '',
         previewing ? 'bibtex-entry-card-previewing' : '',
@@ -325,7 +436,7 @@ function BibEntryCard({
           aria-label={t('Select entry')}
           checked={checked}
           onClick={e => e.stopPropagation()}
-          onChange={() => onToggleSelect?.(entry.id)}
+          onChange={() => onToggleSelect?.(toggleId)}
         />
       </div>
       <div className="bibtex-entry-card-content">
@@ -333,25 +444,68 @@ function BibEntryCard({
           <span className="bibtex-entry-card-key">
             <Highlighted text={entry.id} search={search} />
           </span>
-          <span className="bibtex-entry-card-details">
-            {authorDisplay && (
-              <span className="bibtex-entry-card-author">
-                <Highlighted text={authorDisplay} search={search} />
-              </span>
-            )}
-            {title && (
-              <span className="bibtex-entry-card-title">
-                <Highlighted text={title} search={search} />
-              </span>
-            )}
-            {year && (
-              <span className="bibtex-entry-card-year">
-                <Highlighted text={year} search={search} />
-              </span>
-            )}
-          </span>
+          {fullLayout ? (
+            <div className="bibtex-entry-card-details">
+              <div className="bibtex-entry-card-title">
+                <span>
+                  <Highlighted text={title} search={search} />
+                </span>
+              </div>
+              <div className="bibtex-entry-card-meta">
+                {authorDisplay && (
+                  <div className="bibtex-entry-card-author">
+                    <span>
+                      <Highlighted text={authorDisplay} search={search} />
+                    </span>
+                  </div>
+                )}
+                {year && (
+                  <div className="bibtex-entry-card-year">
+                    <span>
+                      <Highlighted text={year} search={search} />
+                    </span>
+                  </div>
+                )}
+              </div>
+              {updatedDate && (
+                <div className="bibtex-entry-card-updated-at">
+                  {t('Updated __date__', { date: updatedDate })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="bibtex-entry-card-details">
+              {authorDisplay && (
+                <span className="bibtex-entry-card-author">
+                  <Highlighted text={authorDisplay} search={search} />
+                </span>
+              )}
+              {title && (
+                <span className="bibtex-entry-card-title">
+                  <Highlighted text={title} search={search} />
+                </span>
+              )}
+              {year && (
+                <span className="bibtex-entry-card-year">
+                  <Highlighted text={year} search={search} />
+                </span>
+              )}
+            </span>
+          )}
         </div>
       </div>
+      {duplicate && (
+        <span
+          className="bibtex-entry-duplicate-icon"
+          role="img"
+          aria-label={t('bibtex_duplicates_keys')}
+          title={t('bibtex_duplicates_keys')}
+        >
+          <span className="material-symbols" aria-hidden="true">
+            warning
+          </span>
+        </span>
+      )}
       {hasErrors && (
         <span className="bibtex-entry-error-icon" role="img" aria-label={t('Entry has errors')}>
           <span className="material-symbols" aria-hidden="true">

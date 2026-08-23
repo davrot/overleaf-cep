@@ -1,15 +1,85 @@
 # bib-editor
 
-Visual BibTeX editor for `.bib` files. This module adds a **Visual** mode to
-the Overleaf source editor: on a bibliography file the user can toggle
-Code ↔ Visual, browse entries as cards, and add / edit / delete BibTeX entries
-in a form. The Code and Visual modes always represent the **same underlying
-`.bib` file** — the file is the single source of truth.
+BibTeX tooling for Overleaf CE, in two parts:
 
-Registered in `services/web/config/settings.defaults.js` (unchanged
-registrations: `sourceEditorExtensions`, `rootContextProviders`,
-`visualEditorProviders`, `moduleImportSequence`). No backend
-(`index.mjs` exports `{}`).
+1. **In-project visual editor** — on a `.bib` file the user can toggle
+   Code ↔ Visual, browse entries as cards, and add / edit / delete BibTeX
+   entries in a form. The Code and Visual modes always represent the
+   **same underlying `.bib` file** — the file is the single source of truth.
+2. **Library** (`LIBRARY_PLAN.md`) — a per-user reference library on its own
+   page (`/library`, `/library/trashed`) with add flows (Paste BibTeX/DOIs,
+   Upload .bib, Enter manually), edit, delete-to-trash (30-day retention),
+   restore, download, search, and the in-project "Import from Library"
+   (C9, the one deliberate reference deviation). Backed by a Mongo
+   collection (no per-process state). Gated by `OVERLEAF_BIB_LIBRARY`
+   (default ON).
+
+Registered in `services/web/config/settings.defaults.js` (additive):
+`sourceEditorExtensions`, `rootContextProviders`, `visualEditorProviders`,
+`moduleImportSequence`, plus `nav.header_extras` (the top-nav **Library**
+link) and `Settings.bibLibrary` (module `index.mjs` defaults).
+
+## Library (per-user reference library)
+
+**Pages** (module `index.mjs` registers `LibraryRoutes`):
+
+| Route | Render |
+|---|---|
+| `GET /library` | `library/library` view → entry `modules/bib-editor/pages/library` (auto-entry glob) → `frontend/js/library/*` |
+| `GET /library/trashed` | same entry, `ol-libraryView=trash` meta (client view switch re-loads via the API) |
+
+**REST API** (all session-scoped; SaaS shapes, D-C1):
+
+| Method & path | Purpose |
+|---|---|
+| `GET /library/references?search&trashed&cursor&limit` | list `{items, nextCursor}` |
+| `POST /library/references {entries}` | batch add (≤ 500) → `{items}` |
+| `POST /library/references/match {entries}` | duplicate/occurrence check → `{matches}` |
+| `PATCH /library/references/:key` | replace one entry |
+| `POST /library/references/delete {ids|search, permanent}` | trash (default) or purge → `{deletedCount}` |
+| `POST /library/references/restore {ids}` | restore → `{restoredCount}` |
+| `GET /library/references/download?mode&search&ids` | `.bib` download (inclusion/exclusion) |
+| `GET /library/references/count?search&trashed` | `{count}` |
+| `GET /library/references/citation-key-suggestions?base&keys` | key suggestions |
+
+**Storage**: `LibraryReference` — `{user_id, key, type, fields:[{name,value}],
+occurrence, trashedAt, updatedAt, searchBlob}`. `{user_id, key}` is
+**non-unique** — duplicate citation keys are allowed (SaaS parity) and
+flagged in the list. Trash purge is lazy/idempotent (runs inside
+`delete`/list paths after the retention window — no cron).
+
+**Frontend**: `frontend/js/library/` — `library-api` (REST client),
+`library-model` (API↔`BibEntry` mapping, suggestion merge, SaaS search fold,
+duplicate detection), `library-context` (state + toasts), `library-page`
+(SaaS anatomy), `library-manual-modal`, `library-root`; page entry
+`frontend/js/pages/library.tsx`; styles `frontend/stylesheets/bib-library.css`
+(component rules re-scoped from `bib-editor-panel.css` + Library chrome).
+The shared in-project components (`bib-entry-list`, `bib-entry-form`,
+`bib-entry-preview`, `bib-import-modal`) were extended with **optional**
+library-variant props; in-project behavior is unchanged.
+
+**C9 (Import from Library)**: the in-project Add-menu item (pre-L disabled
+stub) now opens `bib-import-from-library.tsx` (search + conflict pre-
+uncheck, same as the Paste preview) and dispatches through the SAME
+guarded, all-or-nothing project import path — no new write machinery.
+
+**Gating & dev**: `OVERLEAF_BIB_LIBRARY=false` disables the routes and the
+nav link. `OVERLEAF_BIB_LIBRARY_TRASH_RETENTION_DAYS` (default 30).
+
+**Known deviations** (documented in `LIBRARY_PLAN.md`): D-C1 field shape
+`{name, value}`; D-C2 no `scope`; D-C3 no sync-provider badge; D-C4 top-nav
+link instead of SaaS's ds-nav switcher; D-C5 client-side upload through the
+paste pipeline; D-C6 lazy trash purge; D-C7 in-project file-is-truth
+semantics unchanged. SaaS-only items (Zotero/Mendeley/Papers sync,
+split-test badge, feedback link) are out of scope for CE.
+
+---
+
+## In-project visual editor
+
+Visual BibTeX editor for `.bib` files, as described above. Registered
+additively via `settings.defaults.js` (the registrations listed above;
+the in-editor parts need no `index.mjs` change).
 
 ## Architecture: the file is truth
 
@@ -22,7 +92,7 @@ write path: form ─► flush ─► fresh parse of CURRENT doc ─► re-resolv
             ─► view.dispatch {from, to, insert}
 ```
 
-Rules (design: `REDESIGN_PLAN.md` §2):
+Design rules (the four **R-rules** below are the contract):
 
 - **R1 (parse live)** — entries are re-derived from the current document text
   on every change; Code-mode edits appear in Visual automatically.
@@ -112,7 +182,7 @@ formats), and i18n sanity (every module literal exists in both shared JSONs;
 `__var__` interpolation only).
 
 Live-test matrix (needs a running Overleaf instance — run on the machine
-with the container) is in `REDESIGN_PLAN.md` §6 (L1–L10).
+with the container) is in `LIBRARY_PLAN.md` (§ verification matrix).
 
 ### Lint
 
@@ -144,11 +214,17 @@ runners (esbuild).
 
 ## Upstream-merge hygiene
 
-All behavior lives in this module. The only shared-file touches are the
-additive i18n keys and the existing `settings.defaults.js` registrations
-(unchanged this cycle). `bibtex-schema.json` keeps the upstream
-`optionalFields` / `allKnownFields` lists intact; the new
-`defaultOptionalFields` key is additive, so upstream schema merges stay
-clean.
+All behavior lives in this module. The shared-file touches are additive:
+the i18n keys in `services/web/locales/en.json` +
+`frontend/extracted-translations.json`, the `settings.defaults.js`
+registrations listed above, the module-scoped
+`import/no-extraneous-dependencies` allowance in
+`services/web/eslint.config.mjs` (because this module ships its own
+`package.json` for vitest), and `patchJSON` in
+`frontend/js/infrastructure/fetch-json.ts` (additive method). 
+`bibtex-schema.json` keeps the upstream `optionalFields` / `allKnownFields`
+lists intact; the new `defaultOptionalFields` key is additive, so upstream
+schema merges stay clean.
 
-Open PR: #183. Redesign & decisions: `REDESIGN_PLAN.md`.
+Plans & decisions: `LIBRARY_PLAN.md` (the Library; the superseded Phase A–C
+plans were intentionally retired by the user in favor of this one).

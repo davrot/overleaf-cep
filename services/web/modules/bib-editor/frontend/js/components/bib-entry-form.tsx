@@ -75,6 +75,10 @@ type Props = {
    * commits are flush-on-leave through the host (OQ-7, same as today's R2).
    */
   variant?: 'modal' | 'inplace'
+  /** Hide the modal footer (host renders its own) — default false. */
+  hideFooter?: boolean
+  /** Primary footer button label (default t('Check')). */
+  submitText?: string
 }
 
 /** Display labels for field rows (DATA, not i18n — same decision as the
@@ -130,6 +134,8 @@ export default function BibEntryForm({
   onDelete,
   onBack,
   variant = 'modal',
+  hideFooter = false,
+  submitText,
 }: Props) {
   const { t } = useTranslation()
   const [type, setType] = useState(entry.type || 'article')
@@ -601,7 +607,7 @@ export default function BibEntryForm({
         )}
       </div>
 
-      {variant === 'modal' && (
+      {variant === 'modal' && !hideFooter && (
         /* Footer: Delete (existing only) on left, Back + Check on right */
         <div className="bib-form-footer">
           <div className="bib-form-footer-left">
@@ -616,7 +622,7 @@ export default function BibEntryForm({
               {t('back')}
             </OLButton>
             <OLButton variant="primary" size="sm" onClick={handleCheck}>
-              {t('Check')}
+              {submitText ?? t('Check')}
             </OLButton>
           </div>
         </div>
