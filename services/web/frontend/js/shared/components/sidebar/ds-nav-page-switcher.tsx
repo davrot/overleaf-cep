@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import { BookBookmark, Folder } from '@phosphor-icons/react'
+import { BookBookmark, Folder, Link as LinkIcon } from '@phosphor-icons/react'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 import getMeta from '@/utils/meta'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 
-type ActivePage = 'library' | 'projects'
+type ActivePage = 'library' | 'projects' | 'templates'
 
 export function DsNavPageSwitcher({
   activePage,
@@ -20,6 +20,8 @@ export function DsNavPageSwitcher({
 }) {
   const { t } = useTranslation()
   const appName = getMeta('ol-ExposedSettings')?.appName ?? 'Overleaf'
+  const templatesEnabled =
+    getMeta('ol-ExposedSettings')?.templatesEnabled ?? false
   const activeOverallTheme = useActiveOverallTheme()
 
   return (
@@ -77,6 +79,18 @@ export function DsNavPageSwitcher({
             <span>{t('projects')}</span>
           </a>
         </li>
+        {templatesEnabled && (
+          <li>
+            <a
+              href="/templates"
+              className={`ds-nav-page-switcher-item${activePage === 'templates' ? ' active' : ''}`}
+              aria-current={activePage === 'templates' ? 'page' : undefined}
+            >
+              <LinkIcon size={24} />
+              <span>{t('templates')}</span>
+            </a>
+          </li>
+        )}
       </ul>
     </>
   )

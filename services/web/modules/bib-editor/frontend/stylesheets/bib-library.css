@@ -314,6 +314,8 @@
 }
 
 .bib-form-label {
+  display: block;
+  margin-bottom: 0.3rem;
   font-size: var(--font-size-01);
   font-weight: bold;
   color: var(--bib-panel-color);
@@ -331,12 +333,27 @@
 
 .bib-form-input,
 .bib-form-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   font-size: var(--font-size-02);
-  padding: 0.2rem 0.4rem;
-  border-color: var(--border-primary) !important;
+  line-height: 1.5;
+  color: var(--bib-panel-color);
+  background-color: var(--bib-panel-bg);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--bs-border-radius);
+  padding: 0.375rem 0.75rem;
 }
 
-.bib-form-input-error {
+.bib-form-input:focus,
+.bib-form-textarea:focus {
+  border-color: var(--blue-50);
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--blue-50);
+}
+
+.bib-form-input-error,
+.bib-form-input-error:focus {
   border-color: var(--content-danger) !important;
 }
 
@@ -1501,4 +1518,115 @@
   cursor: pointer;
   padding: 0 0.125rem;
   line-height: 1;
+}
+
+/* --- Modal (portal) scope -------------------------------------------------
+ OLModal portals to <body>, outside .library-page-main; the form chrome
+ classes used there (author field, optional-section, add-field combobox,
+ collapsible heading) are defined again WITHOUT the page scope so the
+ "Enter manually" / "Add reference" modals keep the panel look in both
+ themes (--bib-panel-* vars are :root-scoped above). */
+.bib-optional-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bibtex-collapsible-heading {
+  appearance: none;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  color: var(--bib-panel-color);
+  font-size: var(--font-size-01);
+  font-weight: bold;
+  padding: 0.3rem 0;
+  cursor: pointer;
+}
+
+.bibtex-collapsible-heading:focus-visible {
+  outline: 2px solid var(--blue-50);
+  outline-offset: 2px;
+}
+
+.bibtex-collapsible-heading .form-label,
+.bibtex-collapsible-heading > span.form-label {
+  font-size: var(--font-size-01);
+  font-weight: bold;
+}
+
+.bib-optional-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bib-add-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.bib-add-field-combobox {
+  position: relative;
+}
+
+.bib-add-field-listbox {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0.3rem;
+  background: var(--bib-panel-bg);
+  border: 1px solid var(--bib-panel-border);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.bib-combo-group {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0;
+}
+
+.bib-combo-group-label {
+  font-size: var(--font-size-01);
+  font-weight: bold;
+  color: var(--bib-panel-secondary-color);
+  padding: 0.25rem 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.bib-combo-option {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  color: var(--bib-panel-color);
+  font-size: var(--font-size-02);
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--bs-border-radius);
+  cursor: pointer;
+}
+
+.bib-combo-option:hover,
+.bib-combo-option:focus {
+  background: var(--bib-panel-card-hover-bg);
+  outline: none;
+}
+
+.bib-combo-divider {
+  height: 1px;
+  margin: 0.2rem 0;
+  background: var(--bib-panel-border);
 }

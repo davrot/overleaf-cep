@@ -17,10 +17,26 @@ import {
   validateEntryBatch,
 } from './BibTypes.mjs'
 
-const { ObjectId } = mongoose
+// NOTE: the core Mongoose wrapper's top-level `ObjectId` is the *schema*
+// type (no `isValid`); the real BSON class lives on `mongoose.Types`.
+const { ObjectId } = mongoose.Types
 const LIST_DEFAULT_LIMIT = 50
 const LIST_MAX_LIMIT = 200
 const SUGGESTION_LIMIT = 10
+
+/**
+ * Mongoose 8 no longer exposes `ObjectId.isValid` — validate with the 24-hex
+ * shape instead (ids only ever come to us as strings over the API).
+ */
+const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i
+function toObjectId(value) {
+  if (typeof value !== 'string' || !OBJECT_ID_HEX.test(value)) return null
+  try {
+    return new ObjectId(value)
+  } catch {
+    return null
+  }
+}
 
 /** Retention window for trashed references (default 30 days, overridable). */
 export function trashRetentionMs() {
@@ -95,9 +111,8 @@ export async function listReferenceEntries(
     if (predicate) Object.assign(query, predicate)
   }
   if (cursor) {
-    if (ObjectId.isValid(cursor)) {
-      query._id = { $gt: new ObjectId(cursor) }
-    }
+    const cursorId = toObjectId(cursor)
+    if (cursorId) query._id = { $gt: cursorId }
   }
   const docs = await LibraryReference.find(query)
     .sort({ _id: 1 })
@@ -235,12 +250,12 @@ export async function deleteReferenceEntries(
   await purgeTrashedReferences(userId)
   const idList = Array.isArray(ids) ? ids.filter(s => typeof s === 'string' && s) : []
   if (idList.length > 0) {
-    const valid = idList.filter(s => ObjectId.isValid(s))
-    if (valid.length === 0) return 0
+    const validIds = idList.map(toObjectId).filter(Boolean)
+    if (validIds.length === 0) return 0
     const query = {
       user_id: userId,
       trashedAt: null,
-      _id: { $in: valid.map(s => new ObjectId(s)) },
+      _id: { $in: validIds },
     }
     if (permanent) {
       const res = await LibraryReference.deleteMany(query).exec()
@@ -275,13 +290,13 @@ export async function deleteReferenceEntries(
 export async function restoreReferenceEntries(userId, ids = null) {
   const idList = Array.isArray(ids) ? ids.filter(s => typeof s === 'string' && s) : []
   if (idList.length === 0) return 0
-  const valid = idList.filter(s => ObjectId.isValid(s))
-  if (valid.length === 0) return 0
+  const validIds = idList.map(toObjectId).filter(Boolean)
+  if (validIds.length === 0) return 0
   const res = await LibraryReference.updateMany(
     {
       user_id: userId,
       trashedAt: { $ne: null },
-      _id: { $in: valid.map(s => new ObjectId(s)) },
+      _id: { $in: validIds },
     },
     { $set: { trashedAt: null, updatedAt: new Date() } }
   ).exec()
@@ -312,7 +327,7 @@ export async function downloadReferenceEntries(
   { mode = 'inclusion', search = null, ids = null } = {}
 ) {
   const idList = Array.isArray(ids) ? ids.filter(s => typeof s === 'string' && s) : []
-  const validIds = idList.filter(s => ObjectId.isValid(s)).map(s => new ObjectId(s))
+  const validIds = idList.map(toObjectId).filter(Boolean)
 
   let query = { user_id: userId, trashedAt: null }
   if (mode === 'exclusion' && search) {

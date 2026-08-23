@@ -841,15 +841,10 @@ module.exports = {
 
     showSubscriptionLink: false,
 
-    // Top-nav links. Library entry: the bib-editor module's per-user
-    // reference library (/library, LIBRARY_PLAN.md D-C4), gated by the
-    // same env var as the module itself (default: enabled).
-    header_extras:
-      process.env.OVERLEAF_BIB_LIBRARY !== 'false'
-        ? [
-            { text: 'Library', url: '/library', class: 'subdued' },
-          ]
-        : [],
+    // Top-nav links moved to the left sidebar page switcher (SaaS layout,
+    // LIBRARY_PLAN D-C4): /library shows Library + Projects + Templates in
+    // `DsNavPageSwitcher`; the top navbar keeps Projects/Account only.
+    header_extras: [],
   },
   // Example:
   //   header_extras: [{text: "Some Page", url: "http://example.com/some/page", class: "subdued"}]

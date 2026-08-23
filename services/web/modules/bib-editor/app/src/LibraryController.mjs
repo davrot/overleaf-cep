@@ -10,6 +10,11 @@ import SessionManager from '../../../../app/src/Features/Authentication/SessionM
 import { expressify } from '@overleaf/promise-utils'
 import * as LibraryManager from './LibraryManager.mjs'
 import { serializeBibFile } from './LibrarySerializer.mjs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const LIBRARY_VIEW = path.resolve(__dirname, '../views/library/library')
 
 const VALIDATION_MESSAGES = {
   'entries-missing': 'At least one reference is required.',
@@ -213,11 +218,11 @@ async function citationKeySuggestions(req, res) {
 }
 
 async function libraryPage(req, res) {
-  res.render('library/library', { libraryView: 'library' })
+  res.render(LIBRARY_VIEW, { libraryView: 'library' })
 }
 
 async function libraryTrashPage(req, res) {
-  res.render('library/library', { libraryView: 'trash' })
+  res.render(LIBRARY_VIEW, { libraryView: 'trash' })
 }
 
 export default {
