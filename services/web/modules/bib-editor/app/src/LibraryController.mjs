@@ -7,6 +7,8 @@
 import logger from '@overleaf/logger'
 import OError from '@overleaf/o-error'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
+import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
+import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import * as LibraryManager from './LibraryManager.mjs'
 import { serializeBibFile } from './LibrarySerializer.mjs'
@@ -218,11 +220,31 @@ async function citationKeySuggestions(req, res) {
 }
 
 async function libraryPage(req, res) {
-  res.render(LIBRARY_VIEW, { libraryView: 'library' })
+  res.render(LIBRARY_VIEW, { libraryView: 'library', ...await themeLocals(req, res) })
 }
 
 async function libraryTrashPage(req, res) {
-  res.render(LIBRARY_VIEW, { libraryView: 'trash' })
+  res.render(LIBRARY_VIEW, { libraryView: 'trash', ...await themeLocals(req, res) })
+}
+
+/**
+ * Theme support parity with /project (SaaS layout): expose the logged-in
+ * user's settings (overallTheme) and the overall-theme list so the shared
+ * account-menu theme toggle renders and applies (ol-userSettings /
+ * ol-overallThemes meta tags, same as the project list page).
+ */
+async function themeLocals(req, res) {
+  const userId = getUserId(req)
+  try {
+    if (!userId) return {}
+    const user = await UserGetter.getUser({ _id: userId })
+    if (!user) return {}
+    const userSettings = await UserSettingsHelper.buildUserSettings(req, res, user)
+    return { userSettings }
+  } catch (err) {
+    logger.warn({ err, userId }, 'library: theme locals unavailable; page renders with defaults')
+    return {}
+  }
 }
 
 export default {
