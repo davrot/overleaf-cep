@@ -203,6 +203,7 @@ export const OPTIONAL_FIELD_TAXONOMY: readonly FieldTaxonomyGroup[] = [
   {
     label: 'Periodicals and journals',
     fields: [
+      { label: 'Journal title', field: 'journaltitle' },
       { label: 'Journal subtitle', field: 'journalsubtitle' },
       { label: 'Journal title addon', field: 'journaltitleaddon' },
       { label: 'Issue title', field: 'issuetitle' },

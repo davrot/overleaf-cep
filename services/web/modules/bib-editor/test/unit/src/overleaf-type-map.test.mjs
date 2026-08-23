@@ -18,6 +18,7 @@ import {
   humanizeCitationHeading,
 } from '../../../frontend/js/utils/overleaf-type-map.ts'
 import bibtexSchema from '../../../frontend/js/utils/bibtex-schema.json'
+import reference48 from '../../../reference/capture/overleaf-48.json'
 
 /**
  * C1 (PHASE_C_PLAN.md §3): 48-type vocabulary + schema expansion.
@@ -35,6 +36,11 @@ import bibtexSchema from '../../../frontend/js/utils/bibtex-schema.json'
 // bibtexSchema is a plain JSON import; shape is checked in test/unit
 // (no TS cast — this file is .mjs and esbuild would reject it).
 const SCHEMA = bibtexSchema
+// C1 ground truth: the machine-extracted reference type table (48 rows,
+// `req` with "[a,b]" OR-group tokens, `opt` per-type default-optional).
+const REFERENCE_48 = Object.fromEntries(
+  reference48.map(r => [r.k, r])
+)
 
 describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
   it('supports exactly the 48 captured machine types', () => {
@@ -53,13 +59,15 @@ describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
     for (const t of ENTRY_TYPES) {
       expect(typeof t.label, `label for ${t.name}`).toBe('string')
       expect(t.label.length, `label non-empty for ${t.name}`).toBeGreaterThan(0)
-      // misc has no requiredFields by design (btxdoc); every other type
-      // requires at least its title (+ year where a publication type).
-      const reqLen = t.requiredFields.length
-      expect(
-        reqLen >= 1 || t.name === 'misc',
-        `${t.name} required (misc may be empty)`
-      ).toBe(true)
+      // C1 reference: 16 types require NOTHING (misc, software, artwork…);
+      // the OR-groups / standalone mix is asserted per-type against
+      // reference/capture/overleaf-48.json below.
+      const reqOk =
+        Array.isArray(t.requiredFields) &&
+        t.requiredFields.every(
+          r => Array.isArray(r) || typeof r === 'string'
+        )
+      expect(reqOk, `${t.name} requiredFields shape`).toBe(true)
       expect(HUMAN_LABELS[t.name], `HUMAN_LABELS[${t.name}]`).toBe(t.label)
     }
     // label lookup is case-insensitive at the consumer (getEntryType path)
@@ -69,35 +77,56 @@ describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
   describe('schema invariants (all 48)', () => {
     for (const type of SCHEMA.supportedPublicationTypes) {
       const rule = SCHEMA.publicationTypes[type]
-      it(`${type}: block exists, required ⊆ captured rows ∪ year, fields known`, () => {
+      it(`${type}: block exists, required members known (C1 OR-groups)`, () => {
         expect(
           SCHEMA.publicationTypes,
           `${type} must have a rule`
         ).toHaveProperty(type)
-        const main = CAPTURED_FORM_ROWS[type] ?? { mainFields: [], postDate: [] }
-        const allowed = new Set([
-          ...main.mainFields,
-          ...main.postDate,
-          'year',
+        // required ⊆ captured form rows ∪ year/date OR-members. (C1:
+        // requiredFields are the reference OR-groups — a member may live
+        // outside the type's form rows, e.g. `journaltitle` for `article` —
+        // but every member must be a known field of its catalogue.)
+        const catalog = new Set([
+          ...rule.optionalFields,
+          ...(rule.defaultOptionalFields || []),
+          ...SCHEMA.allKnownFields,
         ])
         for (const r of rule.requiredFields) {
           for (const f of Array.isArray(r) ? r : [r]) {
             expect(
-              allowed,
-              `${type}: required "${f}" not in captured form rows`
+              catalog,
+              `${type}: required "${f}" not a known field`
             ).toContain(f)
-            expect(SCHEMA.allKnownFields, `${type}: "${f}" unknown field`).toContain(f)
           }
         }
-        // Year + Date both always render (capture): both must be valid fields
+        // Year + Date both always render (capture): both must be KNOWN
+        // fields (the per-type catalogue carries whichever of year/date is
+        // NOT required — reference: year|date is an OR-group or required
+        // standalone).
         const reqFlat = new Set(flattenRequired(rule.requiredFields))
-        const known = new Set(SCHEMA.allKnownFields)
-        const all = [...rule.optionalFields, ...reqFlat]
-        expect(all).toContain('year')
-        expect(all).toContain('date')
+        const known = new Set([
+          ...rule.optionalFields,
+          ...reqFlat,
+          ...SCHEMA.allKnownFields,
+        ])
+        expect(known, `${type}: year known`).toContain('year')
+        expect(known, `${type}: date known`).toContain('date')
         for (const f of rule.optionalFields) {
-          expect(known, `${type}: optional "${f}" unknown`).toContain(f)
+          expect(new Set(SCHEMA.allKnownFields), `${type}: optional "${f}" unknown`).toContain(f)
         }
+        // C1: required/defaultOptional must EQUAL the reference capture
+        const ref = REFERENCE_48[type]
+        expect(ref, `${type}: missing from reference capture`).toBeDefined()
+        const refReq = ref.req.map(t =>
+          t.startsWith('[') ? t.slice(1, -1).split(',') : t
+        )
+        expect(rule.requiredFields, `${type}: requiredFields diverge from reference`).toEqual(
+          refReq
+        )
+        expect(
+          rule.defaultOptionalFields,
+          `${type}: defaultOptionalFields diverge from reference opt`
+        ).toEqual(ref.opt)
       })
 
       it(`${type}: round-trip — serialize → parse keeps the machine type`, () => {
@@ -131,11 +160,16 @@ describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
         'journal',
         'journaltitle',
       ])
-      // journaltitle is NOT validation-required for article (journal is)
+      // C1 reference: article req has the OR-groups [journal, journaltitle]
+      // and [year, date] — a member is satisfied by ANY in its group.
       const req = getEntryType('article')?.requiredFields ?? []
       const flat = flattenRequired(req)
       expect(flat).toContain('journal')
-      expect(flat).not.toContain('journaltitle')
+      expect(flat).toContain('journaltitle')
+      expect(
+        req.some(r => Array.isArray(r) && r.includes('journal') && r.includes('journaltitle')),
+        'article has the [journal, journaltitle] OR-group'
+      ).toBe(true)
     })
 
     it('unpublished: Note row renders AFTER Date (postDate)', () => {
@@ -188,7 +222,7 @@ describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
     })
   })
 
-  describe('taxonomy (8 groups, 63 options — capture)', () => {
+  describe('taxonomy (8 groups, 64 options — reference capture)', () => {
     it('has exactly 8 groups in capture order', () => {
       expect(
         OPTIONAL_FIELD_TAXONOMY.map(g => g.label)
@@ -204,11 +238,12 @@ describe('C1: 48-type vocabulary (overleaf-type-map + schema)', () => {
       ])
     })
 
-    it('offers 63 options (capture-verified count)', () => {
+    it('offers 64 options (reference-verified count, incl. journaltitle)', () => {
       const all = OPTIONAL_FIELD_TAXONOMY.flatMap(g => g.fields)
-      expect(all).toHaveLength(63)
+      expect(all).toHaveLength(64)
       const names = new Set(all.map(f => f.field))
-      expect(names.size, 'no duplicate field names').toBe(63)
+      expect(names.size, 'no duplicate field names').toBe(64)
+      expect(names, 'journaltitle present in Periodicals (D3)').toContain('journaltitle')
     })
 
     it('only known fields (allKnownFields ∪ additions)', () => {

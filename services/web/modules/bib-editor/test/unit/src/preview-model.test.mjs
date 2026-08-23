@@ -40,31 +40,38 @@ const ENTRY = (over = {}) => ({
 
 describe('C4: preview model', () => {
   describe('missingRequiredLabels — the preview warning', () => {
-    it('article: Author, Title, Journal, Year (capture wording)', () => {
+    it('article: Author, Title, Journal + Journal title, Year + Date (C1 OR-groups)', () => {
+      // reference article req: [author, title, [journal|journaltitle],
+      // [year|date]] — a missing group lists EVERY member (bib-validate).
       expect(missingRequiredLabels('article', {})).toEqual([
         'Author',
         'Title',
         'Journal',
+        'Journal title',
         'Year',
+        'Date',
       ])
     })
 
     it('OR-group: an empty [author, editor] group lists both members', () => {
       const labels = missingRequiredLabels('book', {})
-      // book required: [['author','editor'], 'title', 'publisher', 'year']
+      // C1 reference book required: [[author|editor], title, [year|date]]
+      // (NO publisher — that was the Phase-B over-statement)
       expect(labels).toEqual([
         'Author',
         'Editor',
         'Title',
-        'Publisher',
         'Year',
+        'Date',
       ])
     })
 
     it('valued members are omitted (partially filled entry)', () => {
+      // author + year filled: the [year|date] group is satisfied (year
+      // counts) → only Title + both journal or-members remain.
       expect(
         missingRequiredLabels('article', { author: 'a', year: '1990' })
-      ).toEqual(['Title', 'Journal'])
+      ).toEqual(['Title', 'Journal', 'Journal title'])
     })
 
     it('a filled entry has no warning', () => {

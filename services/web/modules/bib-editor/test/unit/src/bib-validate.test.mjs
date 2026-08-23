@@ -35,20 +35,23 @@ describe('bib-validate (Check button, pure)', () => {
     expect(res.byField.title.kind).toBe('required-missing')
   })
 
-  it('inbook chapter/pages OR-group behaves the same', () => {
-    const inbook = {
-      type: 'inbook',
-      id: 'i1',
-      fields: { author: 'A', title: 'T', publisher: 'P', year: '2000' },
+  it('article year/date OR-group behaves the same as author/editor', () => {
+    // C1 reference: article has NO chapter/pages (that was Phase-B);
+    // the OR semantics are exercised on the year|date group instead.
+    const article = {
+      type: 'article',
+      id: 'a1',
+      fields: { author: 'A', title: 'T', journal: 'J' },
     }
-    const res = validateEntry(inbook, 'existing')
-    expect(res.byField.chapter).toMatchObject({ kind: 'required-missing', group: true })
-    expect(res.byField.pages).toMatchObject({ kind: 'required-missing', group: true })
-    // one of the two satisfies the group
-    const onlyPages = { ...inbook, fields: { ...inbook.fields, pages: '1-10' } }
-    const res2 = validateEntry(onlyPages, 'existing')
-    expect(res2.byField.chapter).toBeUndefined()
-    expect(res2.byField.pages).toBeUndefined()
+    const res = validateEntry(article, 'existing')
+    expect(res.byField.year).toMatchObject({ kind: 'required-missing', group: true })
+    expect(res.byField.date).toMatchObject({ kind: 'required-missing', group: true })
+    // either member satisfies the OR-group
+    const onlyDate = { ...article, fields: { ...article.fields, date: '2000-01' } }
+    const res2 = validateEntry(onlyDate, 'existing')
+    expect(res2.byField.year).toBeUndefined()
+    expect(res2.byField.date).toBeUndefined()
+    expect(res2.valid).toBe(true)
   })
 
   it('misc is valid with only a key (no required fields — btxdoc)', () => {

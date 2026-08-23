@@ -81,15 +81,18 @@ describe('bib-types (schema + display rules)', () => {
     expect(requiredStarMembers(['title'], { author: 'A' })).toEqual(['title'])
   })
 
-  it('displayFieldsFor: new entry shows required + defaultOptionalFields only', () => {
+  it('displayFieldsFor: new entry shows required (OR-flattened) + defaultOptionalFields only', () => {
     const article = getEntryType('article')
     const fields = displayFieldsFor(article, 'new', {}, false)
     expect(fields).toContain('author')
     expect(fields).toContain('title')
     expect(fields).toContain('journal')
+    expect(fields).toContain('journaltitle') // OR-group member
     expect(fields).toContain('year')
-    // sanity: small list (plan §2.6 — not the ~150 citation-js options)
-    expect(fields.length).toBeLessThan(30)
+    expect(fields).toContain('date') // OR-group member
+    // reference article: required + 34 default-optional (not the ~150
+    // citation-js catalogue)
+    expect(fields.length).toBeLessThan(60)
     expect(fields).toContain('doi')
   })
 
@@ -116,13 +119,29 @@ describe('bib-types (schema + display rules)', () => {
     expect(all).toContain('x')
   })
 
-  it('schema: misc and manual exist with the btxdoc required rules', () => {
+  it('schema: reference re-derive (C1) — misc empty, software empty, booklet/title, OR-groups', () => {
     expect(bibtexSchema.supportedPublicationTypes).toContain('misc')
     expect(bibtexSchema.supportedPublicationTypes).toContain('manual')
     expect(
       JSON.stringify(bibtexSchema.publicationTypes.misc.requiredFields)
     ).toBe(JSON.stringify([]))
     expect(bibtexSchema.publicationTypes.manual.requiredFields).toEqual(['title'])
+    // 16 reference types require NOTHING (incl. software — verified in bundle)
+    expect(
+      JSON.stringify(bibtexSchema.publicationTypes.software.requiredFields)
+    ).toBe(JSON.stringify([]))
+    // OR-group tokens are arrays (bib-validate OR semantics)
+    expect(bibtexSchema.publicationTypes.article.requiredFields).toEqual([
+      'author',
+      'title',
+      ['journal', 'journaltitle'],
+      ['year', 'date'],
+    ])
+    expect(bibtexSchema.publicationTypes.book.requiredFields).toEqual([
+      ['author', 'editor'],
+      'title',
+      ['year', 'date'],
+    ])
   })
 
   it('schema: every defaultOptionalFields entry is a known field', () => {
@@ -154,10 +173,16 @@ describe('bib-types (schema + display rules)', () => {
     }
   })
 
-  it('getEntryType matches case-insensitively and misc has no required', () => {
+  it('getEntryType matches case-insensitively; misc empty (C1); article OR-groups', () => {
     expect(getEntryType('ARTICLE').name).toBe('article')
     expect(hasAllRequiredFields(getEntryType('misc').requiredFields, {})).toBe(true)
-    expect(getMissingRequiredFields(getEntryType('article').requiredFields, { author: 'a' })).toEqual(['title', 'journal', 'year'])
+    // article (reference): the [journal, journaltitle] and [year, date]
+    // OR-groups are missing when only author is filled
+    expect(getMissingRequiredFields(getEntryType('article').requiredFields, { author: 'a' })).toEqual([
+      'title',
+      ['journal', 'journaltitle'],
+      ['year', 'date'],
+    ])
   })
 
   it('ENTRY_TYPES covers all supported types (no crash on misc/manual)', () => {

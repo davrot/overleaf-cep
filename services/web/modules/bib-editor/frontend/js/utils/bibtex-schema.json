@@ -208,8 +208,14 @@
       "requiredFields": [
         "author",
         "title",
-        "journal",
-        "year"
+        [
+          "journal",
+          "journaltitle"
+        ],
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -359,14 +365,40 @@
         "xref"
       ],
       "defaultOptionalFields": [
+        "translator",
+        "annotator",
+        "commentator",
+        "subtitle",
+        "titleaddon",
+        "editor",
+        "editora",
+        "editorb",
+        "editorc",
+        "journalsubtitle",
+        "journaltitleaddon",
+        "issuetitle",
+        "issuesubtitle",
+        "issuetitleaddon",
+        "language",
+        "origlanguage",
+        "series",
         "volume",
         "number",
-        "pages",
+        "eid",
+        "issue",
         "month",
+        "pages",
+        "version",
         "note",
+        "issn",
+        "addendum",
+        "pubstate",
         "doi",
+        "eprint",
+        "eprintclass",
+        "eprinttype",
         "url",
-        "eprint"
+        "urldate"
       ]
     },
     "book": {
@@ -376,8 +408,10 @@
           "editor"
         ],
         "title",
-        "publisher",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -525,18 +559,7 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "volume",
-        "number",
-        "series",
-        "address",
-        "edition",
-        "month",
-        "note",
-        "doi",
-        "url",
-        "isbn"
-      ]
+      "defaultOptionalFields": []
     },
     "booklet": {
       "requiredFields": [
@@ -692,14 +715,7 @@
         "xref",
         "year"
       ],
-      "defaultOptionalFields": [
-        "author",
-        "howpublished",
-        "address",
-        "month",
-        "year",
-        "note"
-      ]
+      "defaultOptionalFields": []
     },
     "inbook": {
       "requiredFields": [
@@ -709,11 +725,9 @@
         ],
         "title",
         [
-          "chapter",
-          "pages"
-        ],
-        "publisher",
-        "year"
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -859,24 +873,17 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "volume",
-        "number",
-        "series",
-        "type",
-        "address",
-        "edition",
-        "month",
-        "note"
-      ]
+      "defaultOptionalFields": []
     },
     "incollection": {
       "requiredFields": [
         "author",
         "title",
         "booktitle",
-        "publisher",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1024,27 +1031,17 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "volume",
-        "number",
-        "editor",
-        "series",
-        "type",
-        "chapter",
-        "pages",
-        "address",
-        "edition",
-        "month",
-        "note",
-        "doi"
-      ]
+      "defaultOptionalFields": []
     },
     "inproceedings": {
       "requiredFields": [
         "author",
         "title",
         "booktitle",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1193,26 +1190,20 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "volume",
-        "number",
-        "editor",
-        "series",
-        "pages",
-        "address",
-        "month",
-        "organization",
-        "publisher",
-        "note",
-        "doi"
-      ]
+      "defaultOptionalFields": []
     },
     "mastersthesis": {
       "requiredFields": [
         "author",
         "title",
-        "school",
-        "year"
+        [
+          "school",
+          "institution"
+        ],
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1361,20 +1352,20 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "type",
-        "address",
-        "month",
-        "note",
-        "url"
-      ]
+      "defaultOptionalFields": []
     },
     "phdthesis": {
       "requiredFields": [
         "author",
         "title",
-        "school",
-        "year"
+        [
+          "school",
+          "institution"
+        ],
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1523,18 +1514,15 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "type",
-        "address",
-        "month",
-        "note",
-        "url"
-      ]
+      "defaultOptionalFields": []
     },
     "proceedings": {
       "requiredFields": [
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1685,24 +1673,17 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "volume",
-        "number",
-        "editor",
-        "series",
-        "address",
-        "month",
-        "organization",
-        "publisher",
-        "note"
-      ]
+      "defaultOptionalFields": []
     },
     "techreport": {
       "requiredFields": [
         "author",
         "title",
         "institution",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -1851,20 +1832,12 @@
         "xdata",
         "xref"
       ],
-      "defaultOptionalFields": [
-        "type",
-        "number",
-        "address",
-        "month",
-        "note",
-        "url"
-      ]
+      "defaultOptionalFields": []
     },
     "unpublished": {
       "requiredFields": [
         "author",
-        "title",
-        "note"
+        "title"
       ],
       "optionalFields": [
         "abstract",
@@ -2014,12 +1987,7 @@
         "xref",
         "year"
       ],
-      "defaultOptionalFields": [
-        "month",
-        "year",
-        "note",
-        "url"
-      ]
+      "defaultOptionalFields": []
     },
     "manual": {
       "requiredFields": [
@@ -2175,15 +2143,7 @@
         "xref",
         "year"
       ],
-      "defaultOptionalFields": [
-        "author",
-        "organization",
-        "address",
-        "edition",
-        "month",
-        "year",
-        "note"
-      ]
+      "defaultOptionalFields": []
     },
     "misc": {
       "requiredFields": [],
@@ -2338,27 +2298,10 @@
         "xref",
         "year"
       ],
-      "defaultOptionalFields": [
-        "author",
-        "title",
-        "howpublished",
-        "month",
-        "year",
-        "note",
-        "doi",
-        "url",
-        "publisher"
-      ]
+      "defaultOptionalFields": []
     },
     "artwork": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -2511,14 +2454,7 @@
       "defaultOptionalFields": []
     },
     "audio": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -2672,18 +2608,13 @@
     },
     "bookinbook": {
       "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
+        "author",
         "title",
         "booktitle",
         [
-          "chapter",
-          "pages"
-        ],
-        "publisher",
-        "year"
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -2833,14 +2764,7 @@
       "defaultOptionalFields": []
     },
     "commentary": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -2997,7 +2921,10 @@
         "author",
         "title",
         "booktitle",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -3154,7 +3081,10 @@
       "requiredFields": [
         "editor",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -3315,7 +3245,10 @@
           "editor"
         ],
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -3470,8 +3403,20 @@
     },
     "electronic": {
       "requiredFields": [
+        [
+          "author",
+          "editor"
+        ],
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ],
+        [
+          "doi",
+          "eprint",
+          "url"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -3627,14 +3572,7 @@
       "defaultOptionalFields": []
     },
     "image": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -3787,14 +3725,7 @@
       "defaultOptionalFields": []
     },
     "jurisdiction": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -3947,14 +3878,7 @@
       "defaultOptionalFields": []
     },
     "legal": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -4107,14 +4031,7 @@
       "defaultOptionalFields": []
     },
     "legislation": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -4267,14 +4184,7 @@
       "defaultOptionalFields": []
     },
     "letter": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -4428,13 +4338,14 @@
     },
     "inreference": {
       "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
+        "author",
         "title",
+        "editor",
         "booktitle",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -4587,14 +4498,7 @@
       "defaultOptionalFields": []
     },
     "movie": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -4747,14 +4651,7 @@
       "defaultOptionalFields": []
     },
     "music": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -4910,7 +4807,10 @@
       "requiredFields": [
         "author",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5068,7 +4968,10 @@
       "requiredFields": [
         "editor",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5225,7 +5128,10 @@
     "mvproceedings": {
       "requiredFields": [
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5384,7 +5290,10 @@
       "requiredFields": [
         "editor",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5540,8 +5449,20 @@
     },
     "online": {
       "requiredFields": [
+        [
+          "author",
+          "editor"
+        ],
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ],
+        [
+          "doi",
+          "eprint",
+          "url"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5701,7 +5622,10 @@
         "author",
         "title",
         "number",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -5855,14 +5779,7 @@
       "defaultOptionalFields": []
     },
     "performance": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -6018,7 +5935,10 @@
       "requiredFields": [
         "editor",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -6176,7 +6096,10 @@
       "requiredFields": [
         "editor",
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -6334,8 +6257,12 @@
       "requiredFields": [
         "author",
         "title",
+        "type",
         "institution",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -6489,14 +6416,7 @@
       "defaultOptionalFields": []
     },
     "review": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -6649,14 +6569,7 @@
       "defaultOptionalFields": []
     },
     "software": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -6809,14 +6722,7 @@
       "defaultOptionalFields": []
     },
     "standard": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -6970,18 +6876,13 @@
     },
     "suppbook": {
       "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
+        "author",
         "title",
         "booktitle",
         [
-          "chapter",
-          "pages"
-        ],
-        "publisher",
-        "year"
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -7132,13 +7033,14 @@
     },
     "suppcollection": {
       "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
+        "author",
         "title",
+        "editor",
         "booktitle",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -7292,9 +7194,13 @@
     },
     "suppperiodical": {
       "requiredFields": [
+        "author",
         "title",
         "journaltitle",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -7452,8 +7358,12 @@
       "requiredFields": [
         "author",
         "title",
+        "type",
         "institution",
-        "year"
+        [
+          "year",
+          "date"
+        ]
       ],
       "optionalFields": [
         "abstract",
@@ -7607,14 +7517,7 @@
       "defaultOptionalFields": []
     },
     "video": {
-      "requiredFields": [
-        [
-          "author",
-          "editor"
-        ],
-        "title",
-        "year"
-      ],
+      "requiredFields": [],
       "optionalFields": [
         "abstract",
         "addendum",
@@ -7768,8 +7671,20 @@
     },
     "www": {
       "requiredFields": [
+        [
+          "author",
+          "editor"
+        ],
         "title",
-        "year"
+        [
+          "year",
+          "date"
+        ],
+        [
+          "doi",
+          "eprint",
+          "url"
+        ]
       ],
       "optionalFields": [
         "abstract",
