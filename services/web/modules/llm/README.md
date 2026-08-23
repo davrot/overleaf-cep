@@ -130,7 +130,22 @@ settings are user- or admin-scoped.
   (router registration is unconditional; disabled deployments answer `403`).
 - Site-lane model ids are validated against the admin allowlist server-side.
 - API keys are encrypted at rest when `LLM_KEY_SECRET` is set (never returned
-  to the browser, only `hasKey`).
+  to the browser, only `hasKey`). The **admin site key** is masked the same
+  way: the UI shows `••••••••` placeholders, and `GET /admin/llm/settings/json`
+  exposes only `hasLlmApiKey` — the raw key never crosses the wire either way
+  (verified 2026-08-28 audit, item m1).
+- **BYO SSRF guard (2026-08-28 audit, item M1).** User-supplied provider base
+  URLs (add / update / Test / Scan) must pass `assertPublicLlmBaseUrl`
+  (`LLMClient.mjs`): http(s) only, and the host must not be loopback
+  (`localhost`, `.local`, `.internal`, `.lan`, `127.0.0.0/8`, `::1`),
+  unspecified (`0.0.0.0`, `::`), cloud metadata/link-local (`169.254.0.0/16`),
+  or other reserved ranges. Blocking these stops a user row from being pointed
+  at internal services (metadata endpoint, adjacent containers) to exfiltrate
+  or probe. **Private LAN ranges are deliberately allowed** (10/8, 172.16/12,
+  192.168/16) — a local Ollama/llama.cpp on the LAN is a core BYO use case, and
+  the admin site lane already uses docker-network URLs. Known limitation: a DNS
+  name that *resolves* to a blocked range after passing the guard is not
+  re-checked at request time (single-host deployments; documented trade-off).
 - Scan-pattern regexes (admin and user rubrics) pass one shared validator with
   length caps (whole field ≤ 4000, **each pattern ≤ 200 chars**) before any
   `new RegExp()` compile — they are evaluated on every review run.
@@ -143,6 +158,24 @@ settings are user- or admin-scoped.
   runaway usage (inline completion is the high-frequency path).
 - Review jobs are capped: per-user in-flight limit, global queue limit, and a
   hard pass budget per job.
+
+## Job & usage persistence (2026-08-28 audit, item M2)
+
+Two collections make runtime state survive a server restart. Both use the raw
+mongoose package (the same default instance the app connects) with
+`bufferCommands: false`, and **every operation is non-fatal** — a Mongo hiccup
+logs and swallows; it never breaks an LLM call, a review, or a settings page.
+
+- **`llmreviewjobs`** (`app/src/models/LLMReviewJob.mjs`) — compliance review
+  jobs persist their state and result. Previously both lived only in process
+  memory, so a restart mid-review turned every later poll into a spurious
+  “not found or expired”. Now: the in-process queue stays the executor, but
+  `status`/`cancel` answer from Mongo when the job is not live in this process;
+  a stale `queued`/`running` document is promoted to a definitive
+  `server-restarted` error (once-per-process lazy sweep); a `done` result is
+  retrievable after a restart. The live `AbortController` is intentionally not
+  persisted (per-process only).
+- **`llmusages`** (`app/src/LLMUsage.mjs`) — the usage meter (see above).
 
 ## Legacy import (upgrade path)
 
@@ -198,18 +231,26 @@ exist exactly for the reachable actions: `paraphrase`, `academic`, `concise`,
 ## Tests
 
 ```bash
-node --test services/web/modules/llm/app/test/llm-client.test.mjs   # offline unit tests
-node --test services/web/modules/llm/app/test/llm-crypto.test.mjs   # key-encrypt roundtrip + legacy plaintext
-node services/web/modules/llm/app/test/LLMClient.live.mjs           # live smoke (needs a reachable backend)
+# Backend unit tests (offline; run from services/web/modules/llm):
+cd services/web/modules/llm && node --test app/test/*.test.mjs
+#   llm-client        — provider seam, error wrapping, assertNonEmpty
+#   llm-crypto        — key-encrypt roundtrip + legacy plaintext
+#   llm-url-guard     — BYO SSRF guard (allowed/blocked base URLs)
+#   llm-usage         — usage schema + non-fatal offline behaviour
+#   llm-compliance-rubrics — shared rubric validators + review-job schema
+#   llm-compile-fix / llm-model-sync — remaining pure paths
+
+node services/web/modules/llm/app/test/LLMClient.live.mjs   # live smoke (needs a reachable backend)
 
 # Frontend render regressions (jsdom; needs the standalone harness config):
 cd services/web
 NODE_ENV=development <node_modules>/.bin/vitest run --config vitest.llm-frontend.config.js
 ```
 
-Deployed-container verification (bash/curl driver) covers login, site/user
+Deployed-container verification (CDP/curl driver) covers login, site/user
 lanes, BYO CRUD + check/scan, rate-guard burst, compliance job lifecycle,
-and the settings pages: 12/12 passing on the latest build.
+the meter end-to-end (seeded call → both endpoints + both pages), and the
+settings pages — green on the 2026-08-28 build (48/48 unit tests).
 
 ## Reviewer compliance (issue #222, remaining items)
 
@@ -252,19 +293,36 @@ and the settings pages: 12/12 passing on the latest build.
 - **One shared model selection** (user-scoped) for every AI surface; the admin
   model pickers are gone.
 
+### Audit hardening (2026-08-28)
+
+- **M1 — BYO SSRF guard** on user base URLs (see Security notes); LAN allowed,
+  loopback/metadata/reserved blocked.
+- **m1 — admin key masking** verified end-to-end (UI + JSON API + logs).
+- **M2 — review jobs in Mongo** (`llmreviewjobs`): results and job state
+  survive restarts; definitive `server-restarted` answer for interrupted jobs.
+- **M3 — i18n parity**: all module UI strings exist in `en.json` (38 canonical
+  entries added) and are translated in `de.json` (123 entries added; the file
+  has **zero** null values). New surfaces (usage meter, user rubric editor,
+  compile-fix card, …) ship with EN defaults + German translations.
+- **Usage meter** — token accounting on both settings pages (see above).
+
 ## Layout
 
-- `app/src/LLMClient.mjs` — AI-SDK seam (models, chat text/objects, model listing)
+- `app/src/LLMClient.mjs` — AI-SDK seam (models, chat text/objects, model
+  listing, **BYO URL SSRF guard**, token-usage capture)
 - `app/src/LLMModelRef.mjs` — model-ref grammar (`u:<rowId>:<model>`)
 - `app/src/LLMBudget.mjs` — per-user rate + token guards
 - `app/src/LLMChatController.mjs` — chat / completion / models / generators
 - `app/src/LLMSettingsController.mjs` — BYO provider rows (CRUD, check, scan)
 - `app/src/LLMAdminController.mjs` — site backend settings, check, scan, prompts
 - `app/src/LLMComplianceController.mjs` — rubric review engine (job queue)
+- `app/src/models/LLMReviewJob.mjs` — review-job Mongo schema + safe helpers (M2)
+- `app/src/LLMUsage.mjs` — usage meter: `llmusages` schema, recorder, aggregator
 - `app/src/LLMCrypto.mjs` — at-rest key encryption
 - `app/src/LLMPrompts.mjs` — prompt defaults + merges
 - `app/views/*.pug` — page shells (settings, admin)
-- `frontend/js/components` — toolbar, chat rail, compliance pane, settings UI
+- `frontend/js/components` — toolbar, chat rail, compliance pane, settings UI,
+  **`llm-usage-meter.tsx`** (shared meter card)
 - `frontend/js/hooks` — chat / compliance / features state
 - `frontend/js/pages` — webpack entries (`user/llm-settings`, `admin/...`)
-- `frontend/stylesheets/*.scss` — module styles
+- `frontend/stylesheets/*.scss` — module styles (shared `--wf-*` design tokens)
