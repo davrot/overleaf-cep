@@ -418,11 +418,17 @@ export function validateComplianceRubrics(list) {
       const sep = line.indexOf('::')
       const body = (sep === -1 ? line : line.slice(sep + 2)).trim()
       if (!body) continue
+      // overleaf-lab (harden): cap each pattern — these are compiled as regexes
+      // per review run (admin AND user supplied); a few-kilobyte pattern is
+      // already pathological and a ReDoS candidate.
+      if (body.length > 200) {
+        return `Scan pattern in rubric "${(r && r.name) || '?'}" is too long (max 200 characters)`
+      }
       try {
         // eslint-disable-next-line no-new
         new RegExp(body, 'i')
       } catch (err) {
-        return `Invalid scan pattern regex in rubric "${(r && r.name) || '?'}": ${body}`
+        return `Invalid scan pattern regex in rubric "${(r && r.name) || '?'}": ${body.slice(0, 80)}`
       }
     }
   }

@@ -458,6 +458,13 @@ async function saveSelectedModel(req, res) {
     if (value.length > SELECTED_MODEL_MAX) {
         return res.status(400).json({ ok: false, error: 'bad-request', message: 'Model value too long' })
     }
+    // overleaf-lab (harden): a broken selection here silently downgrades EVERY
+    // AI surface to fallback lanes — only accept a well-formed model reference
+    // (`name`, `name:tag`, `site:name`, or `u:<rowId>:name`) or the empty
+    // string (explicit reset). Anything else is a client bug, not a model.
+    if (value && !/^[A-Za-z0-9._\-/]+(:[A-Za-z0-9._\-/]+){0,2}$/.test(value)) {
+        return res.status(400).json({ ok: false, error: 'bad-request', message: 'Invalid model reference' })
+    }
     await User.updateOne({ _id: userId }, { $set: { llmSelectedModel: value } })
     res.json({ ok: true, selected: value })
 }

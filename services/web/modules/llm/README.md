@@ -32,8 +32,24 @@ Every LLM call runs on one of two lanes, resolved from the **model id**:
 - **User lane** — namespaced id `u:<rowId>:<model>`, one of the user's BYO
   provider rows. The user's own credentials are used.
 
-A request **without** a model resolves to the user's first enabled BYO row (if
-BYO is allowed), else the site default.
+### Model selection (shared, user-scoped)
+
+Since 2026-08-26 there is ONE shared model choice per user, stored on the user
+profile (`User.llmSelectedModel`): the **File → “Select LLM Model”** modal
+(site models first, then each BYO row) persists it, and *every* AI surface
+consumes it — chat rail, inline completion, Ask-AI transforms, the whole-document
+generators, and compliance reviews. Lane resolution for a request without an
+explicit model is:
+
+1. the user's shared selection (profile),
+2. the user's first enabled BYO row (when BYO is allowed),
+3. the site backend (admin settings or env).
+
+So a deployment **without any global LLM** is fully functional for users who
+have a BYO row or a saved selection. The old admin “Review model” and “Inline
+completion model” pickers are gone (both surfaces use the same chain). The
+saved value is validated on write (well-formed model reference or empty
+string) because a broken selection silently downgrades every surface.
 
 ## Endpoints
 
@@ -59,15 +75,23 @@ settings are user- or admin-scoped.
 | POST   | `/user/llm-providers/:id/delete`            | Delete a BYO row                     |
 | POST   | `/user/llm-providers/check`                 | Test an existing row or draft        |
 | POST   | `/user/llm-providers/scan`                  | List models served by a backend      |
+| GET    | `/user/llm/selected-model`                  | Current shared model selection       |
+| POST   | `/user/llm/selected-model`                  | Save the shared selection `{selected}` |
+| GET    | `/user/llm/compliance`                      | User's review rubrics (+ inherited flag) |
+| POST   | `/user/llm/compliance`                      | Save the user's review rubrics `{rubrics}` |
 | GET    | `/admin/llm/settings` (+ `/json`)           | Site backend settings page/API       |
 | POST   | `/admin/llm/settings`                       | Save site backend settings           |
 | POST   | `/admin/llm/settings/check`                 | Connection test (model list fetch)   |
 | POST   | `/admin/llm/models`                         | Scan the site backend for models     |
 
-* `GET /user/llm-settings` — dedicated BYO settings page (provider table,
-  Test/Model scan, Add/edit). Linked from the Account menu.
+* `GET /user/llm-settings` — dedicated user settings page: BYO provider table
+  (Test/Scan) **plus the user's own compliance review rubrics** (the rubric
+  editor is per-user since 2026-08-27; a user without their own set inherits
+  the deployment-wide defaults until they save one).
 * Admin settings UI: **Manage Site → “LLM Configuration” tab**
-  (`/admin`), served by the standalone page `GET /admin/llm/settings`.
+  (`/admin`), served by the standalone page `GET /admin/llm/settings`, with
+  five sections: **Features, API Connection, Model Selection, System Prompt,
+  AI Prompts** (the review token budgets live under AI Prompts).
   There is intentionally **no separate navbar entry** (reviewer requirement).
 
 ## Environment variables
@@ -95,6 +119,12 @@ settings are user- or admin-scoped.
 - Site-lane model ids are validated against the admin allowlist server-side.
 - API keys are encrypted at rest when `LLM_KEY_SECRET` is set (never returned
   to the browser, only `hasKey`).
+- Scan-pattern regexes (admin and user rubrics) pass one shared validator with
+  length caps (whole field ≤ 4000, **each pattern ≤ 200 chars**) before any
+  `new RegExp()` compile — they are evaluated on every review run.
+- The shared model selection is validated on save (well-formed model reference
+  or empty string; anything else is a 400), so a client bug cannot wedge every
+  AI surface of a profile.
 - LLM output is rendered through `marked` + `DOMPurify` (sanitized) in the
   chat rail and selection toolbar.
 - Per-user rate + daily token guards protect the shared backend from
@@ -122,8 +152,36 @@ affected.
   returns one). The UI shows that message in the connection notice.
 - Admin settings save → `400 {ok:false, error, errors:[{field,message}]}`
   (all zod issues), shown as a banner next to the Save button.
-- Rubric scan regexes are validated by `safeRubricRegex` (rejects recursive
-  groups and repeated-quantifier patterns) to keep reviews from hanging.
+- Chat/generator/completion failures name the **model** that failed: 404 →
+  "Model not found … re-scan the provider and select an available model",
+  5xx → "…transient provider overload — retry, or select a different model".
+
+### Known model-behaviour quirks (handled)
+
+- **Fabricated tool calls** — some instruct models answer generator/transform
+  requests with a fake `tool call: get_keywords_from_document(…)` line. Every
+  generator and transform prompt carries a hard *no-tool-call* instruction,
+  the generator path retries once with a nudge, and if the output still looks
+  like a tool call the user gets a clear "choose another model" error — the
+  gibberish is never shown as the result.
+- **Qwen "thinking" leaks** — `stripThinkTags()` removes stray `</think>`
+  markers some Ollama/Qwen combinations emit into `content`.
+
+## Ask AI context menu (reference-synced, 2026-08-27)
+
+The selection toolbar (editor toolbar **Ask AI** button / floating anchor)
+is context-sensitive like the reference product:
+
+- **With a selection** → *Rephrase*, *Shorten*, *More scientific*,
+  *Translate* (inline accordion with a **language search field** — reachable,
+  no fly-out), *Synonyms*.
+- **Without a selection** → the whole-document generators *Title*, *Abstract*,
+  *Keywords* (File menu equivalents included).
+
+The selection is captured at **pointer-down** on the trigger, so the click
+itself can no longer clear it before the menu opens. Admin-action templates
+exist exactly for the reachable actions: `paraphrase`, `academic`, `concise`,
+`translate`, `synonyms` (orphaned templates were removed 2026-08-27).
 
 ## Tests
 
@@ -154,24 +212,33 @@ and the settings pages: 12/12 passing on the latest build.
   list) and **Scan models** (merges the freshly served list into the row).
   Providers whose model roster changes over time are handled with one click of
   Scan — no timers, no background traffic, no rate-limit exposure.
-- **#11 split/join** — removed from the editor toolbar (type, labels, modes 5/6;
-  the admin prompt templates remain available if ever needed).
-- **#13 generators in the File menu** — title / abstract / keywords moved from the
-  selection toolbar into the core **File menu** (module extensions
+- **#11 split/join** — removed from the editor toolbar (type, labels, modes 5/6)
+  and the orphaned prompt templates were removed from the admin UI and the
+  shipped defaults on 2026-08-27 (audit: no UI path referenced them anymore).
+- **#13 generators in the File menu** — title / abstract / keywords in the core
+  **File menu** (module extensions
   `frontend/js/extensions/llm-file-menu-*`, core `insertMenuSections` +
   `menubarExtraComponents` in `config/settings.defaults.js`). They read the whole
   project (`POST /project/:id/llm/generate`) — matching the reviewer's point
   that whole-document generators do not belong to a selection context — and open
   a result modal with copy-to-clipboard. Non-LLM deployments see no menu items
   (unregistered commands are filtered by the core menu renderer).
-- **#2 user settings inside Account Settings** — the BYO table/editor is rendered
-  directly in the core Account Settings page ("AI assistant" section,
-  `frontend/js/features/settings/components/llm-user-section.tsx`) via the
-  `overleafModuleImports` mechanism (`llmUserSettingsSection`, same pattern as
-  the github/zotero widgets — no dual-React risk); the section renders in
-  `compact` mode (no duplicate header) and falls back to a link card when the
-  module is absent. `/user/llm-settings` remains available as a deep link / the
-  Account ▸ 'AI Settings' entry.
+- **#2 user settings inside Account Settings** — per the owner refinement
+  (2026-08-27) the Account Settings "AI assistant" section is now a **link card**
+  to `/user/llm-settings` (BYO providers + the user's own compliance rubrics),
+  keeping the core Account Settings page lean.
+
+### Owner decisions (2026-08-27)
+
+- **Global LLM via the admin interface** — the site backend is configured and
+  edited under Manage Site → LLM Configuration (admin settings file), not via
+  environment variables (`LLM_API_URL`/… remain only as fallbacks for
+  deployments that prefer env).
+- **Compliance review is user-based** — each user maintains their own rubric set
+  (`/user/llm-settings` → Compliance Review); global admin rubrics survive only
+  as the *inherited* deployment default until a user saves their own.
+- **One shared model selection** (user-scoped) for every AI surface; the admin
+  model pickers are gone.
 
 ## Layout
 
