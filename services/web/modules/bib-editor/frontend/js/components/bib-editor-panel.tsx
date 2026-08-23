@@ -39,6 +39,7 @@ import GenericConfirmModal from '@/features/ide-react/components/modals/generic-
 import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
 import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import { useBibEditorContext } from '../context/bib-editor-context'
+import { BIB_UNDO_EVENT, BIB_REDO_EVENT } from '../extensions/bib-editor-extension'
 import BibEntryList from './bib-entry-list'
 import BibEntryForm from './bib-entry-form'
 import BibEntryPreview from './bib-entry-preview'
@@ -457,35 +458,78 @@ function BibEditorPanel() {
         </div>
       )}
 
-      <div className="bib-editor-visual-nav">
-        {selection === null && (
-          <OLButton
-            className="bib-editor-add-btn"
-            size="sm"
-            variant="primary"
-            leadingIcon="add"
-            onClick={handleSelectNew}
+      {/* SaaS bibtex toolbar (reference 2a): Undo/Redo on the left, the
+          Code/Visual toggle (right) with the reserved search slot.
+          The visual "new entry" back action stays on the left. */}
+      <div
+        className="bibtex-toolbar"
+        role="toolbar"
+        aria-label={t('BibTeX editor toolbar')}
+      >
+        <div className="ol-toolbar-layout-left">
+          {selection?.kind === 'new' && (
+            <OLButton
+              className="bibtex-toolbar-back"
+              size="sm"
+              variant="link"
+              leadingIcon="arrow_top_left"
+              onClick={handleBack}
+            >
+              {t('back')}
+            </OLButton>
+          )}
+          <div
+            className="ol-editor-toolbar-button-group"
+            aria-label={t('toolbar_undo_redo_actions')}
           >
-            {t('Add new entry')}
-          </OLButton>
-        )}
-        {selection?.kind === 'new' && (
-          <OLButton
-            className="bib-editor-back-btn"
-            size="sm"
-            variant="link"
-            leadingIcon="arrow_top_left"
-            onClick={handleBack}
-          >
-            {t('back')}
-          </OLButton>
-        )}
-        <span className="bib-editor-visual-nav-title">
-          {selection?.kind === 'new' ? t('New Entry') : ''}
-        </span>
-        {/* Code/Visual toggle — the leave watchers above handle
-            "leaving visual" (no click interception, R2). */}
-        <EditorSwitch />
+            <button
+              type="button"
+              className="ol-cm-toolbar-button"
+              aria-label={t('undo')}
+              onClick={() =>
+                document.dispatchEvent(new CustomEvent(BIB_UNDO_EVENT))
+              }
+            >
+              <span className="material-symbols" aria-hidden="true">
+                undo
+              </span>
+              <span className="visually-hidden">{t('undo')}</span>
+            </button>
+            <button
+              type="button"
+              className="ol-cm-toolbar-button"
+              aria-label={t('redo')}
+              onClick={() =>
+                document.dispatchEvent(new CustomEvent(BIB_REDO_EVENT))
+              }
+            >
+              <span className="material-symbols" aria-hidden="true">
+                redo
+              </span>
+              <span className="visually-hidden">{t('redo')}</span>
+            </button>
+          </div>
+        </div>
+        <div className="ol-toolbar-layout-right">
+          {/* Code/Visual toggle — the leave watchers above handle
+              "leaving visual" (no click interception, R2). */}
+          <EditorSwitch />
+          {/* SaaS reserves the search slot (hidden on narrow widths). */}
+          <div style={{ display: 'flex', visibility: 'hidden' }} aria-hidden="true">
+            <button
+              type="button"
+              className="ol-cm-toolbar-button"
+              aria-label={t('toolbar_search_file')}
+            >
+              <span className="material-symbols" aria-hidden="true">
+                search
+              </span>
+              <span className="visually-hidden">
+                {t('toolbar_search_file')}
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="bib-editor-panel-content">
@@ -519,7 +563,7 @@ function BibEditorPanel() {
               }
               openDocName={openDocName}
               onAddPaste={() => setImportOpen(true)}
-              onAddManual={() => selectNew()}
+              onAddManual={handleSelectNew}
               onAddFromLibrary={() => setLibraryImportOpen(true)}
             />
             {selection?.kind === 'existing' && previewEntry ? (

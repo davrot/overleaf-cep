@@ -841,10 +841,24 @@ module.exports = {
 
     showSubscriptionLink: false,
 
-    // Top-nav links moved to the left sidebar page switcher (SaaS layout,
-    // LIBRARY_PLAN D-C4): /library shows Library + Projects + Templates in
-    // `DsNavPageSwitcher`; the top navbar keeps Projects/Account only.
-    header_extras: [],
+    // SaaS layout parity (reference /project + /library captures): Library
+    // and Templates links appear in the top navbar AND in the account menu
+    // (sidebar lower section). Each is independently gated:
+    //  - Library: bib-editor module switch (OVERLEAF_BIB_LIBRARY, default on)
+    //  - Templates: shown only for logged-in users (SaaS behavior)
+    header_extras: [
+      process.env.OVERLEAF_BIB_LIBRARY !== 'false' && {
+        text: 'Library',
+        url: '/library',
+        class: 'subdued',
+      },
+      {
+        text: 'Templates',
+        url: '/templates',
+        class: 'subdued',
+        only_when_logged_in: true,
+      },
+    ].filter(Boolean),
   },
   // Example:
   //   header_extras: [{text: "Some Page", url: "http://example.com/some/page", class: "subdued"}]

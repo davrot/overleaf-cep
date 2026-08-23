@@ -171,36 +171,47 @@ export default function BibEntryList({
   return (
     <div className="bibtex-entry-list">
       {!hideToolbar && (
-      <div className="bibtex-entry-list-toolbar">
-        <div className="bibtex-toolbar-row">
-          <input
-            id="bib-list-search"
-            ref={searchRef}
-            type="search"
-            className="bibtex-search"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder={t('Search __fileName__', {
-              fileName: openDocName || '.bib',
-            })}
-            aria-label={t('search')}
-          />
-          {/* C5 Add dropdown (capture bibtex-add-button): Paste references
-              ["BibTeX, DOI"] / Enter manually. "Import from Library" (C9)
-              stub lands here too (disabled + tooltip). */}
-          <Dropdown align="end">
-            <DropdownToggle
-              className="bibtex-add-button btn-secondary btn-sm"
-              aria-label={t('Add')}
-              aria-expanded={false}
-            >
+      <div className="bibtex-entry-list-panel">
+        {/* SaaS list search: form-control (sm) with a leading icon. */}
+        <div className="bibtex-search">
+          <div className="form-control-wrapper form-control-wrapper-sm">
+            <span className="form-control-start-icon">
+              <span className="material-symbols" aria-hidden="true">
+                search
+              </span>
+            </span>
+            <input
+              id="bib-list-search"
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={t('Search __fileName__', {
+                fileName: openDocName || '.bib',
+              })}
+              aria-label={t('search')}
+              className="form-control-offset-start form-control form-control-sm"
+            />
+          </div>
+        </div>
+        {/* SaaS Add dropdown (capture 2b): btn-secondary custom-toggle;
+            items: Paste references [BibTeX, DOI] / Enter manually.
+            "Import from Library" (C9) is the CE extra, gated by host wiring. */}
+        <Dropdown className="bibtex-add-button" align="end">
+          <DropdownToggle
+            className="d-inline-grid custom-toggle dropdown-toggle btn btn-secondary btn-sm"
+            aria-label={t('Add')}
+            aria-expanded={false}
+          >
+            <span className="button-content">
               <span className="material-symbols" aria-hidden="true">
                 add
               </span>
               {t('Add')}
-            </DropdownToggle>
-            <DropdownMenu>
+            </span>
+          </DropdownToggle>
+          <DropdownMenu>
               <DropdownItem description={t('BibTeX, DOI')} onClick={onAddPaste}>
                 {t('Paste references')}
               </DropdownItem>
@@ -219,9 +230,8 @@ export default function BibEntryList({
                   <span title={t('Library import is not available in this build yet.')}>{t('Import from Library')}</span>
                 </DropdownItem>
               )}
-            </DropdownMenu>
-          </Dropdown>
-        </div>
+          </DropdownMenu>
+        </Dropdown>
       </div>
       )}
 

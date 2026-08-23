@@ -45,20 +45,144 @@ export const BIB_DELETE_EVENT = 'bib-editor:delete'
 export const BIB_IMPORT_EVENT = 'bib-editor:import'
 export const BIB_SCROLL_TO_EVENT = 'bib-editor:scroll-to'
 export const BIB_WRITE_FAILED_EVENT = 'bib-editor:write-failed'
+// Document-level undo/redo (SaaS bibtex toolbar parity):
+export const BIB_UNDO_EVENT = 'bib-editor:undo'
+export const BIB_REDO_EVENT = 'bib-editor:redo'
+
+/** Coalesce rapid successive updates into one undo step (ms). */
+const HISTORY_COALESCE_MS = 700
+/** Bounded snapshot history (a .bib document is small; still bound it). */
+const HISTORY_MAX = 100
+
+/**
+ * Pure document-level undo/redo state machine (SaaS bibtex toolbar parity).
+ *
+ * Invariant: `history[0]` is the document when the session started. A live
+ * edit appends the NEW source; `pos === null` means "at the live head".
+ * Undoing then editing discards the redo tail (standard editor behaviour).
+ * Kept free of any EditorView dependency so it can be unit-tested directly.
+ */
+export class BibHistory {
+  private history: string[]
+  private historyPos: number | null = null
+
+  constructor(initial: string, maxSize: number = HISTORY_MAX) {
+    this.history = [initial]
+    this.maxSize = maxSize
+  }
+
+  private maxSize: number
+
+  get length(): number {
+    return this.history.length
+  }
+
+  /** The document currently in force (live head or the undone position). */
+  get current(): string {
+    const idx =
+      this.historyPos === null
+        ? this.history.length - 1
+        : this.historyPos
+    return this.history[idx] ?? ''
+  }
+
+  get canUndo(): boolean {
+    return this.history.length > 1 && (this.historyPos === null
+      ? this.history.length - 1 > 0
+      : this.historyPos > 0)
+  }
+
+  get canRedo(): boolean {
+    return (
+      this.historyPos !== null &&
+      this.historyPos < this.history.length - 1
+    )
+  }
+
+  /**
+   * Record a live document change. `replaceTop` coalesces a rapid
+   * successive update (typing burst) into the previous step.
+   */
+  append(doc: string, replaceTop = false): void {
+    if (this.historyPos === null) {
+      if (replaceTop && this.history.length > 1) {
+        this.history[this.history.length - 1] = doc
+      } else {
+        this.history.push(doc)
+      }
+    } else {
+      // An edit after undoing discards the discarded tail (standard).
+      this.history = this.history.slice(0, this.historyPos + 1)
+      this.history.push(doc)
+      this.historyPos = null
+    }
+    if (this.history.length > this.maxSize) {
+      this.history.splice(0, this.history.length - this.maxSize)
+    }
+  }
+
+  /**
+   * Undo one step. Returns the document to apply, or null when nothing
+   * can be undone (pos advances so the next call continues).
+   */
+  undo(): string | null {
+    const n = this.history.length
+    const pos = this.historyPos === null ? n - 1 : this.historyPos
+    const target = pos - 1
+    if (target < 0 || target >= n) return null
+    this.historyPos = target
+    return this.history[target]
+  }
+
+  /** Redo one step. Returns the document to apply, or null. */
+  redo(): string | null {
+    if (this.historyPos === null) return null
+    const target = this.historyPos + 1
+    if (target >= this.history.length) return null
+    this.historyPos = target
+    return this.history[target]
+  }
+
+  /** Replace the whole stack (file switch / session reset). */
+  reset(doc: string): void {
+    this.history = [doc]
+    this.historyPos = null
+  }
+}
 
 class BibEditorPlugin {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private dispatchHandler: ((ev: Event) => void) | null = null
   private scrollHandler: ((ev: Event) => void) | null = null
+  private historyHandler: ((ev: Event) => void) | null = null
+
+  // Document history (SaaS toolbar undo/redo) — pure state machine + the
+  // editor-facing bindings below.
+  private history: BibHistory
+  private lastPushTime = 0
+  private lastPushSource = ''
 
   constructor(private view: EditorView) {
+    this.history = new BibHistory(this.view.state.doc.toString())
     this.setupDispatchListener()
     this.setupScrollListener()
+    this.setupHistoryListener()
     this.emitState()
   }
 
   update(update: ViewUpdate) {
     if (update.docChanged) {
+      const prev = update.startState.doc.toString()
+      const next = update.state.doc.toString()
+      const isHistoryMove = update.transactions.some(
+        tr => (tr.meta as { bibHistoryMove?: boolean } | undefined)?.bibHistoryMove
+      )
+      if (isHistoryMove) {
+        // History application: don't pollute the stack; just resync.
+        this.lastPushSource = next
+      } else {
+        this.recordHistory(prev, next)
+      }
       this.debouncedParse()
     }
   }
@@ -78,6 +202,60 @@ class BibEditorPlugin {
       document.removeEventListener(BIB_SCROLL_TO_EVENT, this.scrollHandler)
       this.scrollHandler = null
     }
+    if (this.historyHandler) {
+      document.removeEventListener(BIB_UNDO_EVENT, this.historyHandler)
+      document.removeEventListener(BIB_REDO_EVENT, this.historyHandler)
+      this.historyHandler = null
+    }
+  }
+
+  // ---------------------------------------------------------------- history
+
+  get canUndo(): boolean {
+    return this.history.canUndo
+  }
+
+  get canRedo(): boolean {
+    return this.history.canRedo
+  }
+
+  /**
+   * Record a live document change into the history stack. Coalesces rapid
+   * consecutive updates (typing bursts) into a single step.
+   */
+  private recordHistory(prevSource: string, newSource: string) {
+    if (newSource === prevSource) return
+    const now = Date.now()
+    const replaceTop =
+      now - this.lastPushTime < HISTORY_COALESCE_MS &&
+      this.lastPushSource === prevSource
+    this.history.append(newSource, replaceTop)
+    this.lastPushTime = now
+    this.lastPushSource = newSource
+  }
+
+  private moveHistory(direction: -1 | 1) {
+    const doc = direction === -1 ? this.history.undo() : this.history.redo()
+    if (doc === null) return
+    const { transaction } = this.view.state.update({
+      changes: { from: 0, to: this.view.state.doc.length, insert: doc },
+      selection: { anchor: 0 },
+      userEvent: 'history',
+      meta: { bibHistoryMove: true },
+    })
+    this.view.dispatch(transaction)
+  }
+
+  /**
+   * Undo/redo requests from the toolbar (bib-editor-panel.tsx).
+   */
+  private setupHistoryListener() {
+    this.historyHandler = (ev: Event) => {
+      if (ev.type === BIB_UNDO_EVENT) this.moveHistory(-1)
+      else if (ev.type === BIB_REDO_EVENT) this.moveHistory(1)
+    }
+    document.addEventListener(BIB_UNDO_EVENT, this.historyHandler)
+    document.addEventListener(BIB_REDO_EVENT, this.historyHandler)
   }
 
   /**

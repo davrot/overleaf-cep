@@ -34,34 +34,84 @@
 }
 
 
-/* Visual nav header — always visible; contains Back/title on the left and
-   the Code/Visual EditorSwitch on the right. */
-.bib-editor-visual-nav {
+/* SaaS bibtex toolbar (reference 2a) — Undo/Redo left, Code/Visual toggle +
+   reserved search slot right. Values ported from the SaaS capture CSS
+   (ol-toolbar-layout-* / ol-editor-toolbar-button-group / ol-cm-toolbar-button). */
+.bibtex-toolbar {
   display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0.5rem 0.25rem;
-  border-bottom: 1px solid var(--bib-panel-border);
+  align-items: center;
   flex-shrink: 0;
+  min-height: 40px;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--bib-panel-border);
+  color: var(--bib-panel-color);
 }
 
-.bib-editor-back-btn {
+.ol-toolbar-layout-left {
+  display: flex;
+  align-items: center;
+}
+
+.ol-toolbar-layout-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-03);
+  margin-left: auto;
+}
+
+.ol-editor-toolbar-button-group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ol-editor-toolbar-button-group .ol-cm-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 1px;
   padding: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: var(--border-radius-base, 4px);
+  color: inherit;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.ol-editor-toolbar-button-group .ol-cm-toolbar-button:hover,
+.ol-editor-toolbar-button-group .ol-cm-toolbar-button:focus,
+.ol-editor-toolbar-button-group .ol-cm-toolbar-button:active {
+  background-color: hsla(0, 0%, 49%, 0.1);
+  color: inherit;
+}
+
+.ol-toolbar-layout-right .ol-cm-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 1px;
+  padding: 0;
+}
+
+/* "Enter manually" back action (CE extra on the SaaS toolbar). */
+.bibtex-toolbar-back {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.25rem;
+  margin-right: 0.5rem;
   font-size: var(--font-size-02);
   font-weight: bold;
   color: var(--bib-panel-secondary-color);
   text-decoration: none;
 }
 
-.bib-editor-back-btn:hover {
+.bibtex-toolbar-back:hover {
   color: var(--bib-panel-color);
   text-decoration: none;
-}
-
-.bib-editor-visual-nav-title {
-  display: flex;
-  font-size: var(--font-size-02);
-  font-weight: bold;
-  color: var(--bib-panel-color);
 }
 
 .bib-editor-panel {
@@ -530,36 +580,56 @@
   flex-shrink: 0;
 }
 
-/* --- Dynamic search (C3: "Search <file>") + Add (D7) ---------------------- */
+/* --- SaaS list panel (reference 2b): form-control search + Add ---------- */
 
-.bib-editor-panel .bibtex-toolbar-row {
+.bib-editor-panel .bibtex-entry-list-panel {
   display: flex;
   align-items: center;
   gap: var(--spacing-04);
+  padding: var(--spacing-04);
+  flex-shrink: 0;
 }
 
+/* Search column: the core form-control wrapper does the input styling.
+   SaaS: .bibtex-search { width: 320px } on the 320px list column; here the
+   panel is the column, so the search flexes to fill the row. */
 .bib-editor-panel .bibtex-search {
-  width: 320px; /* D7: capture .bibtex-search{width:320px} */
-  flex: 0 1 320px;
+  flex: 1 1 0;
   min-width: 0;
-  font-size: var(--font-size-02);
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--bib-panel-border);
-  border-radius: var(--bs-border-radius);
-  background: transparent;
+}
+
+.bib-editor-panel .bibtex-search .form-control {
   color: var(--bib-panel-color);
 }
 
-.bib-editor-panel .bibtex-search:focus {
-  outline: 2px solid var(--blue-50);
-  outline-offset: 1px;
+.bib-editor-panel .bibtex-search .form-control::placeholder {
+  color: var(--bib-panel-secondary-color);
 }
 
-/* Add dropdown: pinned to the end of the search row (D7). */
+.bib-editor-panel .form-control-wrapper .form-control-start-icon .material-symbols {
+  font-size: 1rem;
+  color: var(--bib-panel-secondary-color);
+}
+
+/* Add dropdown (SaaS 2b: btn-secondary custom-toggle, right-pinned). */
 .bib-editor-panel .bibtex-add-button {
-  margin-left: auto;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+/* SaaS capture: .dropdown .custom-toggle */
+.bib-editor-panel .button-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-04);
+}
+
+.bib-editor-panel .custom-toggle {
+  display: flex;
+  align-items: center;
+  padding-left: var(--spacing-04);
+  padding-right: var(--spacing-05);
 }
 
 /* --- Bulk bar (C3/C4: select-all + count + Delete) ----------------------- */
