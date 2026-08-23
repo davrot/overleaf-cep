@@ -19,6 +19,8 @@ import Footer from '@/shared/components/footer/footer'
 import { DsNavPageSwitcher } from '@/shared/components/sidebar/ds-nav-page-switcher'
 import { SidebarLowerSection } from '@/shared/components/sidebar/sidebar-lower-section'
 import SystemMessages from '@/shared/components/system-messages'
+import { SplitTestProvider } from '@/shared/context/split-test-context'
+import { UserSettingsProvider } from '@/shared/context/user-settings-context'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 import getMeta from '@/utils/meta'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
@@ -41,7 +43,11 @@ export default function LibraryRoot() {
   const footerProps = getMeta('ol-footer')
 
   return (
-    <div className="project-ds-nav-page website-redesign library-enabled">
+    /* Core DS chrome (navbar/sidebar/theme toggle) needs the same context
+       stack /project uses (project-list-root): SplitTest + UserSettings. */
+    <SplitTestProvider>
+      <UserSettingsProvider>
+        <div className="project-ds-nav-page website-redesign library-enabled">
       <SystemMessages />
       <DefaultNavbar
         {...navbarProps}
@@ -72,6 +78,8 @@ export default function LibraryRoot() {
           <CookieBanner />
         </div>
       </div>
-    </div>
+        </div>
+      </UserSettingsProvider>
+    </SplitTestProvider>
   )
 }
