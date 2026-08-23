@@ -1,6 +1,6 @@
 # References module: implementation plan (reconciled to the overleaf.com reference)
 
-**Status: SUPERSEDED-BY-THIS-PLAN → ACTIVE.** **Progress: C1 ✔ C2 ✔ C3 ✔ C4 ✔ (incl. D15 per-row search highlight) C5 ✔ C6 ✔ C7 ✔ C9 ✔ (all committed); remaining OPEN: D9 Add modal (Save-gate) — deferred per plan §3-C4; D11 row error-tooltip click wiring (CSS done in C7).** Details below in §3. The Phase-B plan (2026-07-20) is a *redesign* plan built from reviewer notes. The overleaf.com reference (the four capture/asset files) is now the **authoritative source of truth** and where it disagrees with the Phase-B plan, **the reference wins** (per user instruction). This plan re-grounds every decision on what the reference actually ships, and the single deliberate deviation (an "Import from Library" add-item) is called out explicitly.
+**Status: SUPERSEDED-BY-THIS-PLAN → ACTIVE.** **Progress: C1 ✔ C2 ✔ C3 ✔ C5 ✔ C6 ✔ C7 ✔ C9 ✔ committed; C4 mostly done (D15 per-row search highlight done in b5e3ff208a; D9 Add modal + D11 error-tooltip click open, both deferred per plan).** Details below in §3. The Phase-B plan (2026-07-20) is a *redesign* plan built from reviewer notes. The overleaf.com reference (the four capture/asset files) is now the **authoritative source of truth** and where it disagrees with the Phase-B plan, **the reference wins** (per user instruction). This plan re-grounds every decision on what the reference actually ships, and the single deliberate deviation (an "Import from Library" add-item) is called out explicitly.
 
 This is a plan, not code.
 
