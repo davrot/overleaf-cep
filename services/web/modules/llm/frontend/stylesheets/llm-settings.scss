@@ -274,7 +274,8 @@
   &[data-active='models'] [data-sec='models'],
   &[data-active='prompt'] [data-sec='prompt'],
   &[data-active='compliance'] [data-sec='compliance'],
-  &[data-active='prompts'] [data-sec='prompts'] {
+  &[data-active='prompts'] [data-sec='prompts'],
+  &[data-active='usage'] [data-sec='usage'] {
     display: block;
   }
 

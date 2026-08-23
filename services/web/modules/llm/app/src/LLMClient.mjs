@@ -27,6 +27,7 @@ import { generateText, generateObject, APICallError, NoContentGeneratedError, No
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { recordUsage } from './LLMUsage.mjs'; // overleaf-lab (usage meter)
 
 export const PROVIDER_TYPES = ['openai', 'anthropic', 'openaiCompatible'];
 
@@ -249,6 +250,18 @@ function usageOf(result) {
   };
 }
 
+// overleaf-lab (usage meter): one capture point for every successful model call.
+// Call sites pass options.usageMeta = { userId, action, lane, projectId? }.
+function recordCall(options, spec, usage) {
+  const meta = options?.usageMeta;
+  if (!meta || !usage) return;
+  try {
+    void recordUsage({ ...meta, model: spec.model }, usage);
+  } catch (err) {
+    // meter must never break the call itself
+  }
+}
+
 function commonCallOptions(options, { defaultMaxRetries = 1 } = {}) {
   return {
     temperature: options.temperature,
@@ -274,7 +287,10 @@ export async function chatText(spec, messages, options = {}) {
       headers: { 'user-agent': 'overleaf-llm-module' },
       ...commonCallOptions(options)
     });
-    return { text: stripThinkTags(result.text), usage: usageOf(result), finishReason: result.finishReason };
+    const text = stripThinkTags(result.text);
+    const usage = usageOf(result);
+    recordCall(options, spec, usage);
+    return { text, usage, finishReason: result.finishReason };
   }
   catch (err) {
     throw wrapError(err, spec.model);
@@ -295,7 +311,10 @@ export async function chatObject(spec, messages, schema, options = {}) {
       messages: coreMessages,
       ...commonCallOptions(options, { defaultMaxRetries: 0 })
     });
-    return { object: result.object, usage: usageOf(result) };
+    const object = result.object;
+    const usage = usageOf(result);
+    recordCall(options, spec, usage);
+    return { object, usage };
   }
   catch (err) {
     throw wrapError(err, spec.model);

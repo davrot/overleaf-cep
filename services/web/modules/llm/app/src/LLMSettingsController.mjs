@@ -22,6 +22,7 @@
  * previously only enforced chat(), not settings/check/scan/save).
  */
 
+import { getUsageSummary } from './LLMUsage.mjs' // overleaf-lab (usage meter)
 import { z } from 'zod'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
@@ -357,7 +358,12 @@ async function checkProviderConnection(req, res) {
             await chatText(
                 normalizeProviderSpec({ providerType: type, baseUrl, apiKey }, { model: model || models[0] || 'qwen' }),
                 [{ role: 'user', content: 'Reply with the single word OK.' }],
-                { maxOutputTokens: 16, temperature: 0, timeoutMs: 60000 }
+                {
+                    maxOutputTokens: 16,
+                    temperature: 0,
+                    timeoutMs: 60000,
+                    usageMeta: { userId, action: 'check', lane: 'user' } // overleaf-lab (usage meter)
+                }
             )
             if (type !== requestedType) {
                 logger.info(
@@ -557,6 +563,21 @@ async function saveUserCompliance(req, res) {
     res.json({ ok: true, rubrics: sanitized })
 }
 
+
+// overleaf-lab (usage meter): the user's own token accounting for /user/llm-settings.
+async function userUsageSummary(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) {
+        return res.status(401).json({ ok: false })
+    }
+    const days = parseInt(req.query.days, 10)
+    const summary = await getUsageSummary({ userId, days: Number.isFinite(days) ? days : 30 })
+    if (summary) {
+        return res.json({ ok: true, ...summary })
+    }
+    return res.json({ ok: false, error: 'unavailable' })
+}
+
 export default {
     isUserSettingsAllowed,
     requireUserSettingsAllowed,
@@ -568,6 +589,7 @@ export default {
     deleteProvider: expressify(deleteProvider),
     checkProviderConnection: expressify(checkProviderConnection),
     scanProviderModels: expressify(scanProviderModels),
+    userUsageSummary: expressify(userUsageSummary), // overleaf-lab (usage meter)
     // overleaf-lab: user-scoped shared model selection (File → "Select LLM Model")
     getSelectedModel: expressify(getSelectedModel),
     saveSelectedModel: expressify(saveSelectedModel),

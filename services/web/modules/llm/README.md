@@ -79,10 +79,12 @@ settings are user- or admin-scoped.
 | POST   | `/user/llm/selected-model`                  | Save the shared selection `{selected}` |
 | GET    | `/user/llm/compliance`                      | User's review rubrics (+ inherited flag) |
 | POST   | `/user/llm/compliance`                      | Save the user's review rubrics `{rubrics}` |
+| GET    | `/user/llm-usage?days=N`                    | My token usage (meter, default 30 days)  |
 | GET    | `/admin/llm/settings` (+ `/json`)           | Site backend settings page/API       |
 | POST   | `/admin/llm/settings`                       | Save site backend settings           |
 | POST   | `/admin/llm/settings/check`                 | Connection test (model list fetch)   |
 | POST   | `/admin/llm/models`                         | Scan the site backend for models     |
+| GET    | `/admin/llm/usage?days=N`                   | Whole-site token usage (meter)       |
 
 * `GET /user/llm-settings` — dedicated user settings page: BYO provider table
   (Test/Scan) **plus the user's own compliance review rubrics** (the rubric
@@ -90,9 +92,19 @@ settings are user- or admin-scoped.
   the deployment-wide defaults until they save one).
 * Admin settings UI: **Manage Site → “LLM Configuration” tab**
   (`/admin`), served by the standalone page `GET /admin/llm/settings`, with
-  five sections: **Features, API Connection, Model Selection, System Prompt,
-  AI Prompts** (the review token budgets live under AI Prompts).
+  six sections: **Features, API Connection, Model Selection, System Prompt,
+  AI Prompts, Usage** (the review token budgets live under AI Prompts).
   There is intentionally **no separate navbar entry** (reviewer requirement).
+* **Usage meter (2026-08-28):** every successful model call is captured in
+  `LLMClient.chatText/chatObject` (`options.usageMeta`, single choke point)
+  and stored in the `llmusages` collection (`LLMUsage.mjs`): userId, action
+  (`chat`, `completion`, `review`, `generate-<type>`, `compile-fix`,
+  `check`), lane (`site`/`user`), model, input/output/total tokens, day
+  bucket. Record is fire-and-forget and swallows Mongo errors — the meter
+  can never break an LLM call or a settings page. Both meters render a
+  muted “unavailable” note if the store is unreachable. Shown as the admin
+  “Usage” tab (whole site) and a “Usage” card on `/user/llm-settings`
+  (my own rows only); 30-day bar series + by-feature + top models.
 
 ## Environment variables
 

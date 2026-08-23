@@ -81,6 +81,10 @@ let measuredGenTps = null
 // body's model (same body shape as the old provider calls).
 let currentBaseSpec = null
 
+// overleaf-lab (usage meter): set per job by performReview — the in-process
+// review worker is single-flight, so one module-level meta is race-free.
+let currentUsageMeta = null
+
 function specFor(model) {
     return normalizeProviderSpec(currentBaseSpec || {}, { model })
 }
@@ -94,6 +98,7 @@ async function chatDetailedCompat(spec, body, opts = {}) {
         temperature: body.temperature,
         signal: opts.signal,
         timeoutMs: opts.timeoutMs,
+        usageMeta: opts.usageMeta, // overleaf-lab (usage meter)
     }
     try {
         if (schema) {
@@ -122,7 +127,9 @@ async function chatDetailedCompat(spec, body, opts = {}) {
 }
 
 function llmChat(body, opts) {
-    return chatDetailedCompat(specFor(body.model), body, opts)
+    // overleaf-lab (usage meter): every review pass is metered under the job
+    // owner (set by performReview).
+    return chatDetailedCompat(specFor(body.model), body, { ...opts, usageMeta: currentUsageMeta })
 }
 
 // overleaf-lab: sample-size gates for trusting a timings measurement. llama.cpp
@@ -793,6 +800,12 @@ function jobsAhead(jobId) {
 // empty_document). Throws on an HTTP/parse failure or an abort (cancel or the
 // review timeout); processQueue maps those to the 'cancelled' or 'failed' state.
 async function performReview(job) {
+    currentUsageMeta = {
+        userId: job.userId,
+        action: 'review',
+        lane: job.modelOverride && String(job.modelOverride).startsWith('u:') ? 'user' : 'site',
+        projectId: job.projectId,
+    } // overleaf-lab (usage meter)
     const { projectId, userId } = job
 
     // overleaf-lab: resolve the rubric fresh at run time (the job only stores id and

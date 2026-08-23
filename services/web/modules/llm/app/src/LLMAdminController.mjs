@@ -1,6 +1,7 @@
 import logger from '@overleaf/logger'
 import fs from 'node:fs'
 import path from 'node:path'
+import { getUsageSummary } from './LLMUsage.mjs'; // overleaf-lab (usage meter)
 import { z } from 'zod'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, decryptSecret } from './LLMCrypto.mjs' // overleaf-lab: at-rest encryption of admin API key
@@ -537,10 +538,25 @@ async function scanAdminModels(req, res) {
   }
 }
 
+
+// overleaf-lab (usage meter): whole-site token accounting for the admin page.
+async function usageSummary(req, res) {
+  const days = parseInt(req.query.days, 10)
+  const summary = await getUsageSummary({ userId: null, days: Number.isFinite(days) ? days : 30 })
+  if (summary) {
+    res.json({ ok: true, ...summary })
+  }
+  else {
+    // the meter is non-fatal for the whole module — a missing store is a muted
+    // "unavailable" on the UI, never a 500.
+    res.json({ ok: false, error: 'unavailable' })
+  }
+}
 export default {
   adminSettingsPage: expressify(adminSettingsPage),
   getAdminSettings: expressify(getAdminSettings),
   saveAdminSettings: expressify(saveAdminSettings),
   checkAdminLLMConnection: expressify(checkAdminLLMConnection),
-  scanAdminModels: expressify(scanAdminModels),
+  scanAdminModels: expressify(scanAdminModels),  usageSummary: expressify(usageSummary),
+
 }
