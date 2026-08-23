@@ -717,6 +717,17 @@
 .bib-editor-panel .bibtex-entry-card-title { flex: 1 1 auto; }
 .bib-editor-panel .bibtex-entry-card-year { flex: 0 0 auto; }
 
+/* D15 (search scope): per-row match highlight (capture
+   `.bibtex-entry-card-key mark{padding:0}` / `.bibtex-entry-card-details
+   mark{padding:0}`). */
+.bib-editor-panel .bibtex-entry-card-key mark,
+.bib-editor-panel .bibtex-entry-card-details mark {
+  padding: 0;
+  background: var(--bibtex-search-highlight-bg, rgba(255, 204, 157, 0.35));
+  color: inherit;
+  border-radius: 0.125rem;
+}
+
 /* The persistent error-icon rule lives in the C7 capture block below
    (single source of truth). */
 

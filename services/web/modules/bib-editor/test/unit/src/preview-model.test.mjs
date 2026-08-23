@@ -12,6 +12,8 @@ import {
   isTypeOnlyDraft,
   bulkDeleteIds,
   downloadBibFilename,
+  matchesSearch,
+  splitHighlighted,
 } from '../../../frontend/js/utils/preview-model.ts'
 import {
   parseBibFile,
@@ -248,6 +250,76 @@ describe('C4: preview model', () => {
     })
     it('unknown fields fall back to capitalized words', () => {
       expect(previewFieldLabel('my_field')).toBe('My Field')
+    })
+  })
+
+  describe('search (D15): matchesSearch + splitHighlighted', () => {
+    it('matches key, title, author, editor, year, venue fields', () => {
+      const e = ENTRY({
+        id: 'smith2019',
+        type: 'article',
+        fields: {
+          author: 'Smith, Jane',
+          title: 'A title about search',
+          year: '2019',
+          journal: 'Journal of X',
+        },
+      })
+      expect(matchesSearch(e, '')).toBe(true) // empty query = everything
+      expect(matchesSearch(e, 'SMITH')).toBe(true)
+      expect(matchesSearch(e, 'search')).toBe(true)
+      expect(matchesSearch(e, '2019')).toBe(true)
+      expect(matchesSearch(e, 'journal of')).toBe(true)
+      expect(matchesSearch(e, 'zzz-not-present-zzz')).toBe(false)
+    })
+
+    it('editor and journaltitle/booktitle also match', () => {
+      const e1 = ENTRY({ fields: { editor: 'Doe' } })
+      const e2 = ENTRY({
+        type: 'inbook',
+        fields: { journaltitle: 'Proceedings' },
+      })
+      const e3 = ENTRY({
+        type: 'inbook',
+        fields: { booktitle: 'The Book' },
+      })
+      expect(matchesSearch(e1, 'doe')).toBe(true)
+      expect(matchesSearch(e2, 'proceedings')).toBe(true)
+      expect(matchesSearch(e3, 'book')).toBe(true)
+    })
+
+    it('splitHighlighted: no query → single plain segment', () => {
+      expect(splitHighlighted('Smith 2019', '')).toEqual([
+        { text: 'Smith 2019', match: false },
+      ])
+    })
+
+    it('splitHighlighted: empty text → no segments', () => {
+      expect(splitHighlighted('', 'a')).toEqual([])
+    })
+
+    it('splitHighlighted: one match → plain segment after the match', () => {
+      expect(splitHighlighted('Smith, Jane', 'smith')).toEqual([
+        { text: 'Smith', match: true },
+        { text: ', Jane', match: false },
+      ])
+    })
+
+    it('splitHighlighted: multiple matches', () => {
+      // 'aXb aXc' — the query hits twice, each match is its own segment
+      expect(splitHighlighted('aXb aXc', 'a')).toEqual([
+        { text: 'a', match: true },
+        { text: 'Xb ', match: false },
+        { text: 'a', match: true },
+        { text: 'Xc', match: false },
+      ])
+    })
+
+    it('splitHighlighted: case-insensitive, preserves original case', () => {
+      expect(splitHighlighted('Krause 2019', 'KRAUSE')).toEqual([
+        { text: 'Krause', match: true },
+        { text: ' 2019', match: false },
+      ])
     })
   })
 

@@ -219,3 +219,50 @@ export function downloadBibFilename(openDocName: string): string {
   const name = (openDocName || '').trim()
   return name.endsWith('.bib') ? name : `${name || 'bibliography'}.bib`
 }
+
+/**
+ * D15 (search scope) — the row's searchable text, per the reference:
+ * the citation key, title, author, editor, year, and venue
+ * (journal/journaltitle/booktitle). Empty query matches everything.
+ */
+export function matchesSearch(entry: ParsedBibEntry, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (q === '') return true
+  const f = entry.fields
+  const venue = f.journal || f.journaltitle || f.booktitle || ''
+  return [
+    entry.id,
+    f.title || '',
+    f.author || '',
+    f.editor || '',
+    f.year || '',
+    venue,
+  ].some(s => s.toLowerCase().includes(q))
+}
+
+/**
+ * D15 (search scope) — split `text` into alternating plain/match segments
+ * for the (case-insensitive) `query`, so the row can wrap matches in
+ * `<mark>` (capture `.bibtex-entry-card-key mark{padding:0}`).
+ * Non-query input → a single plain segment; empty text → no segments.
+ */
+export function splitHighlighted(
+  text: string,
+  query: string
+): { text: string; match: boolean }[] {
+  const needle = query.trim().toLowerCase()
+  if (text === '') return []
+  if (needle === '') return [{ text, match: false }]
+  const segments: { text: string; match: boolean }[] = []
+  const lower = text.toLowerCase()
+  let pos = 0
+  while (pos <= lower.length) {
+    const idx = lower.indexOf(needle, pos)
+    if (idx === -1) break
+    if (idx > pos) segments.push({ text: text.slice(pos, idx), match: false })
+    segments.push({ text: text.slice(idx, idx + needle.length), match: true })
+    pos = idx + needle.length
+  }
+  if (pos < text.length) segments.push({ text: text.slice(pos), match: false })
+  return segments
+}

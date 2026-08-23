@@ -29,6 +29,10 @@ import {
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { getEntryType, getMissingRequiredFields } from '../utils/bib-types'
 import {
+  matchesSearch,
+  splitHighlighted,
+} from '../utils/preview-model' 
+import {
   visibleWindow,
   spacerHeights,
   type WindowMath,
@@ -74,29 +78,7 @@ export default function BibEntryList({
   const viewportRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return entries
-    const q = search.trim().toLowerCase()
-    return entries.filter(e => {
-      const title = (e.fields.title || '').toLowerCase()
-      const author = (e.fields.author || '').toLowerCase()
-      const editor = (e.fields.editor || '').toLowerCase()
-      const id = e.id.toLowerCase()
-      const year = (e.fields.year || '').toLowerCase()
-      const venue = (
-        e.fields.journal ||
-        e.fields.journaltitle ||
-        e.fields.booktitle ||
-        ''
-      ).toLowerCase()
-      return (
-        title.includes(q) ||
-        author.includes(q) ||
-        editor.includes(q) ||
-        id.includes(q) ||
-        year.includes(q) ||
-        venue.includes(q)
-      )
-    })
+    return entries.filter(e => matchesSearch(e, search))
   }, [entries, search])
 
   // Focus the search box when the list mounts (reviewer: on opening a bib
@@ -264,6 +246,7 @@ export default function BibEntryList({
               previewing={previewId === entry.id}
               checked={selectedIds.includes(entry.id)}
               onToggleSelect={onToggleSelect}
+              search={search}
             />
           </div>
         ))}
@@ -279,6 +262,7 @@ function BibEntryCard({
   previewing,
   checked,
   onToggleSelect,
+  search,
 }: {
   entry: ParsedBibEntry
   index: number
@@ -286,6 +270,8 @@ function BibEntryCard({
   previewing: boolean
   checked: boolean
   onToggleSelect?: (id: string) => void
+  /** D15: the raw search text (per-row `<mark>` highlight) */
+  search: string
 }) {
   const t = useTranslation().t
   const typeDef = getEntryType(entry.type)
@@ -344,13 +330,25 @@ function BibEntryCard({
       </div>
       <div className="bibtex-entry-card-content">
         <div className="bibtex-entry-card-header">
-          <span className="bibtex-entry-card-key">{entry.id}</span>
+          <span className="bibtex-entry-card-key">
+            <Highlighted text={entry.id} search={search} />
+          </span>
           <span className="bibtex-entry-card-details">
             {authorDisplay && (
-              <span className="bibtex-entry-card-author">{authorDisplay}</span>
+              <span className="bibtex-entry-card-author">
+                <Highlighted text={authorDisplay} search={search} />
+              </span>
             )}
-            {title && <span className="bibtex-entry-card-title">{title}</span>}
-            {year && <span className="bibtex-entry-card-year">{year}</span>}
+            {title && (
+              <span className="bibtex-entry-card-title">
+                <Highlighted text={title} search={search} />
+              </span>
+            )}
+            {year && (
+              <span className="bibtex-entry-card-year">
+                <Highlighted text={year} search={search} />
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -362,5 +360,28 @@ function BibEntryCard({
         </span>
       )}
     </div>
+  )
+}
+
+/**
+ * D15 (search scope) — wrap case-insensitive matches in `<mark>` (the
+ * reference `.bibtex-entry-card-key mark{padding:0}`). Non-query text is a
+ * plain span (no highlight DOM); no match is also plain text.
+ */
+function Highlighted({ text, search }: { text: string; search: string }) {
+  const segments = splitHighlighted(text, search)
+  if (segments.length <= 1) {
+    return <>{text}</>
+  }
+  return (
+    <>
+      {segments.map((s, i) =>
+        s.match ? (
+          <mark key={i}>{s.text}</mark>
+        ) : (
+          <React.Fragment key={i}>{s.text}</React.Fragment>
+        )
+      )}
+    </>
   )
 }
