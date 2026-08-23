@@ -29,7 +29,7 @@ import SessionManager from '../../../../app/src/Features/Authentication/SessionM
 import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, normalizeStoredSecret, storedToPlaintext } from './LLMCrypto.mjs'
-import { normalizeProviderSpec, chatText, listModels, detectProviderType, PROVIDER_TYPES } from './LLMClient.mjs'
+import { normalizeProviderSpec, chatText, listModels, detectProviderType, PROVIDER_TYPES, assertPublicLlmBaseUrl } from './LLMClient.mjs'
 import { sanitizeComplianceRubrics, validateComplianceRubrics, getComplianceRubrics, getLLMFeatureFlags } from './LLMAdminController.mjs'
 import OError from '@overleaf/o-error'
 
@@ -166,6 +166,20 @@ async function getProvidersJson(req, res) {
     res.json({ ok: true, providers: providers.map(publicRow), maxProviders: MAX_PROVIDERS_PER_USER })
 }
 
+
+
+// overleaf-lab (audit M1): SSRF guard for user-supplied base URLs. Returns a
+// 400 response (or null when the URL is acceptable) so every entry point can
+// share the same error message.
+function assertPublicOr400(res, baseUrl) {
+    try {
+        assertPublicLlmBaseUrl(baseUrl)
+        return null
+    } catch (err) {
+        return res.status(400).json({ ok: false, error: 'blocked-url', details: err.message })
+    }
+}
+
 async function addProvider(req, res) {
     if (!(await requireUserSettingsAllowed(req, res))) return
     const userId = SessionManager.getLoggedInUserId(req.session)
@@ -174,6 +188,12 @@ async function addProvider(req, res) {
         const details = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
         return res.status(400).json({ ok: false, error: 'invalid', details })
     }
+
+
+    // overleaf-lab (audit M1): SSRF guard on the user-supplied base URL.
+    const blocked = assertPublicOr400(res, parsed.data.baseUrl)
+    if (blocked) return blocked
+
     const user = await User.findById(userId, 'llmProviders llmApiUrl llmModelName')
     const existing = Array.isArray(user?.llmProviders) ? user.llmProviders : []
     if (existing.length >= MAX_PROVIDERS_PER_USER) {
@@ -234,6 +254,11 @@ async function updateProvider(req, res) {
         const details = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
         return res.status(400).json({ ok: false, error: 'invalid', details })
     }
+
+
+    // overleaf-lab (audit M1): SSRF guard on the user-supplied base URL.
+    if (assertPublicOr400(res, parsed.data.baseUrl)) return
+
     let apiKey = normalizeStoredSecret(current.apiKey || '')
     if (req.body?.clearApiKey) apiKey = ''
     else if (req.body?.apiKey && req.body.apiKey.trim() !== '') apiKey = encryptSecret(req.body.apiKey)
@@ -296,6 +321,9 @@ async function checkProviderConnection(req, res) {
         providerType = providerType || row.providerType
         if (!apiKey && row.apiKey) apiKey = storedToPlaintext(row.apiKey)
     }
+    // overleaf-lab (audit M1): SSRF guard on the effective base URL.
+    const blockedChk = assertPublicOr400(res, baseUrl || '')
+    if (blockedChk) return blockedChk
     if (!baseUrl && !providerType) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })
     // overleaf-lab (reviewer #5): auto-detect the API type. Try the requested
     // type first; if it fails, try every other supported type before giving
@@ -374,6 +402,9 @@ async function scanProviderModels(req, res) {
         if (!apiKey && row.apiKey) apiKey = storedToPlaintext(row.apiKey)
     }
     providerType = providerType || detectProviderType(baseUrl)
+    // overleaf-lab (audit M1): SSRF guard on the effective base URL.
+    const blockedScan = assertPublicOr400(res, baseUrl || '')
+    if (blockedScan) return blockedScan
     if (!baseUrl) return res.status(400).json({ ok: false, error: 'invalid', details: 'baseUrl or rowId is required' })
 
     // overleaf-lab (reviewer #5): same auto-detection as /check — try the

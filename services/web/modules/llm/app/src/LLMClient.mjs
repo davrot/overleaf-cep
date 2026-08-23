@@ -94,6 +94,80 @@ export function createModel(spec) {
 }
 
 /*
+ * overleaf-lab (audit M1, SSRF guard): user-supplied BYO base URLs (add, update,
+ * check, scan) are validated BEFORE any request leaves the server. Policy is
+ * deliberately narrower than "no private ranges":
+ *  - BLOCKED: non-http(s) schemes, host-less URLs, loopback (127/8, ::1) and
+ *    0.0.0.0 (local server services), the cloud metadata/link-local range
+ *    169.254.0.0/16 and localhost-style names — the SSRF-critical targets
+ *    (cloud metadata credential theft, local service probing).
+ *  - ALLOWED: 10/8, 172.16/12, 192.168/16 — BYO's whole point includes a local
+ *    Ollama on the admin's LAN (the site lane itself runs on that exact
+ *    pattern); banning it would break the primary self-host use case.
+ * Known residual (accepted): DNS names that RESOLVE to blocked ranges are not
+ * re-checked at request time (DNS-rebinding hardening is out of scope for v1).
+ */
+/*
+ * overleaf-lab (audit M1, SSRF guard): user-supplied BYO base URLs (add, update,
+ * check, scan) are validated BEFORE any request leaves the server. Policy is
+ * deliberately narrower than "no private ranges":
+ *  - BLOCKED: non-http(s) schemes, host-less URLs, loopback (127/8, ::1) and
+ *    0.0.0.0 (local server services), the cloud metadata/link-local range
+ *    169.254.0.0/16 and localhost-style names - the SSRF-critical targets
+ *    (cloud metadata credential theft, local service probing).
+ *  - ALLOWED: 10/8, 172.16/12, 192.168/16 - BYO's whole point includes a local
+ *    Ollama on the admin's LAN (the site lane itself runs on that exact
+ *    pattern); banning it would break the primary self-host use case.
+ * Known residual (accepted): DNS names that RESOLVE to blocked ranges are not
+ * re-checked at request time (DNS-rebinding hardening is out of scope for v1).
+ */
+export function assertPublicLlmBaseUrl(rawUrl) {
+  const fail = (detail) => {
+    throw Object.assign(
+      new Error(`Blocked LLM base URL (${detail}). Point the provider at a reachable public or LAN LLM endpoint.`),
+      { code: 'llm-bad-url' }
+    )
+  }
+  let u
+  try {
+    u = new URL(String(rawUrl || ''))
+  } catch (err) {
+    fail('invalid URL')
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') fail('only http(s) URLs are allowed')
+  const host = u.hostname || ''
+  if (!host) fail('missing host')
+  const lh = host.toLowerCase().replace(/^\[|\]$/g, '')
+  if (
+    lh === 'localhost' ||
+    lh.endsWith('.localhost') ||
+    lh.endsWith('.local') ||
+    lh.endsWith('.internal') ||
+    lh.endsWith('.lan') ||
+    lh.endsWith('.home.arpa') ||
+    lh === '0.0.0.0' ||
+    lh === '::' ||
+    lh === '::1'
+  ) {
+    fail('loopback/local name')
+  }
+  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10) prefixes
+  if (/^f[cd][0-9a-f]{2}:/.test(lh) || /^fe[89ab][0-9a-f]:/.test(lh)) {
+    fail('blocked IPv6 range')
+  }
+  const ipm = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(lh)
+  if (ipm) {
+    const a = Number(ipm[1])
+    const b = Number(ipm[2])
+    if (a === 0) fail('unspecified range')
+    if (a === 127) fail('loopback range')
+    if (a === 169 && b === 254) fail('cloud metadata / link-local range')
+  }
+  return u
+}
+
+
+/*
  * Split messages into (system, coreMessages) for the AI SDK call shape.
  */
 function splitMessages(messages, extraSystem) {
@@ -314,3 +388,4 @@ export default {
   stripThinkTags,
   assertNonEmpty
 };
+
