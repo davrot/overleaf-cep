@@ -17,6 +17,7 @@ import React, {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { plural } from '../utils/plural'
 import * as api from './library-api'
 import type { ApiFailure } from './library-api'
 import {
@@ -285,7 +286,7 @@ export function LibraryProvider({
       await refresh()
       pushToast(
         'success',
-        t('ref_added', { count: apiEntries.length })
+        plural(t, apiEntries.length, 'one_ref_added', 'many_ref_added')
       )
     },
     [refresh, pushToast, t]
@@ -313,7 +314,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('ref_trashed', { count: count }),
+          plural(t, count, 'one_ref_trashed', 'many_ref_trashed'),
           { label: t('View Trash'), onClick: () => setView('trash') }
         )
         return count
@@ -334,7 +335,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('ref_deleted', { count: count })
+          plural(t, count, 'one_ref_deleted', 'many_ref_deleted')
         )
         return count
       } catch (err) {
@@ -353,7 +354,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('ref_restored', { count: count })
+          plural(t, count, 'one_ref_restored', 'many_ref_restored')
         )
         return count
       } catch (err) {

@@ -161,6 +161,8 @@ class BibEditorPlugin {
   private history: BibHistory
   private lastPushTime = 0
   private lastPushSource = ''
+  /** The document moveHistory() dispatched; cleared by update() on apply. */
+  private pendingHistoryDoc: string | null = null
 
   constructor(private view: EditorView) {
     this.history = new BibHistory(this.view.state.doc.toString())
@@ -174,10 +176,13 @@ class BibEditorPlugin {
     if (update.docChanged) {
       const prev = update.startState.doc.toString()
       const next = update.state.doc.toString()
-      const isHistoryMove = update.transactions.some(
-        tr => (tr.meta as { bibHistoryMove?: boolean } | undefined)?.bibHistoryMove
-      )
+      // The moveHistory() dispatch produces exactly the document we applied
+      // (tracked locally — CM6 major differences make transaction metadata
+      // unreliable across versions). Any other doc change is a real edit.
+      const isHistoryMove =
+        this.pendingHistoryDoc !== null && next === this.pendingHistoryDoc
       if (isHistoryMove) {
+        this.pendingHistoryDoc = null
         // History application: don't pollute the stack; just resync.
         this.lastPushSource = next
       } else {
@@ -237,11 +242,16 @@ class BibEditorPlugin {
   private moveHistory(direction: -1 | 1) {
     const doc = direction === -1 ? this.history.undo() : this.history.redo()
     if (doc === null) return
-    const { transaction } = this.view.state.update({
+    // Track the exact document this move applies so update() can tell a
+    // history application apart from a real edit (no CM6 metadata needed).
+    this.pendingHistoryDoc = doc
+    // NOTE: `state.update(spec)` returns the Transaction itself (CM6 API);
+    // destructuring a `{ transaction }` key yields undefined and the dispatch
+    // then crashes inside resolveTransaction.
+    const transaction = this.view.state.update({
       changes: { from: 0, to: this.view.state.doc.length, insert: doc },
       selection: { anchor: 0 },
       userEvent: 'history',
-      meta: { bibHistoryMove: true },
     })
     this.view.dispatch(transaction)
   }

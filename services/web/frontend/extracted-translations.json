@@ -2785,5 +2785,15 @@
   "ref_trashed": "count",
   "ref_deleted": "count",
   "ref_restored": "count",
-  "Save": "Save"
+  "Save": "Save",
+  "one_reference": "__count__ reference",
+  "many_references": "__count__ references",
+  "one_ref_added": "__count__ reference added to your library",
+  "many_ref_added": "__count__ references added to your library",
+  "one_ref_trashed": "__count__ reference moved to Trash",
+  "many_ref_trashed": "__count__ references moved to Trash",
+  "one_ref_deleted": "__count__ reference permanently deleted",
+  "many_ref_deleted": "__count__ references permanently deleted",
+  "one_ref_restored": "__count__ reference restored",
+  "many_ref_restored": "__count__ references restored"
 }

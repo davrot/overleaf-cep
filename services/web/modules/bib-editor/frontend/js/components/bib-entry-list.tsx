@@ -30,6 +30,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { plural } from '../utils/plural'
 import {
   Dropdown,
   DropdownItem,
@@ -293,13 +294,13 @@ export default function BibEntryList({
           </button>
         ) : null}
         <span className="bibtex-bulk-actions-count">
-          {t('reference_count', { count: filtered.length })}
+          {plural(t, filtered.length, 'one_reference', 'many_references')}
         </span>
       </div>
 
       <div className="bibtex-list-count" aria-hidden="true">
         {filtered.length === entries.length
-          ? t('reference_count', { count: entries.length })
+          ? plural(t, entries.length, 'one_reference', 'many_references')
           : `${filtered.length} / ${entries.length}`}
       </div>
 

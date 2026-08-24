@@ -88,11 +88,8 @@ export default function LibraryManualModal({
         id: entry.id.trim(),
         fields: { ...entry.fields },
       }
-      // Type-only form (nothing beyond the type): materialize nothing
-      // (same rule as the in-project editor's new-entry Check, §2.3).
-      if (Object.keys(clean.fields).length === 0) {
-        return
-      }
+      // SaaS parity: an entry with only a type/key is savable; the
+      // preview surfaces the "Required fields missing" warning instead.
       setSaving(true)
       setSaveError(null)
       try {

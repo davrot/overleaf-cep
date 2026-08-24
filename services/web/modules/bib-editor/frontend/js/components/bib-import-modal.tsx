@@ -28,6 +28,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { plural } from '../utils/plural'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import {
@@ -256,7 +257,7 @@ export default function BibImportModal({
                     </span>
                   </label>
                   <div className="bibtex-import-preview-count">
-                    {t('reference_count', { count: importable.length })}
+                    {plural(t, importable.length, 'one_reference', 'many_references')}
                   </div>
                 </div>
                 <div className="bibtex-import-preview-list">
@@ -284,7 +285,7 @@ export default function BibImportModal({
               <div className="bibtex-import-preview-footer-actions">
                 {!previewEmpty && (
                   <div className="bibtex-import-preview-footer-count">
-                    {t('reference_count', { count: checkedCount })}
+                    {plural(t, checkedCount, 'one_reference', 'many_references')}
                   </div>
                 )}
                 <div className="bibtex-import-preview-footer-buttons">
