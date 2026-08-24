@@ -1305,6 +1305,7 @@
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
+  color: var(--content-primary-themed);
 }
 
 /* Library/Trash switcher (SaaS trash-page-tabs). */
@@ -1332,7 +1333,7 @@
 }
 .trash-page-tabs-link[aria-current='page'] {
   background: var(--white);
-  color: var(--content-primary-dark);
+  color: var(--content-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 [data-theme='light'] .trash-page-tabs-link[aria-current='page'] {
@@ -1629,4 +1630,38 @@
   height: 1px;
   margin: 0.2rem 0;
   background: var(--bib-panel-border);
+}
+
+/* ============================================================
+   Library modals: CE modals are always light (core modal.scss),
+   so pin both themed token families to the light scale inside the
+   library Add modal (font colors under the dark overall theme).
+   ============================================================ */
+[data-testid="bib-library-manual-modal"] {
+  --bg-primary-themed: var(--bg-light-primary);
+  --bg-secondary-themed: var(--bg-light-secondary);
+  --bg-tertiary-themed: var(--bg-light-tertiary);
+  --content-primary-themed: var(--content-primary);
+  --content-secondary-themed: var(--content-secondary);
+  --content-placeholder-themed: var(--content-placeholder);
+  --border-divider-themed: var(--border-divider);
+  --bib-panel-bg: var(--bg-light-primary);
+  --bib-panel-color: var(--content-primary);
+  --bib-panel-secondary-color: var(--content-secondary);
+  --bib-panel-border: var(--border-divider);
+}
+
+[data-testid="bib-library-manual-modal"] .entry-type-selector-btn {
+  --bs-btn-color: var(--content-primary-themed);
+  --bs-btn-bg: var(--bg-primary-themed);
+  --bs-btn-border-color: var(--border-divider-themed);
+  --bs-btn-hover-color: var(--content-primary-themed);
+  --bs-btn-hover-bg: var(--bg-secondary-themed);
+  --bs-btn-hover-border-color: var(--border-divider-themed);
+  --bs-btn-active-color: var(--content-primary-themed);
+  --bs-btn-active-bg: var(--bg-secondary-themed);
+  --bs-btn-active-border-color: var(--border-divider-themed);
+  --bs-btn-disabled-color: var(--content-primary-themed);
+  --bs-btn-disabled-bg: var(--bg-secondary-themed);
+  --bs-btn-disabled-border-color: var(--border-divider-themed);
 }

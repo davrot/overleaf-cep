@@ -122,9 +122,11 @@
 }
 
 .bib-editor-panel-content {
+  display: flex;
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -510,7 +512,7 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden scroll;
+  overflow: hidden;
   transition: margin-right 0.3s ease; /* D4: animated by the :has shift */
 }
 
@@ -678,47 +680,19 @@
   min-height: 0;
 }
 
-.bib-editor-panel .bibtex-list-spacer {
-  width: 100%;
-}
-
-/* --- Compact entry card rows (C3 capture) -------------------------------- */
+/* --- Flow entry card rows (capture card-row classes) --------------------
+   The SaaS capture appearance (bib-saas.css) drives the card look: badge
+   key, stacked details, compact padding, hover/previewing states. Only
+   non-conflicting module behaviors stay here (focus, checkbox, min height). */
 
 .bib-editor-panel .bibtex-entry-card-row {
-  top: 0;
-  height: 47px;
   box-sizing: border-box;
 }
 
 .bib-editor-panel .bibtex-entry-card {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 47px;
-  padding: 0 0.7rem;
-  box-sizing: border-box;
-  border: none;
-  border-bottom: 1px solid var(--bib-panel-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--bib-panel-color);
+  min-height: 47px;
   cursor: pointer;
   transition: background-color 0.15s ease;
-}
-
-.bib-editor-panel .bibtex-entry-card-compact {
-  min-height: 0;
-  padding: 0;
-}
-
-.bib-editor-panel .bibtex-entry-card:hover {
-  background: var(--bib-panel-card-hover-bg);
-}
-
-.bib-editor-panel .bibtex-entry-card-previewing {
-  background: var(--bib-panel-card-hover-bg);
-  border-left: 2px solid var(--blue-50);
-  padding-left: calc(0.7rem - 2px);
 }
 
 .bib-editor-panel .bibtex-entry-card:focus-visible {
@@ -735,57 +709,6 @@
 .bib-editor-panel .bibtex-entry-card-checkbox input {
   accent-color: var(--blue-50);
 }
-
-.bib-editor-panel .bibtex-entry-card-content {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  overflow: hidden;
-}
-
-.bib-editor-panel .bibtex-entry-card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
-  margin-bottom: 0;
-}
-
-.bib-editor-panel .bibtex-entry-card-key {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-02);
-  color: var(--bib-panel-color);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 55%;
-}
-
-.bib-editor-panel .bibtex-entry-card-details {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  font-size: var(--font-size-01);
-  color: var(--bib-panel-secondary-color);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.bib-editor-panel .bibtex-entry-card-details > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.bib-editor-panel .bibtex-entry-card-author { flex: 0 1 auto; }
-.bib-editor-panel .bibtex-entry-card-title { flex: 1 1 auto; }
-.bib-editor-panel .bibtex-entry-card-year { flex: 0 0 auto; }
 
 /* D15 (search scope): per-row match highlight (capture
    `.bibtex-entry-card-key mark{padding:0}` / `.bibtex-entry-card-details
@@ -1316,4 +1239,43 @@
   color: var(--bib-panel-secondary-color);
   font-style: italic;
   overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   Modal scope: CE modals are always light (core modal.scss uses
+   light tokens unconditionally) regardless of the overall theme.
+   The SaaS bibtex rules inside them use themed tokens, so pin
+   them to the light scale inside our modals (font colors).
+   ============================================================ */
+[data-testid="bib-manual-modal"],
+[data-testid="bib-import-modal"],
+[data-testid="bib-import-from-library"] {
+  --bg-primary-themed: var(--bg-light-primary);
+  --bg-secondary-themed: var(--bg-light-secondary);
+  --bg-tertiary-themed: var(--bg-light-tertiary);
+  --content-primary-themed: var(--content-primary);
+  --content-secondary-themed: var(--content-secondary);
+  --content-placeholder-themed: var(--content-placeholder);
+  --border-divider-themed: var(--border-divider);
+  --bibtex-card-secondary-text: var(--content-secondary);
+}
+
+/* SaaS entry type selector: neutral form-control skin (SaaS
+   entry-type-selector-btn), not the primary button skin. Inside the
+   modals above the same rule resolves the light-pinned tokens. */
+.bib-editor-panel .entry-type-selector-btn,
+[data-testid="bib-manual-modal"] .entry-type-selector-btn,
+[data-testid="bib-import-modal"] .entry-type-selector-btn {
+  --bs-btn-color: var(--content-primary-themed);
+  --bs-btn-bg: var(--bg-primary-themed);
+  --bs-btn-border-color: var(--border-divider-themed);
+  --bs-btn-hover-color: var(--content-primary-themed);
+  --bs-btn-hover-bg: var(--bg-secondary-themed);
+  --bs-btn-hover-border-color: var(--border-divider-themed);
+  --bs-btn-active-color: var(--content-primary-themed);
+  --bs-btn-active-bg: var(--bg-secondary-themed);
+  --bs-btn-active-border-color: var(--border-divider-themed);
+  --bs-btn-disabled-color: var(--content-primary-themed);
+  --bs-btn-disabled-bg: var(--bg-secondary-themed);
+  --bs-btn-disabled-border-color: var(--border-divider-themed);
 }

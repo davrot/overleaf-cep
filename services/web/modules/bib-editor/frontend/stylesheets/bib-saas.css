@@ -6,6 +6,9 @@
 :root {
   --neutral-05: #fafafa;
   --neutral-85: var(--neutral-70);
+  --neutral-15: var(--neutral-20);
+  --green-15: var(--green-20);
+  --green-65: var(--green-70);
   --wide-target-checkbox-ring: var(--accent-3, var(--green-50));
 }
 

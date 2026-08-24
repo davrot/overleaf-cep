@@ -12,8 +12,9 @@
  * "Select all entries") + count ("N reference(s)", `{ count }`).
  * Search placeholder is DYNAMIC: "Search <openDocName>" (capture).
  *
- * Windowing: absolutely positioned rows + data-index (capture), simple
- * overscan window — see virtual-list.ts (pure, unit-tested).
+ * Rows: capture card-row classes (`bibtex-entry-card-row`, `data-index`,
+ * `role=listitem`) rendered in normal flow (content-height rows; the
+ * virtual-list.ts math stays available as pure, unit-tested utilities).
  *
  * Selection state is lifted (props) so the C4 preview panel can close a
  * previewed row's preview on bulk delete and keep preview consistent.
@@ -39,17 +40,7 @@ import {
 } from '@/shared/components/dropdown/dropdown-menu'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { getEntryType, getMissingRequiredFields } from '../utils/bib-types'
-import {
-  matchesSearch,
-  splitHighlighted,
-} from '../utils/preview-model' 
-import {
-  visibleWindow,
-  spacerHeights,
-  type WindowMath,
-} from '../utils/virtual-list.ts'
-
-const ROW_HEIGHT = 47
+import { matchesSearch, splitHighlighted } from '../utils/preview-model'
 
 /** Default stable row identity = citation key (in-project usage). */
 function defaultRowIdOf(entry: ParsedBibEntry): string {
@@ -119,10 +110,7 @@ export default function BibEntryList({
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState(470)
   const searchRef = useRef<HTMLInputElement>(null)
-  const viewportRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
     return entries.filter(e => matchesSearch(e, search))
@@ -136,29 +124,6 @@ export default function BibEntryList({
       return () => cancelAnimationFrame(raf)
     }
   }, [entries.length])
-
-  // Viewport height (fixed-row windowing needs the visible height).
-  useEffect(() => {
-    const el = viewportRef.current
-    if (!el) return undefined
-    const measure = () => setViewportHeight(el.clientHeight || 470)
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop)
-  }, [])
-
-  const window: WindowMath = visibleWindow(
-    scrollTop,
-    viewportHeight,
-    ROW_HEIGHT,
-    filtered.length
-  )
-  const spacers = spacerHeights(filtered.length, ROW_HEIGHT, window)
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -312,29 +277,20 @@ export default function BibEntryList({
         </div>
       ))}
 
-      {/* Windowed list body (capture: role=list, absolute rows, data-index) */}
-      <div
-        ref={viewportRef}
-        className="bibtex-entry-list-body"
-        role="list"
-        onScroll={onScroll}
-        style={{
-          height:
-            Math.max(spacers.top + (window.end - window.start) * ROW_HEIGHT + spacers.bottom, 47)
-        }}
-      >
-        <div className="bibtex-list-spacer" style={{ height: spacers.top }} />
-        {filtered.slice(window.start, window.end).map((entry, i) => (
+      {/* List body (capture: role=list, card rows with data-index). Rows
+          render in normal flow so content-height cards never overlap and
+          the body flexes to fill the list column. */}
+      <div className="bibtex-entry-list-body" role="list">
+        {filtered.map((entry, i) => (
           <div
             key={`${rowIdOf(entry)}-${entry.sourceStart}`}
-            data-index={window.start + i}
+            data-index={i}
             className="bibtex-entry-card-row"
             role="listitem"
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%' }}
           >
             <BibEntryCard
               entry={entry}
-              index={window.start + i}
+              index={i}
               onSelect={onSelect}
               previewing={previewId === rowIdOf(entry)}
               checked={selectedIds.includes(rowIdOf(entry))}

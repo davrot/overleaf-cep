@@ -38,7 +38,11 @@ import GenericConfirmModal from '@/features/ide-react/components/modals/generic-
 import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
 import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import { useBibEditorContext } from '../context/bib-editor-context'
-import { BIB_UNDO_EVENT, BIB_REDO_EVENT } from '../extensions/bib-editor-extension'
+import {
+  BIB_UNDO_EVENT,
+  BIB_REDO_EVENT,
+  BIB_RESET_HISTORY_EVENT,
+} from '../extensions/bib-editor-extension'
 import BibEntryList from './bib-entry-list'
 import BibManualModal from './bib-manual-modal'
 import BibEntryPreview from './bib-entry-preview'
@@ -79,6 +83,8 @@ function BibEditorPanel() {
     deleteEntry,
     scrollTo,
     clearWriteFailure,
+    canUndo,
+    canRedo,
   } = useBibEditorContext()
   const { showVisual } = useEditorPropertiesContext()
   const { openDocName } = useEditorOpenDocContext()
@@ -215,9 +221,29 @@ function BibEditorPanel() {
       deselect()
       setBulkDeleteGuard(null)
       setSelectedIds([])
+      // The undo/redo stack belongs to the file that produced it: start a
+      // fresh stack for every new file so undo can never restore the
+      // previous file's text into this file's buffer.
+      document.dispatchEvent(
+        new CustomEvent(BIB_RESET_HISTORY_EVENT, {
+          detail: { file: openDocName },
+        })
+      )
     }
     prevDocName.current = openDocName
   }, [openDocName, flushCurrentForm, deselect])
+
+  // 2b. Mount: same reset (the panel remounts for new files; a remount for
+  //     the SAME file after a Code->Visual round-trip is a no-op in the
+  //     extension because the file is unchanged).
+  useEffect(() => {
+    document.dispatchEvent(
+      new CustomEvent(BIB_RESET_HISTORY_EVENT, {
+        detail: { file: openDocName },
+      })
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 3. unmount (tab close, etc.)
   useEffect(() => {
@@ -462,6 +488,7 @@ function BibEditorPanel() {
               type="button"
               className="ol-cm-toolbar-button"
               aria-label={t('undo')}
+              disabled={!canUndo}
               onClick={() =>
                 document.dispatchEvent(new CustomEvent(BIB_UNDO_EVENT))
               }
@@ -475,6 +502,7 @@ function BibEditorPanel() {
               type="button"
               className="ol-cm-toolbar-button"
               aria-label={t('redo')}
+              disabled={!canRedo}
               onClick={() =>
                 document.dispatchEvent(new CustomEvent(BIB_REDO_EVENT))
               }

@@ -105,6 +105,8 @@ type BibEditorActions = {
   setWriteFailure: (reason: string | null) => void
   /** Dismiss the write-failure banner (e.g. user acknowledged) */
   clearWriteFailure: () => void
+  /** Set the toolbar enabled-state (the extension's undo/redo stack) */
+  setHistoryState: (canUndo: boolean, canRedo: boolean) => void
 }
 
 export type BibEditorState = {
@@ -118,6 +120,9 @@ export type BibEditorState = {
   selection: BibSelection
   /** Set when the last write request was rejected by the editor guard */
   writeFailure: string | null
+  /** Whether document-level undo/redo is currently possible (toolbar state) */
+  canUndo: boolean
+  canRedo: boolean
 }
 
 type BibEditorContextValue = BibEditorState & BibEditorActions
@@ -135,6 +140,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
   const [source, setSource] = useState('')
   const [selection, setSelection] = useState<BibSelection>(null)
   const [writeFailure, setWriteFailureState] = useState<string | null>(null)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
 
   const setEditorState = useCallback(
     (
@@ -186,6 +193,11 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
 
   const clearWriteFailure = useCallback(() => {
     setWriteFailureState(null)
+  }, [])
+
+  const setHistoryState = useCallback((nextUndo: boolean, nextRedo: boolean) => {
+    setCanUndo(prev => (prev === nextUndo ? prev : nextUndo))
+    setCanRedo(prev => (prev === nextRedo ? prev : nextRedo))
   }, [])
 
   const selectEntry = useCallback((entry: ParsedBibEntry) => {
@@ -240,6 +252,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       source,
       selection,
       writeFailure,
+      canUndo,
+      canRedo,
       setEditorState,
       selectEntry,
       selectExisting,
@@ -253,6 +267,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       scrollTo,
       setWriteFailure,
       clearWriteFailure,
+      setHistoryState,
     }),
     [
       isBibFile,
@@ -260,6 +275,8 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       source,
       selection,
       writeFailure,
+      canUndo,
+      canRedo,
       setEditorState,
       selectEntry,
       selectExisting,
@@ -273,6 +290,7 @@ export const BibEditorProvider: FC<React.PropsWithChildren> = ({ children }) => 
       scrollTo,
       setWriteFailure,
       clearWriteFailure,
+      setHistoryState,
     ]
   )
 

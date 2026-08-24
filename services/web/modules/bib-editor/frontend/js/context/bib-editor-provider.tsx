@@ -18,10 +18,11 @@ import type { ParsedBibEntry } from '../utils/bib-parser'
 import {
   BIB_ENTRIES_EVENT,
   BIB_WRITE_FAILED_EVENT,
+  BIB_HISTORY_STATE_EVENT,
 } from '../extensions/bib-editor-extension'
 
 function BibEditorBridge({ children }: { children: React.ReactNode }) {
-  const { setEditorState, setWriteFailure } = useBibEditorContext()
+  const { setEditorState, setWriteFailure, setHistoryState } = useBibEditorContext()
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -35,6 +36,15 @@ function BibEditorBridge({ children }: { children: React.ReactNode }) {
       }
       setEditorState(isBibFile, entries, source, written)
     }
+    const historyHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as
+        | { canUndo?: boolean; canRedo?: boolean }
+        | undefined
+      if (detail && (typeof detail.canUndo === 'boolean' || typeof detail.canRedo === 'boolean')) {
+        setHistoryState(!!detail.canUndo, !!detail.canRedo)
+      }
+    }
+
     const failedHandler = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as
         | { reason?: string }
@@ -44,16 +54,18 @@ function BibEditorBridge({ children }: { children: React.ReactNode }) {
       setWriteFailure(detail?.reason ?? 'unknown')
     }
 
+    document.addEventListener(BIB_HISTORY_STATE_EVENT, historyHandler)
     document.addEventListener(BIB_ENTRIES_EVENT, handler)
     document.addEventListener(BIB_WRITE_FAILED_EVENT, failedHandler)
     return () => {
+      document.removeEventListener(BIB_HISTORY_STATE_EVENT, historyHandler)
       document.removeEventListener(BIB_ENTRIES_EVENT, handler)
       document.removeEventListener(
         BIB_WRITE_FAILED_EVENT,
         failedHandler
       )
     }
-  }, [setEditorState, setWriteFailure])
+  }, [setEditorState, setWriteFailure, setHistoryState])
 
   return <>{children}</>
 }

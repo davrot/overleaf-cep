@@ -5,7 +5,7 @@
  * coalescing (replaceTop), empty-history boundaries, and the size cap.
  */
 import { describe, it, expect } from 'vitest'
-import { BibHistory } from '../../../frontend/js/extensions/bib-editor-extension'
+import { BibHistory, looksLikeSameDocument } from '../../../frontend/js/extensions/bib-editor-extension.ts'
 
 describe('BibHistory', () => {
   it('starts with a single snapshot: no undo, no redo', () => {
@@ -92,6 +92,36 @@ describe('BibHistory', () => {
     expect(h.current).toBe('x')
     expect(h.canUndo).toBe(false)
     expect(h.canRedo).toBe(false)
+  })
+})
+
+describe('looksLikeSameDocument (undo-stack file heuristic)', () => {
+  const A = '@article{a2001,\n  author = {\n    Smith, A.\n  },\n  title = {First paper},\n  journal = {J. One},\n  year = {2001}\n}\n'
+  it('same document is the same document', () => {
+    expect(looksLikeSameDocument(A, A)).toBe(true)
+  })
+
+  it('a small edit (shared prefix+suffix) is the same document', () => {
+    const edited = A.replace('2001', '2002')
+    expect(looksLikeSameDocument(A, edited)).toBe(true)
+  })
+
+  it('an appended entry (shared prefix) is the same document', () => {
+    const appended = A + '@book{b2020,\n  author = {\n    Lee, B.\n  },\n  title = {Second},\n  year = {2020}\n}\n'
+    expect(looksLikeSameDocument(A, appended)).toBe(true)
+  })
+
+  it('a different file (no shared boundary) is NOT the same document', () => {
+    const B = '@book{totally2020,\n  author = {\n    Unrelated, Z.\n  },\n  title = {A different bibliography},\n  publisher = {Else},\n  year = {2020}\n}\n'
+    expect(looksLikeSameDocument(A, B)).toBe(false)
+  })
+
+  it('empty prev is a new session, not same', () => {
+    expect(looksLikeSameDocument('', A)).toBe(true) // empty->anything: reset cost is zero
+  })
+
+  it('full replacement with different head+tail is NOT same', () => {
+    expect(looksLikeSameDocument(A, 'Z' + A.slice(1, -1) + 'Y')).toBe(false)
   })
 })
 

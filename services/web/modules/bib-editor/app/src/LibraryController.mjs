@@ -5,7 +5,6 @@
  * reference (D-C1: field values are plain `value` strings).
  */
 import logger from '@overleaf/logger'
-import OError from '@overleaf/o-error'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
 import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
@@ -37,24 +36,30 @@ const VALIDATION_MESSAGES = {
   'nothing-to-delete': 'Provide ids or a search term to delete.',
 }
 
-/** Map a manager-thrown error (reason-tagged) to an OError for the API. */
-function toOError(err, fallbackMessage) {
+/**
+ * Map a manager-thrown error (reason-tagged) to a JSON REST response.
+ * CE pattern: the controller sends the error response itself — the global
+ * error handler renders the 500 page and ignores OError statuses.
+ */
+function sendError(res, err, fallbackMessage) {
   if (err?.validationReason) {
-    return new OError(
-      VALIDATION_MESSAGES[err.validationReason] || fallbackMessage,
-      { status: 400 }
-    )
+    res.status(400).json({
+      message: VALIDATION_MESSAGES[err.validationReason] || fallbackMessage,
+    })
+    return
   }
   if (err?.notFound) {
-    return new OError('Reference not found.', { status: 404 })
+    res.status(404).json({ message: 'Reference not found.' })
+    return
   }
   if (err?.duplicateKey) {
-    return new OError(
-      `The citation key “${err.duplicateKey}” is already used by another reference.`,
-      { status: 409, duplicateKey: err.duplicateKey }
-    )
+    res.status(409).json({
+      message: `The citation key “${err.duplicateKey}” is already used by another reference.`,
+      duplicateKey: err.duplicateKey,
+    })
+    return
   }
-  return new OError(fallbackMessage, { status: 500 })
+  res.status(500).json({ message: fallbackMessage })
 }
 
 function getUserId(req) {
@@ -77,7 +82,7 @@ async function listReferences(req, res) {
     res.json(result)
   } catch (err) {
     logger.error({ err, userId }, 'library: list failed')
-    throw toOError(err, 'References couldn’t be loaded.')
+    return sendError(res, err, 'References couldn’t be loaded.')
   }
 }
 
@@ -89,7 +94,7 @@ async function createReferences(req, res) {
     res.status(201).json({ items })
   } catch (err) {
     logger.warn({ err, userId }, 'library: create rejected')
-    throw toOError(err, 'The reference could not be added.')
+    return sendError(res, err, 'The reference could not be added.')
   }
 }
 
@@ -101,7 +106,7 @@ async function matchReferences(req, res) {
     res.json({ matches })
   } catch (err) {
     logger.warn({ err, userId }, 'library: match failed')
-    throw toOError(err, 'The check for existing references failed.')
+    return sendError(res, err, 'The check for existing references failed.')
   }
 }
 
@@ -122,7 +127,7 @@ async function updateReference(req, res) {
     } else {
       logger.warn({ err, userId, originalKey }, 'library: update rejected')
     }
-    throw toOError(err, 'The reference could not be saved.')
+    return sendError(res, err, 'The reference could not be saved.')
   }
 }
 
@@ -138,7 +143,7 @@ async function deleteReferences(req, res) {
     res.json({ deletedCount })
   } catch (err) {
     logger.warn({ err, userId }, 'library: delete rejected')
-    throw toOError(err, 'The references could not be deleted.')
+    return sendError(res, err, 'The references could not be deleted.')
   }
 }
 
@@ -153,7 +158,7 @@ async function restoreReferences(req, res) {
     res.json({ restoredCount })
   } catch (err) {
     logger.warn({ err, userId }, 'library: restore failed')
-    throw toOError(err, 'The references could not be restored.')
+    return sendError(res, err, 'The references could not be restored.')
   }
 }
 
@@ -170,7 +175,7 @@ async function countReferences(req, res) {
     res.json({ count })
   } catch (err) {
     logger.warn({ err, userId }, 'library: count failed')
-    throw toOError(err, 'The reference count could not be loaded.')
+    return sendError(res, err, 'The reference count could not be loaded.')
   }
 }
 
@@ -197,7 +202,7 @@ async function downloadReferences(req, res) {
       .send(bib)
   } catch (err) {
     logger.error({ err, userId }, 'library: download failed')
-    throw toOError(err, 'The library could not be downloaded.')
+    return sendError(res, err, 'The library could not be downloaded.')
   }
 }
 
@@ -215,7 +220,7 @@ async function citationKeySuggestions(req, res) {
     res.json({ keys })
   } catch (err) {
     logger.warn({ err, userId }, 'library: suggestions failed')
-    throw toOError(err, 'Citation key suggestions could not be loaded.')
+    return sendError(res, err, 'Citation key suggestions could not be loaded.')
   }
 }
 
@@ -237,7 +242,7 @@ async function themeLocals(req, res) {
   const userId = getUserId(req)
   try {
     if (!userId) return {}
-    const user = await UserGetter.getUser({ _id: userId })
+    const user = await UserGetter.promises.getUser(userId)
     if (!user) return {}
     const userSettings = await UserSettingsHelper.buildUserSettings(req, res, user)
     return { userSettings }

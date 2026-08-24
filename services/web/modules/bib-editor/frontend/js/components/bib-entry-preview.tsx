@@ -5,7 +5,7 @@
  * the compact C3 list + this panel). Capture names:
  *  - `bibtex-entry-preview-panel(-open|-contained|-overlay)` role=region
  *    aria "Edit reference". `-contained` (default, side-by-side) vs
- *    `-overlay` (below 640px it covers the list — CSS, not JS).
+ *    (SaaS desktop capture: contained panel only).
  *  - Header: "Previous reference" / "Next reference" chevrons (walk the
  *    current parse list, file order) + "Close". Capture shows them disabled
  *    at the ends — we match: prev disabled at index 0, next disabled at
@@ -182,7 +182,6 @@ export default function BibEntryPreview({
       className={[
         'bibtex-entry-preview-panel',
         'bibtex-entry-preview-panel-contained',
-        'bibtex-entry-preview-panel-overlay',
         'bibtex-entry-preview-panel-open',
       ].join(' ')}
       role="region"

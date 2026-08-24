@@ -48,11 +48,37 @@ export const BIB_WRITE_FAILED_EVENT = 'bib-editor:write-failed'
 // Document-level undo/redo (SaaS bibtex toolbar parity):
 export const BIB_UNDO_EVENT = 'bib-editor:undo'
 export const BIB_REDO_EVENT = 'bib-editor:redo'
+// File-scoped history reset (panel mount / file switch):
+export const BIB_RESET_HISTORY_EVENT = 'bib-editor:reset-history'
+// Toolbar enabled-state (SaaS: Undo/Redo grey out when the stack is empty).
+export const BIB_HISTORY_STATE_EVENT = 'bib-editor:history-state'
 
 /** Coalesce rapid successive updates into one undo step (ms). */
 const HISTORY_COALESCE_MS = 700
 /** Bounded snapshot history (a .bib document is small; still bound it). */
 const HISTORY_MAX = 100
+/**
+ * Minimum shared prefix/suffix length (chars) for treating a document
+ * change as an EDIT of the same file rather than a FILE SWAP. A user edit
+ * (typing, find-replace, bulk append) always leaves a long shared boundary;
+ * a load of a different file usually does not.
+ */
+const SAME_DOC_SHARED_CHARS = 64
+
+/**
+ * Pure heuristic: does `next` look like an edited version of `prev` (same
+ * file)? Used only to DECIDE whether to fold a change into the undo stack
+ * or RESET it — a false positive costs one lost undo step, never data.
+ */
+export function looksLikeSameDocument(prev: string, next: string): boolean {
+  if (next === prev) return true
+  const k = Math.min(SAME_DOC_SHARED_CHARS, prev.length, next.length)
+  if (k === 0) return true
+  return (
+    prev.slice(0, k) === next.slice(0, k) ||
+    prev.slice(-k) === next.slice(-k)
+  )
+}
 
 /**
  * Pure document-level undo/redo state machine (SaaS bibtex toolbar parity).
@@ -163,6 +189,9 @@ class BibEditorPlugin {
   private lastPushSource = ''
   /** The document moveHistory() dispatched; cleared by update() on apply. */
   private pendingHistoryDoc: string | null = null
+  /** File (openDocName) the undo stack currently belongs to (event path). */
+  private historyFile: string | null = null
+  private resetHandler: ((ev: Event) => void) | null = null
 
   constructor(private view: EditorView) {
     this.history = new BibHistory(this.view.state.doc.toString())
@@ -170,6 +199,7 @@ class BibEditorPlugin {
     this.setupScrollListener()
     this.setupHistoryListener()
     this.emitState()
+    this.emitHistoryState()
   }
 
   update(update: ViewUpdate) {
@@ -185,6 +215,14 @@ class BibEditorPlugin {
         this.pendingHistoryDoc = null
         // History application: don't pollute the stack; just resync.
         this.lastPushSource = next
+      } else if (!looksLikeSameDocument(prev, next)) {
+        // No long shared boundary: this is a FILE SWAP (or a full-document
+        // replacement), not an edit. Folding it in would let the next undo
+        // restore the PREVIOUS file's text, so reset the stack instead.
+        this.history.reset(next)
+        this.lastPushSource = next
+        this.lastPushTime = 0
+        this.emitHistoryState()
       } else {
         this.recordHistory(prev, next)
       }
@@ -212,6 +250,10 @@ class BibEditorPlugin {
       document.removeEventListener(BIB_REDO_EVENT, this.historyHandler)
       this.historyHandler = null
     }
+    if (this.resetHandler) {
+      document.removeEventListener(BIB_RESET_HISTORY_EVENT, this.resetHandler)
+      this.resetHandler = null
+    }
   }
 
   // ---------------------------------------------------------------- history
@@ -237,6 +279,7 @@ class BibEditorPlugin {
     this.history.append(newSource, replaceTop)
     this.lastPushTime = now
     this.lastPushSource = newSource
+    this.emitHistoryState()
   }
 
   private moveHistory(direction: -1 | 1) {
@@ -254,6 +297,7 @@ class BibEditorPlugin {
       userEvent: 'history',
     })
     this.view.dispatch(transaction)
+    this.emitHistoryState()
   }
 
   /**
@@ -266,6 +310,25 @@ class BibEditorPlugin {
     }
     document.addEventListener(BIB_UNDO_EVENT, this.historyHandler)
     document.addEventListener(BIB_REDO_EVENT, this.historyHandler)
+    // File-scoped history reset (see BIB_RESET_HISTORY_EVENT). The panel
+    // dispatches it on mount and on every openDocName change; skipping when
+    // the file is unchanged keeps the stack across a Code->Visual round-
+    // trip (undo must survive the toggle). Resetting on a genuinely new
+    // file prevents undo from restoring the PREVIOUS file's text into this
+    // file's buffer.
+    this.resetHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { file?: string } | null
+      if (!detail || typeof detail.file !== 'string') return
+      if (this.historyFile === detail.file) return
+      this.historyFile = detail.file
+      const current = this.view.state.doc.toString()
+      this.history.reset(current)
+      this.pendingHistoryDoc = null
+      this.lastPushSource = current
+      this.lastPushTime = 0
+      this.emitHistoryState()
+    }
+    document.addEventListener(BIB_RESET_HISTORY_EVENT, this.resetHandler)
   }
 
   /**
@@ -276,6 +339,17 @@ class BibEditorPlugin {
     // The `@type{` heuristic is module-internal (documented in the plan,
     // pinned by a unit test). isBibDocument samples the first 2k chars.
     return isBibDocument(this.view.state.doc.toString())
+  }
+
+  private emitHistoryState() {
+    document.dispatchEvent(
+      new CustomEvent(BIB_HISTORY_STATE_EVENT, {
+        detail: {
+          canUndo: this.history.canUndo,
+          canRedo: this.history.canRedo,
+        },
+      })
+    )
   }
 
   private emitState(
