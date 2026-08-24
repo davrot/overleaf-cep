@@ -244,7 +244,19 @@ export default function LibraryPage() {
             />
           </div>
           {!isTrash && (
-            <div className="library-toolbar-buttons bibtex-add-button dropdown">
+            <div className="library-toolbar-buttons">
+              <button
+                type="button"
+                className="btn-secondary btn-sm library-download-all-btn"
+                aria-label={t('Download')}
+                onClick={() => lib.downloadVisible()}
+              >
+                <span className="material-symbols" aria-hidden="true">
+                  download
+                </span>
+                {t('Download')}
+              </button>
+              <div className="bibtex-add-button dropdown">
               <Dropdown align="end">
                 <DropdownToggle
                   className="btn-secondary btn-sm"
@@ -274,6 +286,7 @@ export default function LibraryPage() {
                   </DropdownItem>
                 </DropdownMenu>
               </Dropdown>
+            </div>
             </div>
           )}
         </div>

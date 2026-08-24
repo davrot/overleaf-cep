@@ -77,6 +77,8 @@ type LibraryContextValue = {
   restoreEntries: (rowIds: string[]) => Promise<number>
   downloadSelection: () => void
   downloadRest: () => void
+  /** Download the currently visible (search-filtered) references */
+  downloadVisible: () => void
   toasts: LibraryToast[]
   pushToast: (
     type: LibraryToast['type'],
@@ -369,6 +371,12 @@ export function LibraryProvider({
     api.triggerDownload({ ids: bulk })
   }, [bulk])
 
+  const downloadVisible = useCallback(() => {
+    api.triggerDownload({
+      search: paramsRef.current.search || undefined,
+    })
+  }, [])
+
   const downloadRest = useCallback(() => {
     api.triggerDownload({
       mode: search ? 'exclusion' : 'inclusion',
@@ -407,7 +415,8 @@ export function LibraryProvider({
       permanentDelete,
       restoreEntries,
       downloadSelection,
-      downloadRest,
+    downloadRest,
+    downloadVisible,
       toasts,
       pushToast,
       dismissToast,
@@ -418,7 +427,7 @@ export function LibraryProvider({
       setSearch, selection, selected, select, stepPreview, canPrev, canNext,
       bulk, toggleBulk, setBulkAll, duplicateKeyIds, refresh, loadMore,
       addEntries, saveEntry, trashEntries, permanentDelete, restoreEntries,
-      downloadSelection, downloadRest, toasts, pushToast, dismissToast,
+      downloadSelection, downloadRest, downloadVisible, toasts, pushToast, dismissToast,
       failureFromError,
     ]
   )

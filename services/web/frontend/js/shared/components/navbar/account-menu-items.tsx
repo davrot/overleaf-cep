@@ -43,6 +43,17 @@ export function AccountMenuItems({
   const dsNavStyle = useDsNavStyle()
   const hasOverallThemes = Boolean(getMeta('ol-overallThemes'))
   const navExtraItems = useNavExtraItems(sessionUser)
+  // Admin section parity with the top navbar's Admin dropdown
+  // (admin-menu.tsx): same items, same flag-based visibility rules.
+  const nav = (getMeta('ol-navbar') ?? {}) as {
+    canDisplayAdminMenu?: boolean
+    canDisplayProjectUrlLookup?: boolean
+    canDisplayAdminRedirect?: boolean
+    canDisplaySplitTestMenu?: boolean
+    canDisplaySurveyMenu?: boolean
+    canDisplayScriptLogMenu?: boolean
+    adminUrl?: string
+  }
 
   return (
     <>
@@ -63,6 +74,44 @@ export function AccountMenuItems({
           {t('subscription')}
         </NavDropdownLinkItem>
       ) : null}
+      {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup || nav.canDisplayAdminRedirect || nav.canDisplaySplitTestMenu || nav.canDisplaySurveyMenu || nav.canDisplayScriptLogMenu) && (
+        <>
+          <NavDropdownDivider />
+          {nav.canDisplayAdminMenu ? (
+            <>
+              <NavDropdownLinkItem href="/admin">Manage Site</NavDropdownLinkItem>
+              <NavDropdownLinkItem href="/admin/user">
+                Manage Users
+              </NavDropdownLinkItem>
+            </>
+          ) : null}
+          {nav.canDisplayProjectUrlLookup ? (
+            <NavDropdownLinkItem href="/admin/project">
+              Manage Projects
+            </NavDropdownLinkItem>
+          ) : null}
+          {nav.canDisplayAdminRedirect && nav.adminUrl ? (
+            <NavDropdownLinkItem href={nav.adminUrl}>
+              Switch to Admin
+            </NavDropdownLinkItem>
+          ) : null}
+          {nav.canDisplaySplitTestMenu ? (
+            <NavDropdownLinkItem href="/admin/split-test">
+              Manage Feature Flags
+            </NavDropdownLinkItem>
+          ) : null}
+          {nav.canDisplaySurveyMenu ? (
+            <NavDropdownLinkItem href="/admin/survey">
+              Manage Surveys
+            </NavDropdownLinkItem>
+          ) : null}
+          {nav.canDisplayScriptLogMenu ? (
+            <NavDropdownLinkItem href="/admin/script-logs">
+              View Script Logs
+            </NavDropdownLinkItem>
+          ) : null}
+        </>
+      )}
       {showThemeToggle && hasOverallThemes && (
         <DropdownListItem>
           <ThemeToggle />

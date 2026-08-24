@@ -90,7 +90,7 @@ export default function BibManualModal({
             if (k === 'new') onHide()
           }}
           onBack={onHide}
-          submitText={saving ? '…' : t('Save')}
+          submitText={saving ? '…' : t('Add')}
         />
       </OLModalBody>
     </OLModal>

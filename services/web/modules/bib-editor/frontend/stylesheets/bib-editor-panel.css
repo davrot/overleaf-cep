@@ -1279,3 +1279,159 @@
   --bs-btn-disabled-bg: var(--bg-secondary-themed);
   --bs-btn-disabled-border-color: var(--border-divider-themed);
 }
+
+/* ============================================================
+   Round-3: modal text parity (SaaS: modals are ALWAYS light).
+   Explicit light-scale colors on the text-bearing form elements —
+   no reliance on inherited/themed tokens (the overall page theme
+   must never bleed into these always-light modals).
+   ============================================================ */
+[data-testid="bib-manual-modal"] .modal-content,
+[data-testid="bib-import-modal"] .modal-content,
+[data-testid="bib-import-from-library"] .modal-content,
+[data-testid="bib-library-manual-modal"] .modal-content {
+  color: var(--content-primary);
+}
+[data-testid="bib-manual-modal"] .bib-form-label,
+[data-testid="bib-import-modal"] .bib-form-label,
+[data-testid="bib-import-from-library"] .bib-form-label,
+[data-testid="bib-library-manual-modal"] .bib-form-label,
+[data-testid="bib-manual-modal"] .form-label,
+[data-testid="bib-import-modal"] .form-label,
+[data-testid="bib-import-from-library"] .form-label,
+[data-testid="bib-library-manual-modal"] .form-label {
+  color: var(--content-primary);
+}
+[data-testid="bib-manual-modal"] .bib-form-hint,
+[data-testid="bib-import-modal"] .bib-form-hint,
+[data-testid="bib-import-from-library"] .bib-form-hint,
+[data-testid="bib-library-manual-modal"] .bib-form-hint,
+[data-testid="bib-manual-modal"] .form-text,
+[data-testid="bib-import-modal"] .form-text,
+[data-testid="bib-import-from-library"] .form-text,
+[data-testid="bib-library-manual-modal"] .form-text,
+[data-testid="bib-manual-modal"] .form-text span,
+[data-testid="bib-import-modal"] .form-text span,
+[data-testid="bib-import-from-library"] .form-text span,
+[data-testid="bib-library-manual-modal"] .form-text span {
+  color: var(--content-secondary);
+}
+[data-testid="bib-manual-modal"] .bibtex-collapsible-heading,
+[data-testid="bib-import-modal"] .bibtex-collapsible-heading,
+[data-testid="bib-import-from-library"] .bibtex-collapsible-heading,
+[data-testid="bib-library-manual-modal"] .bibtex-collapsible-heading,
+[data-testid="bib-manual-modal"] .bibtex-collapsible-heading .form-label,
+[data-testid="bib-import-modal"] .bibtex-collapsible-heading .form-label,
+[data-testid="bib-import-from-library"] .bibtex-collapsible-heading .form-label,
+[data-testid="bib-library-manual-modal"] .bibtex-collapsible-heading .form-label {
+  color: var(--content-primary);
+}
+/* Import-preview cards (paste + import-from-library): readable on the
+   always-light modal (round-2 complaint: light grey on white). */
+[data-testid="bib-import-modal"] .bibtex-import-preview-card-heading,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-card-heading {
+  color: var(--content-primary);
+  font-size: var(--font-size-02);
+}
+[data-testid="bib-import-modal"] .bibtex-import-preview-card-field,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-card-field {
+  color: var(--content-secondary);
+}
+/* The citation-key chip was too tall (20px font + spacing token):
+   compact badge per the feedback. */
+[data-testid="bib-import-modal"] .bibtex-import-preview-card-key,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-card-key {
+  color: var(--content-primary);
+  background-color: var(--bg-light-tertiary);
+  font-family: DM Mono, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-top: 0;
+  padding: 1px 8px;
+}
+[data-testid="bib-import-modal"] .bibtex-import-preview-count,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-count,
+[data-testid="bib-import-modal"] .bibtex-import-preview-footer-count,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-footer-count {
+  color: var(--content-primary);
+}
+
+[data-testid="bib-manual-modal"] .bibtex-entry-form .form-label,
+[data-testid="bib-import-modal"] .bibtex-entry-form .form-label,
+[data-testid="bib-import-from-library"] .bibtex-entry-form .form-label,
+[data-testid="bib-library-manual-modal"] .bibtex-entry-form .form-label,
+[data-testid="bib-manual-modal"] .bibtex-entry-form .bib-form-label,
+[data-testid="bib-import-modal"] .bibtex-entry-form .bib-form-label,
+[data-testid="bib-import-from-library"] .bibtex-entry-form .bib-form-label,
+[data-testid="bib-library-manual-modal"] .bibtex-entry-form .bib-form-label {
+  color: var(--content-primary);
+}
+[data-testid="bib-manual-modal"] .bibtex-entry-form .bib-form-hint,
+[data-testid="bib-import-modal"] .bibtex-entry-form .bib-form-hint,
+[data-testid="bib-library-manual-modal"] .bibtex-entry-form .bib-form-hint,
+[data-testid="bib-import-modal"] .bibtex-import-form .bib-form-hint {
+  color: var(--content-secondary);
+}
+[data-testid="bib-manual-modal"] .bib-form-input,
+[data-testid="bib-import-modal"] .bib-form-input,
+[data-testid="bib-library-manual-modal"] .bib-form-input,
+[data-testid="bib-manual-modal"] .bib-form-textarea,
+[data-testid="bib-import-modal"] .bib-form-textarea,
+[data-testid="bib-library-manual-modal"] .bib-form-textarea,
+[data-testid="bib-manual-modal"] .form-control,
+[data-testid="bib-import-modal"] .form-control,
+[data-testid="bib-library-manual-modal"] .form-control {
+  border-color: var(--content-primary) !important;
+  color: var(--content-primary);
+}
+[data-testid="bib-import-modal"] .bibtex-import-preview-card-key,
+[data-testid="bib-import-from-library"] .bibtex-import-preview-card-key {
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  height: auto;
+}
+
+/* ============================================================
+   Round-3: responsive preview placement.
+   Wide: right of the list (30rem slide-out, as now).
+   Narrow: BELOW the list (full width, in flow).
+   ============================================================ */
+@media (max-width: 1100px) {  .bib-editor-panel .bibtex-entry-preview-panel.bibtex-entry-preview-panel-contained {
+    position: static;
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--border-divider-themed);
+    transform: none;
+    animation: none;
+  }
+  .bib-editor-panel .bibtex-entry-list {
+    margin-right: 0 !important;
+    min-height: 240px;
+  }
+  .bib-editor-panel .bibtex-list-and-preview {
+    flex-direction: column;
+  }
+  .bib-editor-panel .bibtex-entry-list,
+  .library-page-main .bibtex-entry-list {
+    width: 100%;
+    margin-right: 0 !important;
+  }
+  .bib-editor-panel .bibtex-entry-preview-panel.bibtex-entry-preview-panel-contained,
+  .library-page-main .bibtex-entry-preview-panel.bibtex-entry-preview-panel-contained {
+    width: 100% !important;
+    max-width: 100%;
+    left: auto;
+    right: auto;
+  }
+  .bib-editor-panel .bibtex-list-and-preview {
+    overflow-y: auto;
+  }
+  .bib-editor-panel .bib-editor-panel-content {
+    overflow-y: auto;
+  }
+}

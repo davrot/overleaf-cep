@@ -26,6 +26,7 @@ import SystemMessages from '@/shared/components/system-messages'
 import { SplitTestProvider } from '@/shared/context/split-test-context'
 import { UserSettingsProvider } from '@/shared/context/user-settings-context'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
+import useThemedPage from '@/shared/hooks/use-themed-page'
 import getMeta from '@/utils/meta'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
@@ -41,6 +42,10 @@ function initialView(): LibraryView {
 
 function LibraryChrome({ initialView }: { initialView: LibraryView }) {
   const activeOverallTheme = useActiveOverallTheme()
+  // Apply THE user's overall theme to the page (project list & IDE do the
+  // same; without this the page falls back to the server default instead
+  // of following the Dark/Light/System setting).
+  useThemedPage()
   const navbarProps = getMeta('ol-navbar')
   const footerProps = getMeta('ol-footer')
 
@@ -56,8 +61,11 @@ function LibraryChrome({ initialView }: { initialView: LibraryView }) {
       />
       <div className="project-list-wrapper">
         <div className="project-list-sidebar-wrapper-react d-none d-md-flex">
-          <DsNavPageSwitcher activePage="library" />
+          <DsNavPageSwitcher activePage="library" showLogo={false} />
           <hr className="ds-nav-page-switcher-divider" />
+          {/* Spacer pushes the lower section (account + brand) to the
+              bottom, exactly like the /project sidebar (SidebarDsNav). */}
+          <nav className="flex-grow flex-shrink" aria-hidden="true" />
           <div className="ds-nav-sidebar-lower">
             <SidebarLowerSection showThemeToggle />
           </div>
