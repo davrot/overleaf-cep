@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
+import useThemedPage from '@/shared/hooks/use-themed-page'
+import { SplitTestProvider } from '@/shared/context/split-test-context'
+import { UserSettingsProvider } from '@/shared/context/user-settings-context'
 import withErrorBoundary from '@/infrastructure/error-boundary'
 import { GenericErrorBoundaryFallback } from '@/shared/components/generic-error-boundary-fallback'
 import DefaultNavbar from '@/shared/components/navbar/default-navbar'
@@ -16,11 +19,24 @@ function TemplateRoot() {
   if (!isReady) {
     return null
   }
+  // Follow the user's overall light/dark theme (same mechanism as the
+  // /project and /library pages) instead of staying light-only.
   return (
-    <TemplateProvider>
-      <TemplatePageContent />
-    </TemplateProvider>
+    <SplitTestProvider>
+      <UserSettingsProvider>
+        <ThemedShell>
+          <TemplateProvider>
+            <TemplatePageContent />
+          </TemplateProvider>
+        </ThemedShell>
+      </UserSettingsProvider>
+    </SplitTestProvider>
   )
+}
+
+function ThemedShell({ children }: { children: React.ReactNode }) {
+  useThemedPage()
+  return <>{children}</>
 }
 
 function TemplatePageContent() {
