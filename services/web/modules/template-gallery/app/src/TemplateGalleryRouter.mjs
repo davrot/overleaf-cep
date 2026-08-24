@@ -75,9 +75,8 @@ export default {
     webRouter.get(
       '/template/:template_id/preview',
       (req, res, next) => {
-        req.query.style === 'thumbnail'
-          ? RateLimiterMiddleware.rateLimit(rateLimiterThumbnails)(req, res, next)
-          : RateLimiterMiddleware.rateLimit(rateLimiter)(req, res, next)
+        const limiter = req.query.style === 'thumbnail' ? rateLimiterThumbnails : rateLimiter
+        RateLimiterMiddleware.rateLimit(limiter)(req, res, next)
       },
       TemplateGalleryController.getTemplatePreview
     )

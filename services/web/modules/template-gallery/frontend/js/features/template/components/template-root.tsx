@@ -54,7 +54,7 @@ function TemplatePageContent() {
         <div className="container">
           <OLRow className="previous-page-link-container">
             <OLCol lg={6}>
-              <a className="previous-page-link" href={'/templates/all'}>
+              <a className="previous-page-link" href="/templates/all">
                 <i className="material-symbols material-symbols-rounded" aria-hidden="true">arrow_left_alt</i>
                 {t('all_templates')}
               </a>

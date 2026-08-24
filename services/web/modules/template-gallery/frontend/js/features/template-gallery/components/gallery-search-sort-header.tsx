@@ -26,7 +26,7 @@ function SortBtn({ onClick, text, iconType, screenReaderText }: SortBtnProps) {
 
 const SortByButton = withContent(SortBtn)
 
-export default function GallerySearchSortHeader( { gotoAllLink }: { boolean } ) {
+export default function GallerySearchSortHeader( { gotoAllLink }: { gotoAllLink?: boolean } ) {
   const { t } = useTranslation()
   const {
     searchText,

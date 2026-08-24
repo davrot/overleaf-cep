@@ -1249,7 +1249,8 @@
    ============================================================ */
 [data-testid="bib-manual-modal"],
 [data-testid="bib-import-modal"],
-[data-testid="bib-import-from-library"] {
+[data-testid="bib-import-from-library"],
+[data-testid="bib-library-manual-modal"] {
   --bg-primary-themed: var(--bg-light-primary);
   --bg-secondary-themed: var(--bg-light-secondary);
   --bg-tertiary-themed: var(--bg-light-tertiary);

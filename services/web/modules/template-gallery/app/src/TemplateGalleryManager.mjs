@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import logger from '@overleaf/logger'
-import { Readable } from 'stream'
+import mongoose from '../../../../app/src/infrastructure/Mongoose.mjs'
+import { Readable } from 'node:stream'
 import settings from '@overleaf/settings'
 import { OError } from '../../../../app/src/Features/Errors/Errors.js'
 import { Template } from './models/Template.mjs'
@@ -81,7 +82,9 @@ async function createTemplateFromProject({ projectId, userId, templateSource }) 
   await template.save()
 
   if (previousVersionExists) {
-    deleteTemplateAssets(template._id, template.version - 1, false)
+    // Intentional fire-and-forget: previous-version asset cleanup does not
+    // gate the create response.
+    void deleteTemplateAssets(template._id, template.version - 1, false)
   }
   return {
     conflict: false,
@@ -125,17 +128,32 @@ async function getTemplatesPageData(category) {
   }
 }
 
+// SECURITY: key/val reach here from user-controlled route params and query
+// strings. Building `{ [key]: val }` directly was a Mongoose query-injection
+// hole (e.g. key=$where = server-side JS oracle; unknown keys degenerated to
+// findOne({})). Only the two lookups the product actually performs are
+// allowed, with value validation for _id; anything else is a safe miss.
 async function getTemplate(key, val) {
-  if (!key || !val) {
-    logger.warn('No key or val provided to getTemplate')
-    return null
+  if (key === '_id') {
+    if (!mongoose.Types.ObjectId.isValid(String(val))) {
+      logger.warn('getTemplate: invalid _id provided')
+      return null
+    }
+    const template = await Template.findById(val).exec()
+    if (!template) return null
+
+    return _formatTemplateForPage(template)
   }
 
-  const query = { [key]: val }
-  const template = await Template.findOne(query).exec()
-  if (!template) return null
+  if (key === 'name') {
+    const template = await Template.findOne({ name: String(val) }).exec()
+    if (!template) return null
 
-  return _formatTemplateForPage(template)
+    return _formatTemplateForPage(template)
+  }
+
+  logger.warn('getTemplate: unknown lookup key ignored', { key })
+  return null
 }
 
 async function getCategoryTemplates(reqQuery) {
