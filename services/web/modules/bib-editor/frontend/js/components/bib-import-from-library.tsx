@@ -174,7 +174,7 @@ export default function BibImportFromLibrary({
                 />
               </label>
               <div className="bibtex-import-preview-count">
-                {t('__count__ reference(s)', { count: importableRows.length })}
+                {t('reference_count', { count: importableRows.length })}
               </div>
             </div>
             <div className="bibtex-search form-control-wrapper">
@@ -253,7 +253,7 @@ export default function BibImportFromLibrary({
           <div className="bibtex-import-preview-footer-actions">
             {checkedCount > 0 && (
               <div className="bibtex-import-preview-footer-count">
-                {t('__count__ reference(s)', { count: checkedCount })}
+                {t('reference_count', { count: checkedCount })}
               </div>
             )}
             <div className="bibtex-import-preview-footer-buttons">

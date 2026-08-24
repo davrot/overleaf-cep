@@ -285,7 +285,7 @@ export function LibraryProvider({
       await refresh()
       pushToast(
         'success',
-        t('__count__ reference(s) added to your library', { count: apiEntries.length })
+        t('ref_added', { count: apiEntries.length })
       )
     },
     [refresh, pushToast, t]
@@ -313,7 +313,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('__count__ reference(s) moved to Trash', { count: count }),
+          t('ref_trashed', { count: count }),
           { label: t('View Trash'), onClick: () => setView('trash') }
         )
         return count
@@ -334,7 +334,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('__count__ reference(s) permanently deleted', { count: count })
+          t('ref_deleted', { count: count })
         )
         return count
       } catch (err) {
@@ -353,7 +353,7 @@ export function LibraryProvider({
         setBulk([])
         pushToast(
           'success',
-          t('__count__ reference(s) restored', { count: count })
+          t('ref_restored', { count: count })
         )
         return count
       } catch (err) {

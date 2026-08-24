@@ -29,7 +29,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
-import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import {
   OLModal,
@@ -176,14 +175,16 @@ export default function BibImportModal({
       <OLModalHeader>
         {mode === 'preview' ? (
           <>
-            <OLIconButton
-              icon="arrow_back"
+            {/* SaaS: labeled Back + visually-hidden "Preview" title */}
+            <OLButton
               variant="ghost"
-              size="sm"
-              accessibilityLabel={t('back')}
+              leadingIcon="arrow_back"
+              aria-label={t('back')}
               onClick={() => setMode('paste')}
-            />
-            <OLModalTitle>{t('Preview')}</OLModalTitle>
+            >
+              {t('back')}
+            </OLButton>
+            <OLModalTitle className="visually-hidden">{t('Preview')}</OLModalTitle>
           </>
         ) : (
           <OLModalTitle>{t('Add reference')}</OLModalTitle>
@@ -234,20 +235,28 @@ export default function BibImportModal({
             ) : (
               <>
                 <div className="bibtex-import-preview-header">
-                  <label className="bibtex-import-preview-check-all">
-                    <input
-                      type="checkbox"
-                      aria-label={t('Select all')}
-                      checked={
-                        importable.length > 0 &&
-                        importable.every(r => checkedRowIds.includes(r.rowId))
-                      }
-                      disabled={importable.length === 0 || !previewDone}
-                      onChange={e => handleToggleSelectAll(e.target.checked)}
-                    />
+                  <label
+                    className="wide-target-checkbox bibtex-import-preview-check-all"
+                  >
+                    <span className="visually-hidden">{t('Select all')}</span>
+                    <span className="wide-target-checkbox-box">
+                      <span className="form-checkbox">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          aria-label={t('Select all')}
+                          checked={
+                            importable.length > 0 &&
+                            importable.every(r => checkedRowIds.includes(r.rowId))
+                          }
+                          disabled={importable.length === 0 || !previewDone}
+                          onChange={e => handleToggleSelectAll(e.target.checked)}
+                        />
+                      </span>
+                    </span>
                   </label>
                   <div className="bibtex-import-preview-count">
-                    {t('__count__ reference(s)', { count: importable.length })}
+                    {t('reference_count', { count: importable.length })}
                   </div>
                 </div>
                 <div className="bibtex-import-preview-list">
@@ -275,7 +284,7 @@ export default function BibImportModal({
               <div className="bibtex-import-preview-footer-actions">
                 {!previewEmpty && (
                   <div className="bibtex-import-preview-footer-count">
-                    {t('__count__ reference(s)', { count: checkedCount })}
+                    {t('reference_count', { count: checkedCount })}
                   </div>
                 )}
                 <div className="bibtex-import-preview-footer-buttons">
@@ -287,7 +296,7 @@ export default function BibImportModal({
                     disabled={previewEmpty || !previewDone || checkedCount === 0}
                     onClick={handleImport}
                   >
-                    {t('Import')}
+                    {t('Save')}
                   </OLButton>
                 </div>
               </div>
@@ -321,14 +330,19 @@ function BibImportCard({
   return (
     <div className="bibtex-import-preview-card">
       {selectable && (
-        <div className="bibtex-import-preview-card-check">
-          <input
-            type="checkbox"
-            aria-label={row.entry ? row.entry.id : t('Untitled')}
-            checked={checked}
-            disabled={row.status === 'empty'}
-            onChange={() => onToggle(row.rowId)}
-          />
+        <div className="wide-target-checkbox bibtex-import-preview-card-check">
+          <span className="wide-target-checkbox-box">
+            <span className="form-checkbox">
+              <input
+                type="checkbox"
+                className="form-check-input"
+                aria-label={row.entry ? row.entry.id : t('Untitled')}
+                checked={checked}
+                disabled={row.status === 'empty'}
+                onChange={() => onToggle(row.rowId)}
+              />
+            </span>
+          </span>
         </div>
       )}
       <div className="bibtex-import-preview-card-content">
@@ -366,16 +380,11 @@ function BibImportCard({
             </div>
           )}
         </div>
-        {(row.typeLabel || alreadyInLibrary) && (
+        {alreadyInLibrary && (
           <div className="bibtex-import-preview-card-tags">
-            {row.typeLabel && (
-              <span className="bib-type-tag">{row.typeLabel}</span>
-            )}
-            {alreadyInLibrary && (
-              <span className="bibtex-already-in-library">
-                {t('Already in your library')}
-              </span>
-            )}
+            <span className="bibtex-already-in-library">
+              {t('Already in your library')}
+            </span>
           </div>
         )}
       </div>

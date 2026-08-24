@@ -293,13 +293,13 @@ export default function BibEntryList({
           </button>
         ) : null}
         <span className="bibtex-bulk-actions-count">
-          {t('__count__ reference(s)', { count: filtered.length })}
+          {t('reference_count', { count: filtered.length })}
         </span>
       </div>
 
       <div className="bibtex-list-count" aria-hidden="true">
         {filtered.length === entries.length
-          ? t('__count__ reference(s)', { count: entries.length })
+          ? t('reference_count', { count: entries.length })
           : `${filtered.length} / ${entries.length}`}
       </div>
 

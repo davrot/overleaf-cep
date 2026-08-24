@@ -3438,5 +3438,21 @@
   "__count__ reference(s) added to your library": "__count__ reference(s) added to your library",
   "__count__ reference(s) moved to Trash": "__count__ reference(s) moved to Trash",
   "__count__ reference(s) permanently deleted": "__count__ reference(s) permanently deleted",
-  "__count__ reference(s) restored": "__count__ reference(s) restored"
+  "__count__ reference(s) restored": "__count__ reference(s) restored",
+  "reference_count_one": "__count__ reference",
+  "reference_count_other": "__count__ references",
+  "ref_added_one": "__count__ reference added to your library",
+  "ref_added_other": "__count__ references added to your library",
+  "ref_trashed_one": "__count__ reference moved to Trash",
+  "ref_trashed_other": "__count__ references moved to Trash",
+  "ref_deleted_one": "__count__ reference permanently deleted",
+  "ref_deleted_other": "__count__ references permanently deleted",
+  "ref_restored_one": "__count__ reference restored",
+  "ref_restored_other": "__count__ references restored",
+  "Save": "Save",
+  "reference_count": "reference count",
+  "ref_added": "references added to your library",
+  "ref_trashed": "references moved to Trash",
+  "ref_deleted": "references permanently deleted",
+  "ref_restored": "references restored"
 }

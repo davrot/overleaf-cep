@@ -32,7 +32,6 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/shared/components/ol/ol-button'
 import withErrorBoundary from '@/infrastructure/error-boundary'
 import EditorSwitch from '@/features/source-editor/components/editor-switch'
 import GenericConfirmModal from '@/features/ide-react/components/modals/generic-confirm-modal'
@@ -41,7 +40,7 @@ import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-ope
 import { useBibEditorContext } from '../context/bib-editor-context'
 import { BIB_UNDO_EVENT, BIB_REDO_EVENT } from '../extensions/bib-editor-extension'
 import BibEntryList from './bib-entry-list'
-import BibEntryForm from './bib-entry-form'
+import BibManualModal from './bib-manual-modal'
 import BibEntryPreview from './bib-entry-preview'
 import BibImportModal from './bib-import-modal'
 import BibImportFromLibrary from './bib-import-from-library'
@@ -50,6 +49,7 @@ import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
 import { downloadBibFilename, bulkDeleteIds, nextEntry, prevEntry } from '../utils/preview-model.ts'
 import '../../stylesheets/bib-editor-panel.css'
+import '../../stylesheets/bib-saas.css'
 
 function shallowEntriesEqual(
   a: { type: string; id: string; fields: Record<string, string> },
@@ -72,7 +72,6 @@ function BibEditorPanel() {
     selection,
     writeFailure,
     selectEntry,
-    selectNew,
     updateNewEntryTypePreset,
     deselect,
     writeEntry,
@@ -89,6 +88,8 @@ function BibEditorPanel() {
   const [importOpen, setImportOpen] = useState(false)
   // C9: "Import from Library" (LIBRARY_PLAN.md — the one deliberate deviation)
   const [libraryImportOpen, setLibraryImportOpen] = useState(false)
+  // Item 3: "Enter manually" opens the Add-reference modal (SaaS parity).
+  const [manualShow, setManualShow] = useState(false)
   const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
     { entryIds: string[]; expectedSource: string } | null
   >(null)
@@ -279,20 +280,6 @@ function BibEditorPanel() {
     selectEntry(next)
   }, [previewIndex, entries, selection, flushCurrentForm, selectEntry])
 
-  const handleSelectNew = useCallback(() => {
-    // C5 "Enter manually": opens the Add reference modal (selection 'new'
-    // drives the modal state — flush/rebind semantics unchanged).
-    setImportOpen(false)
-    selectNew()
-  }, [selectNew])
-
-  const handleBack = useCallback(() => {
-    setShowDeleteConfirm(false)
-    flushCurrentForm()
-    formRef.current = null
-    deselect()
-  }, [flushCurrentForm, deselect])
-
   const handleFormChange = useCallback(
     (entry: BibEntry, originalId: string | null) => {
       // W1: remember the type chosen on a new-entry form (the preset).
@@ -467,17 +454,6 @@ function BibEditorPanel() {
         aria-label={t('BibTeX editor toolbar')}
       >
         <div className="ol-toolbar-layout-left">
-          {selection?.kind === 'new' && (
-            <OLButton
-              className="bibtex-toolbar-back"
-              size="sm"
-              variant="link"
-              leadingIcon="arrow_top_left"
-              onClick={handleBack}
-            >
-              {t('back')}
-            </OLButton>
-          )}
           <div
             className="ol-editor-toolbar-button-group"
             aria-label={t('toolbar_undo_redo_actions')}
@@ -533,20 +509,7 @@ function BibEditorPanel() {
       </div>
 
       <div className="bib-editor-panel-content">
-        {selection?.kind === 'new' ? (
-          // C5 replaces this full-view form with the "Enter manually"
-          // Add-dropdown modal. Kept until then (C4 is revertible alone).
-          <BibEntryForm
-            entry={selection.draft}
-            kind="new"
-            originalId={null}
-            existingIds={entries.map(e => e.id)}
-            onFormChange={handleFormChange}
-            onChecked={handleChecked}
-            onBack={handleBack}
-          />
-        ) : (
-          <div className="bibtex-list-and-preview">
+        <div className="bibtex-list-and-preview">
             <BibEntryList
               entries={entries}
               onSelect={selectEntry}
@@ -563,7 +526,7 @@ function BibEditorPanel() {
               }
               openDocName={openDocName}
               onAddPaste={() => setImportOpen(true)}
-              onAddManual={handleSelectNew}
+              onAddManual={() => setManualShow(true)}
               onAddFromLibrary={() => setLibraryImportOpen(true)}
             />
             {selection?.kind === 'existing' && previewEntry ? (
@@ -586,7 +549,6 @@ function BibEditorPanel() {
               />
             ) : null}
           </div>
-        )}
       </div>
 
       {/* Single-entry delete confirm (preview Actions) */}
@@ -623,6 +585,12 @@ function BibEditorPanel() {
         expectedSource={sourceMirror.current}
         onImport={handleImportEntries}
         onHidden={() => setImportOpen(false)}
+      />
+      <BibManualModal
+        show={manualShow}
+        existingIds={entries.map(e => e.id)}
+        onSave={(entry, kind) => handleChecked(entry, kind)}
+        onHide={() => setManualShow(false)}
       />
 
       {/* C9 (LIBRARY_PLAN.md): Import from Library — the Add dropdown item

@@ -182,6 +182,7 @@ export default function BibEntryPreview({
       className={[
         'bibtex-entry-preview-panel',
         'bibtex-entry-preview-panel-contained',
+        'bibtex-entry-preview-panel-overlay',
         'bibtex-entry-preview-panel-open',
       ].join(' ')}
       role="region"
@@ -236,7 +237,7 @@ export default function BibEntryPreview({
           )}
         </div>
         {/* Actions (capture: more_vert → Download / Delete) */}
-        <div className="bibtex-entry-preview-summary-actions">
+        <div className="bibtex-entry-preview-summary-actions dropdown">
           <Dropdown align="end">
             <DropdownToggle
               className="btn-ghost btn-sm bib-preview-actions-toggle"
