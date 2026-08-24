@@ -26,6 +26,7 @@ import OLButton from '@/shared/components/ol/ol-button'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLFormText from '@/shared/components/ol/ol-form-text'
 import OLFormControl from '@/shared/components/ol/ol-form-control'
 import {
   Dropdown,
@@ -393,7 +394,7 @@ export default function BibEntryForm({
     const helper = rowHelper(fieldName)
     const value = fields[fieldName] || ''
     return (
-      <div className="bib-form-row" key={fieldName}>
+      <div className="form-group bib-form-row" key={fieldName}>
         <OLFormLabel
           className="bib-form-label"
           htmlFor={`bib-field-${fieldName}`}
@@ -436,7 +437,7 @@ export default function BibEntryForm({
             onChange={e => handleFieldChange(fieldName, e.target.value)}
           />
         )}
-        {helper && <span className="bib-form-hint">{helper}</span>}
+        {helper && <OLFormText>{helper}</OLFormText>}
         {message && (
           <span className="bib-form-error">{message}</span>
         )}
@@ -451,14 +452,14 @@ export default function BibEntryForm({
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       id="bibtex-entry-form"
-      className="bib-entry-form"
+      className="bibtex-entry-form bib-entry-form"
       onKeyDown={handleFormKeyDown}
     >
       {variant === 'modal' && (
         <>
           {/* DOI import row (modal host only — capture modals have no
               row; DOI Paste is C5, DOI single-fetch is Phase A). */}
-          <div className="bib-form-row">
+          <div className="form-group bib-form-row">
             <OLFormLabel className="bib-form-label" htmlFor="bib-doi-import">
               {t('Import from DOI')}
             </OLFormLabel>
@@ -505,21 +506,24 @@ export default function BibEntryForm({
         </>
       )}
 
-      {/* Entry type selector (48 — overleaf-type-map) */}
-      <div className="bib-form-row">
-        <OLFormLabel className="bib-form-label" htmlFor="bib-type">
+      {/* Entry type selector (48 — overleaf-type-map). SaaS DOM:
+          form-control button + keyboard_arrow_down. */}
+      <div className="form-group bib-form-row">
+        <OLFormLabel className="bib-form-label" htmlFor="bib-type-dropdown">
           {t('Entry type')}
         </OLFormLabel>
-        <Dropdown>
-          <DropdownToggle
-            id="bib-type-dropdown"
-            className="btn-secondary"
-            aria-label={t('Choose entry type')}
-          >
-            <span className="text-truncate" aria-hidden>
-              {selectedType?.label || 'Select'}
-            </span>
-          </DropdownToggle>
+        <div className="position-relative">
+          <Dropdown>
+            <DropdownToggle
+              id="bib-type-dropdown"
+              className="form-control text-start d-flex justify-content-between align-items-center w-100 entry-type-selector-btn"
+              aria-label={t('Choose entry type')}
+            >
+              <span>{selectedType?.label || 'Select'}</span>
+              <span className="material-symbols" aria-hidden="true">
+                keyboard_arrow_down
+              </span>
+            </DropdownToggle>
 
           <DropdownMenu flip={false}>
             {ENTRY_TYPES.map(et => (
@@ -531,12 +535,13 @@ export default function BibEntryForm({
                 {et.label}
               </DropdownItem>
             ))}
-          </DropdownMenu>
-        </Dropdown>
+            </DropdownMenu>
+          </Dropdown>
+        </div>
       </div>
 
       {/* Citation key (capture helpers) */}
-      <div className="bib-form-row">
+      <div className="form-group bib-form-row">
         <OLFormLabel className="bib-form-label" htmlFor="bib-key">
           {t('Citation key')}
         </OLFormLabel>
