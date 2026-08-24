@@ -25,10 +25,12 @@ export type BibImportItem =
   | { kind: 'doi'; raw: string }
   | { kind: 'error'; raw: string }
 
-/** A pasted `doi:` line or a bare `10.xxxx/...` DOI (after trimming). */
+/** A pasted `doi:` line, a bare `10.xxxx/...` DOI, or a DOI URL
+ *  (https://doi.org/… — see normaliseDoi in doi-fetcher.ts). */
 export function isDoiLine(line: string): boolean {
   const s = line.trim()
   if (/^doi:\s*\S/i.test(s)) return true
+  if (/^(https?:\/\/)?(dx\.)?doi\.org\//i.test(s)) return true
   return /^10\.\d{4,9}\/\S+$/.test(s)
 }
 

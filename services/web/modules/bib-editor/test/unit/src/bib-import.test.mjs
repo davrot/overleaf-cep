@@ -28,6 +28,12 @@ describe('C5: isDoiLine', () => {
     expect(isDoiLine('10.100000000/a.b.2019.01.10')).toBe(true)
   })
 
+  it('matches full DOI URLs (https://doi.org/…)', () => {
+    expect(isDoiLine('https://doi.org/10.3389/fncom.2025.1692418')).toBe(true)
+    expect(isDoiLine('http://dx.doi.org/10.1000/xyz')).toBe(true)
+    expect(isDoiLine('doi.org/10.1000/xyz')).toBe(true)
+  })
+
   it('rejects non-DOI lines', () => {
     expect(isDoiLine('title = {One}')).toBe(false)
     expect(isDoiLine('@article{k1,')).toBe(false)

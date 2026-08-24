@@ -267,6 +267,21 @@ export function LibraryProvider({
 
   const addEntries = useCallback(
     async (apiEntries: LibraryEntryApi[]) => {
+      // Persist first (item: "added" toast without a POST was the P0 bug);
+      // surface the server's 409 duplicate-key message verbatim.
+      try {
+        await api.createEntries(
+          apiEntries.map(e => ({
+            key: e.key,
+            type: e.type,
+            fields: e.fields,
+          }))
+        )
+      } catch (err) {
+        const failure = api.failureFromError(err)
+        pushToast('error', failure.message)
+        return
+      }
       await refresh()
       pushToast(
         'success',
