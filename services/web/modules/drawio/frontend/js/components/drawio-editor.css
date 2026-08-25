@@ -1,0 +1,132 @@
+.dg-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-light-primary, #fff);
+  color: var(--gray-900, #222);
+}
+
+.dg-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-light-tertiary, #f7f6f3);
+  border-bottom: 1px solid var(--border-strong, #ccc);
+}
+
+.dg-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border-strong, #ccc);
+  margin: 0 4px;
+}
+
+.dg-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.dg-sidebar {
+  width: 172px;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-strong, #ccc);
+  background: var(--bg-light-tertiary, #faf9f7);
+}
+
+.dg-group {
+  border-bottom: 1px solid var(--border-light, #e5e2dc);
+}
+
+.dg-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-700, #666);
+  padding: 6px 12px 3px;
+}
+
+.dg-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+}
+
+.dg-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dg-item.active {
+  background: rgba(0, 113, 227, 0.16);
+}
+
+.dg-item svg {
+  flex: 0 0 auto;
+}
+
+.dg-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.dg-canvas-inner {
+  position: absolute;
+  inset: 0;
+  user-select: none;
+  touch-action: none;
+}
+
+.dg-statusbar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--gray-800, #555);
+  background: var(--bg-light-tertiary, #f7f6f3);
+  border-top: 1px solid var(--border-strong, #ccc);
+}
+
+.dg-statusbar .spacer {
+  flex: 1;
+}
+
+.dg-banner {
+  padding: 6px 12px;
+  font-size: 13px;
+  background: rgba(255, 196, 0, 0.2);
+  border-bottom: 1px solid rgba(200, 150, 0, 0.5);
+}
+
+.dg-pill {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 13px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.dg-swatch {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.dg-width {
+  padding: 2px 4px;
+  font-size: 13px;
+}

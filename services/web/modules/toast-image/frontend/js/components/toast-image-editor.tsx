@@ -187,6 +187,12 @@ function ImageEditorModal({
             initMenu: 'shape',
             uiSize: { width: '100%', height: '100%' },
             menuBarPosition: 'top',
+            // The classic (CE+) working configuration disables TUI's built-in
+            // load/download buttons; with them enabled the bundled build
+            // crashes at construction ("n is not a constructor"). We drive
+            // the UI from our own toolbar (modal footer Save/Close).
+            loadButton: false,
+            downloadButton: false,
             // TUI's standard theme fetches its brand icon sheet from
             // uicdn.toast.com, which the IDE CSP blocks and which crashes
             // editor init. Disable the brand slot entirely (the old CE+

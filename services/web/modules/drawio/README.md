@@ -30,12 +30,22 @@ the diagram engine that powers draw.io.
 
 ## Editor features (v1)
 
-Toolbar: Select · Rectangle · Ellipse · Text · Arrow (two-click) ·
-**Freehand pencil** — plus Delete (or `Delete` key), Undo/Redo
-(`Ctrl+Z` / `Ctrl+Shift+Z`), Zoom in/out, Fit, stroke/fill colour and
-line-width controls (applied live to the selection). Drag from a shape's
-border to connect shapes (maxGraph connection handler); double-click a
-shape to edit its text.
+The UI mirrors the classic mxGraph `grapheditor` example (see
+`jgraph/mxgraph:javascript/examples/grapheditor/www`): top toolbar, left
+shape palette, canvas, status bar.
+
+- **Toolbar:** New (clear) · Undo/Redo (`Ctrl+Z` / `Ctrl+Shift+Z`) ·
+  zoom −/+ · Fit · Select / Freehand (pencil) tools · Delete (`Delete`
+  key) · grid toggle · stroke/fill colour + line width (applied live to
+  the selection) · **Save**.
+- **Palette (General):** rectangle, ellipse, rhombus, cylinder,
+  triangle, cloud, actor, text — click to add, or drag onto the canvas
+  to place. **Connectors:** straight / arrow / elbow / orthogonal —
+  click one, then click the two elements to connect.
+- **Canvas:** A4-landscape page sheet, grid, pan (right-drag), wheel
+  zoom, double-click a shape to edit its text, drag a shape's border to
+  connect it (maxGraph connection handler).
+- **Status bar:** zoom %, cursor coordinates, model format hint.
 
 ## Why maxGraph (and not the draw.io embed)
 
