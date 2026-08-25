@@ -4253,13 +4253,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@maxgraph/core@npm:^0.24.0":
-  version: 0.24.0
-  resolution: "@maxgraph/core@npm:0.24.0"
-  checksum: 10c0/9750062f7606f8980e7af5d21b7ddc901fc0f24b8c501f289c7d178d28434850c68a2715b69f89eaf64afeea8a842ffed2c90b493df6a2bfc08122e8ccc26428
-  languageName: node
-  linkType: hard
-
 "@mdx-js/react@npm:^3.0.0":
   version: 3.1.1
   resolution: "@mdx-js/react@npm:3.1.1"
@@ -6316,7 +6309,6 @@ __metadata:
     "@lezer/highlight": "npm:1.2.3"
     "@lezer/lr": "npm:1.4.7"
     "@lezer/markdown": "npm:1.6.3"
-    "@maxgraph/core": "npm:^0.24.0"
     "@node-oauth/oauth2-server": "npm:^5.3.0"
     "@node-saml/passport-saml": "npm:^5.1.0"
     "@overleaf/access-token-encryptor": "workspace:*"
@@ -6359,6 +6351,7 @@ __metadata:
     "@streamdown/math": "npm:^1.0.2"
     "@stripe/react-stripe-js": "npm:^3.9.0"
     "@stripe/stripe-js": "npm:^7.7.0"
+    "@svgedit/svgcanvas": "npm:^7.4.2"
     "@tailwindcss/container-queries": "npm:^0.1.1"
     "@tanstack/react-table": "npm:^8.21.3"
     "@tanstack/react-virtual": "npm:^3.13.23"
@@ -8648,6 +8641,13 @@ __metadata:
   version: 7.7.0
   resolution: "@stripe/stripe-js@npm:7.7.0"
   checksum: 10c0/566842c9e635012901d37b3181d0285c1dbb3ab6e520e6c2ad99edf571a7511c04e651f00a2773800bd4059e90663b09f222abc39b435f40319ebe08201124ad
+  languageName: node
+  linkType: hard
+
+"@svgedit/svgcanvas@npm:^7.4.2":
+  version: 7.4.2
+  resolution: "@svgedit/svgcanvas@npm:7.4.2"
+  checksum: 10c0/d61c8aef2b533285d99314cacb34e63e7a397bb640f8491bf355f91c036f7f66763fe8dbff600051b8090c1f0f5b410f94a9415670b7fc60be96001fe9d06a22
   languageName: node
   linkType: hard
 

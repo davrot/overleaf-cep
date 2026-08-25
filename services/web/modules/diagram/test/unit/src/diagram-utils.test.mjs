@@ -3,23 +3,33 @@ import {
   companionFileName,
   findFileRefById,
   findParentFolderId,
-} from '../../../frontend/js/util/drawio-utils.ts'
+} from '../../../frontend/js/util/diagram-utils.ts'
 
 describe('companionFileName', function () {
-  it('strips the .drawio extension and appends the companion kind', function () {
-    expect(companionFileName('diagram.drawio', 'png')).toEqual('diagram.png')
-    expect(companionFileName('diagram.drawio', 'pdf')).toEqual('diagram.pdf')
-    expect(companionFileName('diagram.drawio', 'svg')).toEqual('diagram.svg')
+  it('strips the .svg extension and appends the companion kind', function () {
+    expect(companionFileName('diagram.svg', 'png')).toEqual('diagram.png')
+    expect(companionFileName('diagram.svg', 'pdf')).toEqual('diagram.pdf')
+  })
+
+  it('strips a legacy .drawio extension too', function () {
+    expect(companionFileName('diagram.drawio', 'png')).toEqual(
+      'diagram.png'
+    )
+  })
+
+  it('the svg fallback companion never collides with the document name', function () {
+    expect(companionFileName('diagram.svg', 'svg')).toEqual('diagram.plain.svg')
+    expect(companionFileName('fig.drawio', 'svg')).toEqual('fig.plain.svg')
   })
 
   it('is case-insensitive on the extension and defaults the name', function () {
-    expect(companionFileName('My.Diagram.DRAWIO', 'png')).toEqual(
+    expect(companionFileName('My.Diagram.SVG', 'png')).toEqual(
       'My.Diagram.png'
     )
     expect(companionFileName('', 'pdf')).toEqual('diagram.pdf')
   })
 
-  it('keeps non-drawio names as-is', function () {
+  it('keeps extension-less names as-is', function () {
     expect(companionFileName('diagram', 'png')).toEqual('diagram.png')
   })
 })
@@ -36,7 +46,7 @@ describe('findParentFolderId', function () {
             fileRefs: [{ _id: 'f1', name: 'f1.png' }],
           },
         ],
-        fileRefs: [{ _id: 'diagram', name: 'diagram.drawio' }],
+        fileRefs: [{ _id: 'diagram', name: 'diagram.svg' }],
       },
     ],
   }

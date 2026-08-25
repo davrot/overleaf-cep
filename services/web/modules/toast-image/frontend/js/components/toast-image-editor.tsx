@@ -35,13 +35,15 @@ type EditorFile = {
 }
 
 // eslint-disable-next-line import/first
+type TuiImageEditorUi = {
+  on: (event: string, cb: (...args: unknown[]) => void) => void
+  initializeImgUrl?: string
+}
+
 type TuiImageEditorInstance = {
+  ui?: TuiImageEditorUi
   on: (event: string, cb: () => void) => void
   off: (event: string, cb?: () => void) => void
-  loadImage: (options: {
-    path: string
-    name?: string
-  }) => Promise<void>
   toDataURL: (options?: {
     format?: string
     quality?: number
@@ -144,14 +146,27 @@ function ImageEditorModal({
     }
   }, [])
 
-  // Deterministic editor init (T1): the modal may not have settled when we
-  // first mount, so wait for a non-zero size before handing the container to
-  // TUI (which renders into zero-sized canvases otherwise). No blind
-  // timeouts, no DOM-mutation button hiding (TUI is configured without load
-  // buttons, and the CSS keeps them hidden defensively).
+  // Deterministic editor init. Constraint notes (verified in
+  // node_modules/tui-image-editor@3.15.3/dist/tui-image-editor.js):
+  //   - Ui#_makeSubMenu does `new SUB_UI_COMPONENT[<Menu>]` per entry of
+  //     options.menu; that map only holds Shape/Crop/Resize/Flip/Rotate/
+  //     Text/Mask/Icon/Draw/Filter. Any other name (e.g. 'guide') is
+  //     `new undefined` and throws "... is not a constructor" during
+  //     construction. Wait for a non-zero container size first, as before.
+  //   - The image must be loaded via includeUI.loadImage: only that path
+  //     runs Ui#initCanvas -> activeMenuEvent, which activates the menus.
+  //   - ImageEditor 3.15.3 has NO public loadImage(options) method
+  //     (only loadImageFromFile/loadImageFromURL).
+  // The option set matches the old (working) CE+ plugin exactly.
   useEffect(() => {
     let cancelled = false
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+    const markReady = () => {
+      if (!cancelled && mountedRef.current) {
+        setReady(true)
+      }
+    }
 
     const init = async () => {
       const container = containerRef.current
@@ -170,6 +185,20 @@ function ImageEditorModal({
         const ImageEditorCtor: TuiImageEditorCtor =
           editorModule.default ?? editorModule.ImageEditor
 
+        // Retry hygiene: dispose the previous instance + its DOM before
+        // re-initializing into the same container (otherwise the new mount
+        // div would nest inside the stale one).
+        const prev = editorRef.current
+        editorRef.current = null
+        if (prev && typeof prev.destroy === 'function') {
+          try {
+            prev.destroy()
+          } catch (e) {
+            // already destroyed
+          }
+        }
+        container.replaceChildren()
+
         const mount = document.createElement('div')
         mount.style.width = '100%'
         mount.style.height = '100%'
@@ -177,16 +206,31 @@ function ImageEditorModal({
 
         const editor = new ImageEditorCtor(mount, {
           includeUI: {
-            // Load the project image at construction time (the old CE+
-            // version's approach, proven in this environment).
+            // Load the project image at construction time — exactly the
+            // old working plugin's pattern. It is also the ONLY path that
+            // activates TUI's menus (Ui#initCanvas -> activeMenuEvent).
+            // Do not add an explicit loadImage() call afterwards: 3.15.3
+            // has no such public method.
             loadImage: {
               path: `/project/${projectId}/blob/${file.hash}`,
               name: file.name,
             },
-            menu: ['resize', 'filter', 'draw', 'shape', 'text', 'guide'],
-            initMenu: 'shape',
+            // All entries must exist in TUI's SUB_UI_COMPONENT map (see
+            // note above) — the old working plugin's menu set.
+            menu: [
+              'crop',
+              'flip',
+              'rotate',
+              'draw',
+              'shape',
+              'icon',
+              'text',
+              'mask',
+              'filter',
+            ],
+            initMenu: 'filter',
             uiSize: { width: '100%', height: '100%' },
-            menuBarPosition: 'top',
+            menuBarPosition: 'left',
             // The classic (CE+) working configuration disables TUI's built-in
             // load/download buttons; with them enabled the bundled build
             // crashes at construction ("n is not a constructor"). We drive
@@ -238,16 +282,51 @@ function ImageEditorModal({
           cssMaxHeight: container.clientHeight || 520,
           usageStatistics: false,
         })
-        editor.on('image:updated', () => {
-          dirtyRef.current = true
-        })
         editorRef.current = editor
-        await editor.loadImage({
-          path: `/project/${projectId}/blob/${file.hash}`,
-          name: file.name,
-        })
-        if (cancelled || !mountedRef.current) return
-        setReady(true)
+
+        // Readiness + dirty tracking: TUI fires its invoker events on the
+        // UI instance (ImageEditor#_attachInvokerEvents). The invoker
+        // fires 'executeCommand' with history name 'Load' when the
+        // initial image load has settled; every other command (and
+        // afterUndo/afterRedo) means the pixels were modified.
+        const ui: TuiImageEditorUi | undefined = editor.ui
+        if (ui && typeof ui.on === 'function') {
+          const onCommand = (name: unknown) => {
+            if (name === 'Load') {
+              markReady()
+            } else if (name) {
+              dirtyRef.current = true
+            }
+          }
+          ui.on('executeCommand', onCommand)
+          const onHistory = () => {
+            dirtyRef.current = true
+          }
+          ui.on('afterUndo', onHistory)
+          ui.on('afterRedo', onHistory)
+        }
+        // Bounded fallback for the same completion signal: Ui sets
+        // initializeImgUrl when the internal load promise settles (the
+        // same .then that fires 'Load'). Keep Save disabled until the
+        // image really is on the canvas — never upload a blank canvas
+        // over a project file.
+        const deadline = Date.now() + 20_000
+        const tick = () => {
+          if (cancelled || !mountedRef.current) return
+          const uiNow = editorRef.current?.ui
+          if (
+            uiNow &&
+            typeof uiNow.initializeImgUrl === 'string' &&
+            uiNow.initializeImgUrl
+          ) {
+            markReady()
+            return
+          }
+          if (Date.now() < deadline) {
+            setTimeout(tick, 150)
+          }
+        }
+        setTimeout(tick, 150)
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('Failed to initialize image editor:', err)

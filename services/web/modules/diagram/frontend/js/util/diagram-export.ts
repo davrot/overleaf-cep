@@ -1,66 +1,15 @@
 /**
- * Client-side export pipeline for the maxGraph diagram editor.
+ * Client-side export pipeline for the SVG diagram editor (modules/diagram).
  *
  * Everything happens in the browser — no server dependency, no network:
  *
- *   graph ──(maxGraph ImageExport + SvgCanvas2D)──> vector SVG
- *   SVG   ──(canvas)──> PNG bitmap
- *   SVG   ──(svg2pdf.js + jsPDF)──> vector PDF for `\includegraphics`
+ *   SVG  ──(canvas)────────> PNG bitmap
+ *   SVG  ──(svg2pdf.js + jsPDF)──> VECTOR PDF for `\includegraphics`
+ *
+ * The SVG itself is the document source, so no intermediate serialisation
+ * is needed (this used to be maxGraph's ImageExport; svgcanvas exports the
+ * SVG string directly).
  */
-import { ImageExport, SvgCanvas2D, constants, xmlUtils } from '@maxgraph/core'
-import type { Graph as MaxGraph } from '@maxgraph/core'
-
-export const EXPORT_MARGIN_PX = 20
-
-export interface ExportedSvg {
-  xml: string
-  width: number
-  height: number
-}
-
-/** Render the model to a standalone vector SVG document. */
-export function graphToSvg(
-  graph: MaxGraph,
-  margin = EXPORT_MARGIN_PX
-): ExportedSvg {
-  const bounds = graph.getGraphBounds()
-  const width = Math.max(
-    1,
-    Math.ceil((bounds?.width ?? 0) + (bounds?.x ?? 0) + margin * 2)
-  )
-  const height = Math.max(
-    1,
-    Math.ceil((bounds?.height ?? 0) + (bounds?.y ?? 0) + margin * 2)
-  )
-
-  const svgDoc = xmlUtils.createXmlDocument()
-  const root = svgDoc.createElementNS
-    ? svgDoc.createElementNS(constants.NS_SVG, 'svg')
-    : svgDoc.createElement('svg')
-  if (!svgDoc.createElementNS) {
-    root.setAttribute('xmlns', constants.NS_SVG)
-    root.setAttribute('xmlns:xlink', constants.NS_XLINK)
-  } else {
-    root.setAttributeNS(
-      'http://www.w3.org/2000/xmlns/',
-      'xmlns:xlink',
-      constants.NS_XLINK
-    )
-  }
-  root.setAttribute('width', `${width}px`)
-  root.setAttribute('height', `${height}px`)
-  root.setAttribute('version', '1.1')
-  svgDoc.appendChild(root)
-
-  const svgCanvas = new SvgCanvas2D(root as unknown as SVGElement, true)
-  const modelRoot = graph.getDataModel().root
-  const rootState = modelRoot ? graph.getView().getState(modelRoot) : undefined
-  if (rootState) {
-    new ImageExport().drawState(rootState, svgCanvas)
-  }
-
-  return { xml: xmlUtils.getXml(root), width, height }
-}
 
 function svgToImage(svgXml: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

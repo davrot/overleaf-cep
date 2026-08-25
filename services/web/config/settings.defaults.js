@@ -58,6 +58,7 @@ const defaultTextExtensions = [
   'lua',
   'py',
   'gv',
+  'svg',
   'drawio',
   'mf',
   'yml',
@@ -1028,7 +1029,7 @@ module.exports = {
     createFileModes: [
       Path.resolve(
         __dirname,
-        '../modules/drawio/frontend/js/components/create-drawio-file'
+        '../modules/diagram/frontend/js/components/create-diagram-file'
       ),
     ],
     devToolbar: [],
@@ -1052,7 +1053,7 @@ module.exports = {
     sourceEditorComponents: [
       Path.resolve(
         __dirname,
-        '../modules/drawio/frontend/js/components/drawio-editor'
+        '../modules/diagram/frontend/js/components/diagram-editor'
       ),
     ],
     pdfLogEntryHeaderActionComponents: [],
@@ -1134,7 +1135,7 @@ module.exports = {
     'launchpad',
     'server-ce-scripts',
     'user-activate',
-    'drawio',
+    'diagram',
     'toast-image',
   ],
   viewIncludes: {},
