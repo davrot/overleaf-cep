@@ -21,10 +21,6 @@ export type ParsedBibEntry = BibEntry & {
   sourceEnd: number
   /** Raw source text for this entry */
   raw: string
-  /** Library: stable API row id (Mongo _id) — unique key for selection. */
-  libId?: string
-  /** Library: last-updated ISO date (SaaS `bibtex-entry-card-updated-at`). */
-  updatedAt?: string | null
 }
 
 /** Entry types that are parsed but not editable bibliographies entries. */

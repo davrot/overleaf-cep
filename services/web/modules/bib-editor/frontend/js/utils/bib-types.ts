@@ -7,11 +7,14 @@ import {
 /**
  * BibTeX entry type definition and field metadata.
  */
-
 export type BibEntry = {
   type: string
   id: string
   fields: Record<string, string>
+  /** Library: stable API row id (Mongo _id) — identity for bulk ops. */
+  libId?: string
+  /** Library: last-updated ISO date (SaaS `bibtex-entry-card-updated-at`). */
+  updatedAt?: string | null
 }
 
 export type BibEntryType = {

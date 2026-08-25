@@ -28,7 +28,8 @@ export type LibraryEntryApi = {
   createdAt: string | null
 }
 
-/** API entry → module BibEntry (id = citation key). */
+/** API entry → module BibEntry (id = citation key, libId = Mongo _id so
+ *  bulk selection/identity is the stable row id even for duplicate keys). */
 export function apiToBibEntry(api: LibraryEntryApi): BibEntry {
   const fields: Record<string, string> = {}
   for (const field of api.fields ?? []) {
@@ -38,6 +39,8 @@ export function apiToBibEntry(api: LibraryEntryApi): BibEntry {
     type: api.type,
     id: api.key,
     fields,
+    libId: api._id || undefined,
+    updatedAt: api.updatedAt,
   }
 }
 

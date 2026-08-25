@@ -138,3 +138,99 @@
 .bibtex-visual-editor .bibtex-bulk-actions-bar:not(.bibtex-bulk-actions-bar-selected) { background-color:var(--bg-primary-themed);border-bottom-color:var(--border-divider-themed);border-top-color:var(--border-divider-themed) }
 .bibtex-loading { align-items:center;display:flex;flex:1;justify-content:center }
 .bibtex-entry-list-panel { align-items:center;display:flex;gap:var(--spacing-04);padding:var(--spacing-04) var(--spacing-04) var(--spacing-05) }
+
+/* Optional-section "Add field" combobox (shared by the project Add modal
+   and the library Add modal + preview; both hosts load this file. Host
+   files may still carry identical scoped copies — same values). */
+.bib-optional-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.bib-add-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.bib-add-field-combobox {
+  position: relative;
+}
+.bib-add-field-listbox {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0.3rem;
+  background: var(--bib-panel-bg);
+  border: 1px solid var(--bib-panel-border);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.bib-combo-group {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0;
+}
+.bib-combo-group-label {
+  font-size: var(--font-size-01);
+  font-weight: bold;
+  color: var(--bib-panel-secondary-color);
+  padding: 0.25rem 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bib-combo-option {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  color: var(--bib-panel-color);
+  font-size: var(--font-size-02);
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--bs-border-radius);
+  cursor: pointer;
+}
+.bib-combo-option:hover,
+.bib-combo-option:focus {
+  background: var(--bib-panel-card-hover-bg);
+  outline: none;
+}
+.bib-combo-divider {
+  height: 1px;
+  margin: 0.2rem 0;
+  background: var(--bib-panel-border);
+}
+/* Import-preview card meta: publication venue (primary) + type chip */
+.bibtex-import-preview-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  min-height: 1.2rem;
+}
+.bibtex-import-preview-card-tags .bib-publication-name {
+  font-size: 12.5px;
+  color: var(--content-secondary-themed, var(--content-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.bibtex-import-preview-card-tags .bib-type-tag {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-divider-themed, var(--border-divider));
+  color: var(--content-secondary-themed, var(--content-secondary));
+  background: var(--bg-secondary-themed, transparent);
+  white-space: nowrap;
+}

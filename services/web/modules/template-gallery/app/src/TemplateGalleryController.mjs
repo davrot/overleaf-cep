@@ -4,6 +4,8 @@ import logger from '@overleaf/logger'
 import ErrorController from '../../../../app/src/Features/Errors/ErrorController.mjs'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
+import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
+import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
 import TemplateGalleryManager from'./TemplateGalleryManager.mjs'
 import { getUserName } from './TemplateGalleryHelper.mjs'
 import { TemplateNameConflictError, RecompileRequiredError } from './TemplateErrors.mjs'
@@ -99,6 +101,26 @@ async function getTemplatePreview(req, res, next) {
   }
 }
 
+/**
+ * Theme support parity with /project + /library: expose the logged-in
+ * user's overallTheme (ol-userSettings meta) so useThemedPage follows the
+ * Dark/Light/System setting and the account menu renders the theme
+ * toggle (ol-overallThemes is a global render local).
+ */
+async function themeLocals(req, res) {
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  if (!userId) return {}
+  try {
+    const user = await UserGetter.promises.getUser(userId)
+    if (!user) return {}
+    const userSettings = await UserSettingsHelper.buildUserSettings(req, res, user)
+    return { userSettings }
+  } catch (err) {
+    logger.warn({ err, userId }, 'template-gallery: theme locals unavailable; page renders with defaults')
+    return {}
+  }
+}
+
 async function templatesCategoryPage(req, res, next) {
   const t = req.i18n.translate
   try {
@@ -115,6 +137,7 @@ async function templatesCategoryPage(req, res, next) {
     res.render(Path.resolve(__dirname, '../views/template_gallery/template-gallery'), {
       title,
       category,
+      ...await themeLocals(req, res),
     })
   } catch (error) {
     next(error)
@@ -130,7 +153,8 @@ async function templateDetailsPage(req, res, next) {
       title: `${t('template')}: ${template.name}`,
       template: JSON.stringify(template),
       languages: Settings.languages,
-      userIsTemplatesManager: Boolean(Settings.templates?.user_id && Settings.templates.user_id === userId)
+      userIsTemplatesManager: Boolean(Settings.templates?.user_id && Settings.templates.user_id === userId),
+      ...await themeLocals(req, res),
     })
   } catch (error) {
     return ErrorController.notFound(req, res, next)

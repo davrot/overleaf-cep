@@ -28,6 +28,19 @@ import {
 } from '@/shared/components/ol/ol-modal'
 import { humanizeCitationHeading } from '../utils/overleaf-type-map.ts'
 import type { BibEntry } from '../utils/bib-types'
+
+/**
+ * Publication venue for preview cards (item: show the publication title,
+ * not the type): first non-empty of the venue fields; falls back to the
+ * entry type so the chip never renders empty.
+ */
+function publicationName(entry: BibEntry): string {
+  const f = entry.fields ?? {}
+  for (const name of [f.journaltitle, f.journal, f.booktitle, f.eventtitle, f.venue, f.school, f.institution]) {
+    if (name && name.trim()) return name.trim()
+  }
+  return entry.type || ''
+}
 import * as api from '../library/library-api'
 import {
   entryMatchesQuery,
@@ -227,6 +240,11 @@ export default function BibImportFromLibrary({
                           )}
                         </div>
                         <div className="bibtex-import-preview-card-tags">
+                          {publicationName(row.entry) && (
+                            <span className="bib-publication-name">
+                              {publicationName(row.entry)}
+                            </span>
+                          )}
                           <span className="bib-type-tag">{row.entry.type}</span>
                         </div>
                       </div>

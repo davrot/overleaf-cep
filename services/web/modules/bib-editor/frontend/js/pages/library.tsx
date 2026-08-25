@@ -1,5 +1,5 @@
 /**
- * /library and /library/trash page entry (Webpack auto-entry glob
+ * /library and /library/trashed page entry (Webpack auto-entry glob
  * `modules/<module>/frontend/js/pages/**`; template-gallery precedent).
  */
 import ReactDOM from 'react-dom/client'

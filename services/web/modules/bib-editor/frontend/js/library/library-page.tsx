@@ -212,7 +212,7 @@ export default function LibraryPage() {
                 e.preventDefault()
                 lib.setView('trash')
               }}
-              href="/library/trash"
+              href="/library/trashed"
               aria-current={isTrash ? 'page' : undefined}
             >
               {t('Trash')}
@@ -247,26 +247,30 @@ export default function LibraryPage() {
             <div className="library-toolbar-buttons">
               <button
                 type="button"
-                className="btn-secondary btn-sm library-download-all-btn"
+                className="btn btn-secondary btn-sm library-download-all-btn"
                 aria-label={t('Download')}
                 onClick={() => lib.downloadVisible()}
               >
-                <span className="material-symbols" aria-hidden="true">
-                  download
+                <span className="button-content">
+                  <span className="material-symbols" aria-hidden="true">
+                    download
+                  </span>
+                  {t('Download')}
                 </span>
-                {t('Download')}
               </button>
               <div className="bibtex-add-button dropdown">
               <Dropdown align="end">
                 <DropdownToggle
-                  className="btn-secondary btn-sm"
+                  className="d-inline-grid custom-toggle dropdown-toggle btn btn-secondary btn-sm"
                   aria-label={t('Add')}
                   aria-expanded={false}
                 >
-                  <span className="material-symbols" aria-hidden="true">
-                    add
+                  <span className="button-content">
+                    <span className="material-symbols" aria-hidden="true">
+                      add
+                    </span>
+                    {t('Add')}
                   </span>
-                  {t('Add')}
                 </DropdownToggle>
                 <DropdownMenu>
                   <DropdownItem
@@ -397,7 +401,7 @@ export default function LibraryPage() {
             </div>
           ) : (
             <BibEntryList
-              entries={visible.map(r => r.entry)}
+              entries={visible.map(r => ({ ...r.entry, libId: r.rowId || undefined }))}
               onSelect={entry => {
                 const row = visible.find(r => r.entry.libId === entry.libId)
                 if (row) lib.select(row.rowId)

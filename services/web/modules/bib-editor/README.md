@@ -228,3 +228,42 @@ schema merges stay clean.
 
 Plans & decisions: `LIBRARY_PLAN.md` (the Library; the superseded Phase A–C
 plans were intentionally retired by the user in favor of this one).
+
+## Fork change history
+
+### Round 4 (UI/UX fixes, this branch)
+
+- **Delete/trash now works from the Library list** — bulk selection is
+  keyed by `entry.libId` (the Mongo `_id`, set in `apiToBibEntry` /
+  `toRows` and propagated through the list props; `rowIdOf` falls back to
+  the citation key only for rows without an id). Previously the
+  selection carried citation keys while the delete/restore endpoints
+  delete by `_id`, so the UI reported “0 references moved to trash”.
+- **“Add optional field” suggestion list** — the combobox/listbox CSS
+  (`.bib-add-field-*`, `.bib-combo-*`) is now in `bib-saas.css`, which
+  **both** hosts load; before it only existed in `bib-library.css`, so the
+  project Add modal rendered an unstyled suggestion list.
+- **Library toolbar buttons** — Download and “+ Add” now use the Overleaf
+  button family (`btn btn-secondary btn-sm` + `.button-content`) so icon
+  alignment and colors match the in-project “+ Add” exactly (both render
+  through the shared `DropdownToggle`).
+- **Import-from-Library preview** — the card shows the **publication
+  venue** (first non-empty of journaltitle / journal / booktitle /
+  eventtitle / venue / school / institution) plus the type as a small
+  chip (`.bib-publication-name`, `.bib-type-tag`).
+- **Library preview panel layout** — the slide-out `:has(…) margin-right`
+  shift no longer applies inside the flex side-panel layout (it opened an
+  empty third column between list and panel on wide screens); list slot
+  is now `list | panel` with no gap.
+
+### Earlier rounds (context)
+
+- Round 3: ds-nav chrome parity for /library (switcher logo, CE+ brand,
+  account-menu admin block), modal token pinning (CE modals are always
+  light — themed tokens pinned inside `data-testid` modal roots in
+  `bib-editor-panel.css` + `bib-library.css`), counts pluralization,
+  file-scoped Undo/Redo, responsive list/preview column layout.
+- Deep-audit (across the fork): template-gallery `getTemplate` query-key
+  whitelist, `template-details` undefined-URL-param fix, track-changes
+  auth/validation/rate-limits (see sibling READMEs), admin-tools +
+  admin page theming (see sibling READMEs).

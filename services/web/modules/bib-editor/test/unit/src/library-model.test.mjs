@@ -37,6 +37,9 @@ describe('apiToBibEntry / bibEntryToApi', () => {
       type: 'article',
       id: 'smith2020',
       fields: { title: 'Title', author: 'Smith, A.' },
+      // row identity for bulk ops (delete/restore by Mongo _id, not key)
+      libId: 'abc123',
+      updatedAt: null,
     })
   })
 
@@ -45,6 +48,8 @@ describe('apiToBibEntry / bibEntryToApi', () => {
       type: 'book',
       id: 'doe1999',
       fields: { title: 'T', year: '1999' },
+      libId: undefined,
+      updatedAt: null,
     }
     expect(apiToBibEntry(bibEntryToApi(entry))).toEqual(entry)
   })

@@ -1385,6 +1385,13 @@
   margin-right: 0 !important; /* flex layout handles the shift */
 }
 /* The shared preview panel CSS is an absolute slide-out; on the library
+   page it is a flex side panel. The slide-out list shift (`:has` margin-right)
+   must not apply here — the flex slot takes the 30rem, so any list margin
+   would open an empty column between list and panel (wide screens). */
+.library-page-main:has(.bibtex-entry-preview-panel-contained.bibtex-entry-preview-panel-open) .bibtex-entry-list {
+  margin-right: 0 !important;
+}
+/* The shared preview panel CSS is an absolute slide-out; on the library
    page it is a flex side panel. */
 .library-page-main .bibtex-entry-preview-panel {
   position: relative;
