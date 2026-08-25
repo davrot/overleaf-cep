@@ -58,6 +58,7 @@ const defaultTextExtensions = [
   'lua',
   'py',
   'gv',
+  'drawio',
   'mf',
   'yml',
   'yaml',
@@ -1024,7 +1025,12 @@ module.exports = {
     //
     // Restart webpack after making changes.
     //
-    createFileModes: [],
+    createFileModes: [
+      Path.resolve(
+        __dirname,
+        '../modules/drawio/frontend/js/components/create-drawio-file'
+      ),
+    ],
     devToolbar: [],
     gitBridge: [],
     publishModal: [],
@@ -1033,9 +1039,22 @@ module.exports = {
     tprFileViewRefreshButton: [],
     tprFileViewNotOriginalImporter: [],
     contactUsModal: [],
+    // Buttons rendered next to the download button in the file view header
+    // (e.g. the "Edit Image" action from the toast-image module).
+    fileViewButtons: [
+      Path.resolve(
+        __dirname,
+        '../modules/toast-image/frontend/js/components/toast-image-editor'
+      ),
+    ],
     sourceEditorExtensions: [],
     sourceEditorVisualExtensions: [],
-    sourceEditorComponents: [],
+    sourceEditorComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/drawio/frontend/js/components/drawio-editor'
+      ),
+    ],
     pdfLogEntryHeaderActionComponents: [],
     pdfLogEntryComponents: [],
     pdfLogEntriesComponents: [],
@@ -1115,6 +1134,8 @@ module.exports = {
     'launchpad',
     'server-ce-scripts',
     'user-activate',
+    'drawio',
+    'toast-image',
   ],
   viewIncludes: {},
 
