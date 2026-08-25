@@ -26,3 +26,20 @@
 .toast-image-editor-modal button[title='Download'] {
   display: none !important;
 }
+
+/* TUI 3.15.3 still renders its chrome despite loadButton/downloadButton:false —
+   hide it by structure: the canvas top header (brand logo + Load/Download)
+   and the controls-strip logo/Load/Download block. The menu column (crop,
+   flip, rotate, draw, shape, icon, text, mask, filter) and the help menu
+   (zoom/hand/history/undo/redo) stay. */
+.toast-image-editor-modal .tui-image-editor-header {
+  display: none !important;
+  height: 0 !important;
+}
+.toast-image-editor-modal .tui-image-editor-controls-logo,
+.toast-image-editor-modal .tui-image-editor-controls-buttons,
+.toast-image-editor-modal .tui-image-editor-download-btn,
+.toast-image-editor-modal .tui-image-editor-load-btn,
+.toast-image-editor-modal .tie-canvas-load-btn {
+  display: none !important;
+}

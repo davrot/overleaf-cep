@@ -1050,12 +1050,7 @@ module.exports = {
     ],
     sourceEditorExtensions: [],
     sourceEditorVisualExtensions: [],
-    sourceEditorComponents: [
-      Path.resolve(
-        __dirname,
-        '../modules/diagram/frontend/js/components/diagram-editor'
-      ),
-    ],
+    sourceEditorComponents: [],
     pdfLogEntryHeaderActionComponents: [],
     pdfLogEntryComponents: [],
     pdfLogEntriesComponents: [],
@@ -1087,7 +1082,16 @@ module.exports = {
     ssoCertificateInfo: [],
     v1ImportDataScreen: [],
     snapshotUtils: [],
-    visualEditorProviders: [],
+    // The SVG diagram editor replaces the code editor for `.svg` documents
+    // (the canvas owns the whole editor pane; "Code | Visual" switches to
+    // the raw SVG source). Registered as a visual editor — NOT as a
+    // sourceEditorComponent (that would render it underneath CodeMirror).
+    visualEditorProviders: [
+      Path.resolve(
+        __dirname,
+        '../modules/diagram/frontend/js/visual-editor-provider'
+      ),
+    ],
     usGovBanner: [],
     rollingBuildsUpdatedAlert: [],
     offlineModeToolbarButtons: [],

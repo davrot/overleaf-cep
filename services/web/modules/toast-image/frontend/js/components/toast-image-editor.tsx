@@ -284,6 +284,27 @@ function ImageEditorModal({
         })
         editorRef.current = editor
 
+        // TUI's text editing uses a fabric canvas; when a text object enters
+        // edit mode, fabric appends a hidden <textarea> (default: document.body)
+        // and focuses it to capture keystrokes. The OL modal wraps its content
+        // in a focus-trap, which yanks focus back out of that textarea and so
+        // swallows every keystroke ("text input is ignored"). Keep the
+        // textarea INSIDE our modal container so the trap permits it.
+        try {
+          const graphics = (editor as unknown as { _graphics?: { canvas?: { hiddenTextareaContainer?: Element } } })?._graphics
+          const fabricCanvas = graphics?.canvas
+          const host = document.createElement('div')
+          host.style.position = 'absolute'
+          host.style.left = '-10000px'
+          host.style.top = '0'
+          container.appendChild(host)
+          if (fabricCanvas && 'hiddenTextareaContainer' in fabricCanvas) {
+            fabricCanvas.hiddenTextareaContainer = host
+          }
+        } catch (e) {
+          // Non-fatal: text editing may still work if focus lands correctly.
+        }
+
         // Readiness + dirty tracking: TUI fires its invoker events on the
         // UI instance (ImageEditor#_attachInvokerEvents). The invoker
         // fires 'executeCommand' with history name 'Load' when the
@@ -357,6 +378,50 @@ function ImageEditorModal({
   // T3: after the (replacing) upload succeeds, the real-time socket updates
   // the file tree. Wait briefly for the new file ref to appear, then
   // re-select it through the file-tree-open context — the canonical way to
+  // Direct zoom controls. TUI's built-in help-menu "zoomIn" only toggles a
+  // wheel-zoom mode (and "zoomOut" pops a zoom history that is empty at
+  // first), which is why those icons appeared dead. These drive the zoom
+  // component's actual zoom() API with a definite step at the canvas center.
+  const zoomCanvas = useCallback((dir: number) => {
+    const editor = editorRef.current
+    if (!editor) return
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const graphics = (editor as any)._graphics
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const zoom = (graphics as any)?.getComponent?.('zoom')
+      const canvas = (zoom as any)?.getCanvas?.()
+      const current = Number((zoom as any)?.zoomLevel)
+      if (typeof (zoom as any)?.zoom !== 'function' || !canvas) return
+      const base = Number.isFinite(current) && current > 0 ? current : 1
+      const level = Math.min(
+        5,
+        Math.max(0.4, base * (dir > 0 ? 1.3 : 1 / 1.3))
+      )
+      ;(zoom as any).zoom(
+        {
+          x: (canvas.width || 600) / 2,
+          y: (canvas.height || 450) / 2,
+        },
+        level
+      )
+    } catch (e) {
+      // non-fatal: zoom is a convenience control
+    }
+  }, [])
+
+  const resetZoomCanvas = useCallback(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const graphics = (editorRef.current as any)?._graphics
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const zoom = (graphics as any)?.getComponent?.('zoom')
+      if ((zoom as any)?.resetZoom) (zoom as any).resetZoom()
+    } catch (e) {
+      // non-fatal
+    }
+  }, [])
+
   // refresh the file view (new hash → new preview). Falls back gracefully
   // if it never shows up (the tree still updates via the socket).
   const handleSave = useCallback(
@@ -374,7 +439,11 @@ function ImageEditorModal({
           file: { name: file.name },
           folderId,
           csrfToken: (getMeta('ol-csrfToken') as string) || '',
-          fetchImpl: fetch,
+          // `window.fetch` must be called with `window` as its receiver — a
+          // bare detached reference throws "Illegal invocation" in the
+          // browser. Bind it explicitly.
+          fetchImpl: (url: RequestInfo | URL, init?: RequestInit) =>
+            window.fetch(url, init),
           toDataURL: (options?: {
             format?: string
             quality?: number
@@ -513,6 +582,30 @@ function ImageEditorModal({
           </>
         ) : (
           <>
+            <OLButton
+              variant="secondary"
+              onClick={() => zoomCanvas(-1)}
+              disabled={!ready}
+              aria-label={t('zoom_out', 'Zoom out')}
+            >
+              −
+            </OLButton>
+            <OLButton
+              variant="secondary"
+              onClick={() => zoomCanvas(1)}
+              disabled={!ready}
+              aria-label={t('zoom_in', 'Zoom in')}
+            >
+              +
+            </OLButton>
+            <OLButton
+              variant="secondary"
+              onClick={resetZoomCanvas}
+              disabled={!ready}
+              aria-label={t('reset_zoom', 'Reset zoom')}
+            >
+              1:1
+            </OLButton>
             <OLButton variant="secondary" onClick={requestClose}>
               {t('close')}
             </OLButton>

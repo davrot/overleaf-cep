@@ -63,6 +63,8 @@ type SvgCanvasLike = {
   clear: () => void
   undo: () => void
   redo: () => void
+  createLayer?: (name: string) => Element
+  selectOnly?: (elems: Element[]) => void
   undoMgr: {
     getUndoStackSize: () => number
     getRedoStackSize: () => number
@@ -276,6 +278,7 @@ function DiagramEditor() {
           !host.clientWidth ||
           !host.clientHeight
         ) {
+          canv.setZoom(1)
           setZoomPct(100)
           return
         }
@@ -289,10 +292,38 @@ function DiagramEditor() {
             )
           )
         )
-        canv.setZoom(zoom)
-        setZoomPct(Math.round(zoom * 100))
+        if (Number.isFinite(zoom) && zoom > 0) {
+          canv.setZoom(zoom)
+          setZoomPct(Math.round(zoom * 100))
+        }
       } catch {
+        canv.setZoom(1)
         setZoomPct(100)
+      }
+    }
+
+    // The canvas core's mouseDown bails early when #svgcontent has no <g>
+    // child (it uses the first group's ScreenCTM for coordinates) — a fresh
+    // canvas has NO layer, so nothing would ever be drawable. Ensure an
+    // initial layer exists (SVG-Edit's app layer does this).
+    const ensureLayer = (canv: SvgCanvasLike) => {
+      try {
+        const content = canv.getSvgContent()
+        if (content && !content.querySelector('g')) {
+          if (typeof canv.createLayer === 'function') {
+            canv.createLayer('Layer 1')
+          } else {
+            const svgdoc = document
+            const g = svgdoc.createElementNS('http://www.w3.org/2000/svg', 'g')
+            g.setAttribute('class', 'layer')
+            const title = svgdoc.createElementNS('http://www.w3.org/2000/svg', 'title')
+            title.textContent = 'Layer 1'
+            g.appendChild(title)
+            content.appendChild(g)
+          }
+        }
+      } catch (e) {
+        // non-fatal: interactions still work once any shape exists
       }
     }
 
@@ -305,6 +336,7 @@ function DiagramEditor() {
       if (disposed || bound) return
       bound = canv
       importDoc(canv)
+      ensureLayer(canv)
       fitToContent(canv, container)
       const changed = () => {
         setCanUndo(canv.undoMgr.getUndoStackSize() > 0)
@@ -316,6 +348,21 @@ function DiagramEditor() {
       canv.bind('zoomChanged', changed)
       canv.bind('selectedChanged', changed)
       canv.bind('canvasUpdated', changed)
+      // Wheel zoom (capture phase, before the core's own handler — the
+      // core path references an app-only #zoom input and is unguarded).
+      const onWheel = (e: WheelEvent) => {
+        const c = canvasRef.current
+        if (!c) return
+        e.preventDefault()
+        e.stopPropagation()
+        const dir = e.deltaY < 0 ? 1.1 : 1 / 1.1
+        let z = c.getZoom() * dir
+        if (!Number.isFinite(z) || z <= 0) z = 1
+        z = Math.min(8, Math.max(0.125, z))
+        c.setZoom(z)
+        setZoomPct(Math.round(z * 100))
+      }
+      container.addEventListener('wheel', onWheel, { capture: true, passive: false })
     }
 
     const boot = async (): Promise<void> => {
@@ -442,29 +489,35 @@ function DiagramEditor() {
     const x = 40 + ((textPosRef.current % 6) + 1) * 14
     const y = 40 + ((textPosRef.current % 6) + 1) * 22
     textPosRef.current += 1
-    const style = canv.getStyle()
-    const fillColorHex = `#${fillColor
-      .replace(/^#/, '')}`
     try {
-      canv.addSVGElementsFromJson({
+      const el = canv.addSVGElementsFromJson({
         element: 'text',
         attr: {
           x,
           y,
-          fill: style.fill || fillColorHex,
+          // Text must be visible by default: use the OUTLINE (ink) colour,
+          // not the shape fill (which may be white).
+          fill: strokeColor || '#000000',
           'font-size': 16,
           'font-family': 'Helvetica, Arial, sans-serif',
         },
         children: [value], // string = SVG text node
       })
       canv.setMode('select')
+      if (el && typeof canv.selectOnly === 'function') {
+        try {
+          canv.selectOnly([el as unknown as Element])
+        } catch (e2) {
+          // selection is cosmetic
+        }
+      }
       bump()
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('diagram: adding text failed', err)
       showStatus(t('diagram_action_failed'), 'error')
     }
-  }, [bump, fillColor, showStatus, t])
+  }, [bump, showStatus, strokeColor, t])
 
   const zoomBy = useCallback((factor: number) => {
     const canv = canvasRef.current
@@ -519,6 +572,26 @@ function DiagramEditor() {
     const canv = canvasRef.current
     if (!canv) return
     try {
+      // Force sane geometry before serialising (the core's raw setZoom is
+      // unguarded; a NaN zoom yields <svg width="NaN"> exports).
+      try {
+        const z = canv.getZoom()
+        if (!Number.isFinite(z) || z <= 0) canv.setZoom(1)
+        const content = canv.getSvgContent()
+        if (content) {
+          const w = Number(content.getAttribute('width'))
+          const h = Number(content.getAttribute('height'))
+          if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {
+            const nw = Math.max(200, containerRef.current?.clientWidth || 960)
+            const nh = Math.max(200, containerRef.current?.clientHeight || 600)
+            content.setAttribute('width', String(nw))
+            content.setAttribute('height', String(nh))
+            content.setAttribute('viewBox', `0 0 ${nw} ${nh}`)
+          }
+        }
+      } catch (e) {
+        // ignore — export uses whatever dimensions remain
+      }
       let svg: string
       try {
         svg = stripBrandingComments(canv.svgCanvasToString())
