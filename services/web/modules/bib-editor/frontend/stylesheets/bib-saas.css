@@ -207,6 +207,15 @@
   background: var(--bib-panel-border);
 }
 /* Import-preview card meta: publication venue (primary) + type chip */
+.bibtex-import-preview-card-title {
+  font-weight: 600;
+  color: var(--content-primary-themed, var(--content-primary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .bibtex-import-preview-card-tags {
   display: flex;
   flex-wrap: wrap;
@@ -233,4 +242,32 @@
   color: var(--content-secondary-themed, var(--content-secondary));
   background: var(--bg-secondary-themed, transparent);
   white-space: nowrap;
+}
+
+/* "Add field" combobox suggestion list inside CE modals: modals are
+   always light, so the list pins to light (white) surface regardless of
+   page theme. The themed page hosts (library list, preview panel) keep
+   their themed colors. */
+[data-testid='bib-manual-modal'] .bib-add-field-listbox,
+[data-testid='bib-library-manual-modal'] .bib-add-field-listbox {
+  background: var(--bg-light-primary, #ffffff);
+  border-color: var(--border-divider, #ced0da);
+}
+[data-testid='bib-manual-modal'] .bib-combo-group-label,
+[data-testid='bib-library-manual-modal'] .bib-combo-group-label {
+  color: var(--content-secondary, #545a62);
+}
+[data-testid='bib-manual-modal'] .bib-combo-option,
+[data-testid='bib-library-manual-modal'] .bib-combo-option {
+  color: var(--content-primary, #1b222c);
+}
+[data-testid='bib-manual-modal'] .bib-combo-option:hover,
+[data-testid='bib-manual-modal'] .bib-combo-option:focus,
+[data-testid='bib-library-manual-modal'] .bib-combo-option:hover,
+[data-testid='bib-library-manual-modal'] .bib-combo-option:focus {
+  background: var(--bg-light-tertiary, #eff0f2);
+}
+[data-testid='bib-manual-modal'] .bib-combo-divider,
+[data-testid='bib-library-manual-modal'] .bib-combo-divider {
+  background: var(--border-divider, #ced0da);
 }

@@ -27,16 +27,25 @@
 .gallery {
   padding-top: calc($header-height + var(--spacing-10)) !important;
 
+  .gallery-title {
+    color: var(--content-primary-themed);
+  }
+
   .gallery-search-form-control {
     padding-top: 0px;
     padding-bottom: 0px;
+  }
+
+  h1,
+  h2 {
+    color: var(--content-primary-themed);
   }
 
   .gallery-header-sort-btn {
     font-size: var(--font-size-02);
     border: 0;
     text-align: left;
-    color: var(--neutral-90);
+    color: var(--content-primary-themed);
     background-color: transparent;
     padding: 0;
     font-weight: bold;
@@ -46,7 +55,7 @@
     text-decoration: none;
 
     &:hover {
-      color: var(--neutral-90);
+      color: var(--content-primary-themed);
       text-decoration: underline;
     }
 
@@ -152,7 +161,7 @@
   }
 
   .no-articles-matching {
-    color: var(--neutral-90);
+    color: var(--content-primary-themed);
     font-weight: 600;
 
     @include heading-lg;
@@ -257,7 +266,7 @@
     }
 
     .caption-description {
-      color: var(--neutral-70);
+      color: var(--content-secondary-themed);
       margin-bottom: 0;
 
       @include line-clamp;
@@ -265,7 +274,7 @@
 
     .author-name {
       margin-top: var(--spacing-04);
-      color: var(--neutral-70);
+      color: var(--content-secondary-themed);
       font-weight: 600;
     }
 
@@ -291,7 +300,7 @@
     }
 
     .caption-title {
-      color: var(--neutral-90);
+      color: var(--content-primary-themed);
       font-weight: 600;
 
       @include heading-md;

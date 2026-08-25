@@ -44,6 +44,19 @@ Local fork changes (see git log on the `bib-editor` branch):
   (a main file literally named "undefined").
 - Lint hygiene pass (unused imports/props/state, `useLocation` instead of
   `window.location` writes, malformed prop type, `autoFocus` via the core explicit-disable pattern, intentional effect-dep comments).
+- Theme awareness on `/templates` + template details:
+  - the shared navbar dark theme now also applies to this module's roots —
+    core `components/navbar.scss`'s `@include theme('default')` scope lists
+    `#template-root` / `#template-gallery-root` alongside
+    `#project-list-root` / `#library-root` (previously the navbar fell
+    back to the light mixin on these pages);
+  - the page shell already ships `ol-userSettings` / `ol-overallThemes`
+    metadata (controller `ThemeMixin` + pug meta tags) so `useThemedPage`
+    drives `body[data-theme]`.
+- Core `pages/templates-v2.scss`: gallery text inks were hard-coded to the
+  light palette (`--neutral-90/70`) — now
+  `--content-primary-themed` / `--content-secondary-themed` (title, h1/h2,
+  sort buttons, no-results heading, caption title/description, author).
 
 ## Verification
 

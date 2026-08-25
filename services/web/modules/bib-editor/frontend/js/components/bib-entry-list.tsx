@@ -412,34 +412,36 @@ function BibEntryCard({
             <Highlighted text={entry.id} search={search} />
           </span>
           {fullLayout ? (
-            <div className="bibtex-entry-card-details">
-              <div className="bibtex-entry-card-title">
-                <span>
-                  <Highlighted text={title} search={search} />
-                </span>
-              </div>
-              <div className="bibtex-entry-card-meta">
-                {authorDisplay && (
-                  <div className="bibtex-entry-card-author">
-                    <span>
-                      <Highlighted text={authorDisplay} search={search} />
-                    </span>
-                  </div>
-                )}
-                {year && (
-                  <div className="bibtex-entry-card-year">
-                    <span>
-                      <Highlighted text={year} search={search} />
-                    </span>
-                  </div>
-                )}
+            <>
+              <div className="bibtex-entry-card-details">
+                <div className="bibtex-entry-card-title">
+                  <span>
+                    <Highlighted text={title} search={search} />
+                  </span>
+                </div>
+                <div className="bibtex-entry-card-meta">
+                  {authorDisplay && (
+                    <div className="bibtex-entry-card-author">
+                      <span>
+                        <Highlighted text={authorDisplay} search={search} />
+                      </span>
+                    </div>
+                  )}
+                  {year && (
+                    <div className="bibtex-entry-card-year">
+                      <span>
+                        <Highlighted text={year} search={search} />
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
               {updatedDate && (
                 <div className="bibtex-entry-card-updated-at">
                   {t('Updated __date__', { date: updatedDate })}
                 </div>
               )}
-            </div>
+            </>
           ) : (
             <span className="bibtex-entry-card-details">
               {authorDisplay && (

@@ -39,7 +39,14 @@ function publicationName(entry: BibEntry): string {
   for (const name of [f.journaltitle, f.journal, f.booktitle, f.eventtitle, f.venue, f.school, f.institution]) {
     if (name && name.trim()) return name.trim()
   }
-  return entry.type || ''
+  // No venue: the type chip already shows the type — avoid a redundant
+  // "article" chip next to it.
+  return ''
+}
+
+function publicationTitle(entry: BibEntry): string {
+  const title = entry.fields?.title
+  return title && title.trim() ? title.trim() : ''
 }
 import * as api from '../library/library-api'
 import {
@@ -233,6 +240,11 @@ export default function BibImportFromLibrary({
                           <div className="bibtex-import-preview-card-heading">
                             {humanizeCitationHeading(row.entry.id, row.entry.fields)}
                           </div>
+                          {publicationTitle(row.entry) && (
+                            <div className="bibtex-import-preview-card-title">
+                              {publicationTitle(row.entry)}
+                            </div>
+                          )}
                           {conflict && (
                             <div className="bibtex-import-preview-card-conflict">
                               {t('Key already exists in the file')}

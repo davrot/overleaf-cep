@@ -305,7 +305,10 @@ export default function LibraryPage() {
       )}
 
       <div className="library-body-row d-flex">
-        <div className="library-list-pane bibtex-entry-list flex-fill">
+        {/* NOTE: the pane is a layout wrapper only. The inner BibEntryList
+            root carries `.bibtex-entry-list` (and its `overflow: scroll`).
+            Adding the list class here too created two nested scrollbars. */}
+        <div className="library-list-pane flex-fill">
           {lib.loadError && totalRows === 0 ? (
             <div className="library-empty-state">
               <div className="bib-list-empty" role="alert">

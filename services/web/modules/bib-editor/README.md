@@ -231,6 +231,34 @@ plans were intentionally retired by the user in favor of this one).
 
 ## Fork change history
 
+### Round 5 (UI/UX fixes, this branch)
+
+- **Single scrollbar on `/library`** — the row pane no longer doubles as
+  the scroll container: `library-list-pane` is a layout flex column only,
+  and the inner `BibEntryList` root (`.bibtex-entry-list`) is the sole
+  scroller (was two nested `overflow: scroll` boxes).
+- **"Updated …" chip layout** — moved out of the stacked details column
+  into the card header (right-aligned, `flex: 0 0 auto`, `white-space:
+  nowrap`, pill background) so the card no longer squeezes when the date
+  is present.
+- **Import-from-Library card shows the publication title** — new
+  `.bibtex-import-preview-card-title` line (BibTeX `title` field) below
+  the "Author et al. (year)" heading; the venue chip now omits the
+  fallback type text (the type chip already renders it).
+- **Modal combobox suggestion list pinned light** — CE modals are always
+  light, so `[data-testid='bib-manual-modal']` / `bib-library-manual-modal`
+  pin `.bib-add-field-listbox`/options to white + dark ink regardless of
+  the page theme (themed page hosts keep their themed list).
+- **Templates pages are theme-aware** (`/templates`, `/templates/{slug}`):
+  - core `navbar.scss` — the `@include theme('default')` dark-navbar
+    scope now also covers `#template-root` / `#template-gallery-root`
+    (was `#project-list-root` / `#library-root` only, so the templates
+    navbar stayed light).
+  - core `templates-v2.scss` — fixed light-only inks (`--neutral-90/70`)
+    on the gallery (title, h1/h2, sort buttons, no-results heading,
+    caption title/description, author) use
+    `--content-primary-themed` / `--content-secondary-themed`.
+
 ### Round 4 (UI/UX fixes, this branch)
 
 - **Delete/trash now works from the Library list** — bulk selection is
