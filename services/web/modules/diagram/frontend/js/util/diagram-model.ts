@@ -49,3 +49,33 @@ export function toSvgDocument(content: string | null | undefined): string | null
   const match = text.match(/<svg\b[\s\S]*?<\/svg>/i)
   return match ? match[0] : null
 }
+
+/**
+ * Intrinsic pixel dimensions of an SVG document (from the root element's
+ * `width`/`height`; `viewBox` as a fallback). Used to size the companion
+ * raster export. Returns `null` entries when a dimension is missing/invalid.
+ */
+export function svgDimensions(svg: string): { w: number | null; h: number | null } {
+  let w: number | null = null
+  let h: number | null = null
+  const root = (svg.match(/<svg\b[^>]*>/i) || [null])[0]
+  if (root) {
+    const wm = root.match(/\swidth="([^"]+)"/i)
+    const hm = root.match(/\sheight="([^"]+)"/i)
+    if (wm) w = Number(wm[1].replace(/px$/i, ''))
+    if (hm) h = Number(hm[1].replace(/px$/i, ''))
+    if (!w || !h) {
+      const vb = root.match(/viewBox="([\d.\s-]+)"/i)
+      if (vb) {
+        const parts = vb[1].trim().split(/[\s,]+/).map(Number)
+        if (parts.length === 4) {
+          if (!w) w = parts[2]
+          if (!h) h = parts[3]
+        }
+      }
+    }
+    w = Number.isFinite(w as number) && (w as number) > 0 ? (w as number) : null
+    h = Number.isFinite(h as number) && (h as number) > 0 ? (h as number) : null
+  }
+  return { w, h }
+}

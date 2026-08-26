@@ -6351,7 +6351,6 @@ __metadata:
     "@streamdown/math": "npm:^1.0.2"
     "@stripe/react-stripe-js": "npm:^3.9.0"
     "@stripe/stripe-js": "npm:^7.7.0"
-    "@svgedit/svgcanvas": "npm:^7.4.2"
     "@tailwindcss/container-queries": "npm:^0.1.1"
     "@tanstack/react-table": "npm:^8.21.3"
     "@tanstack/react-virtual": "npm:^3.13.23"
@@ -8641,13 +8640,6 @@ __metadata:
   version: 7.7.0
   resolution: "@stripe/stripe-js@npm:7.7.0"
   checksum: 10c0/566842c9e635012901d37b3181d0285c1dbb3ab6e520e6c2ad99edf571a7511c04e651f00a2773800bd4059e90663b09f222abc39b435f40319ebe08201124ad
-  languageName: node
-  linkType: hard
-
-"@svgedit/svgcanvas@npm:^7.4.2":
-  version: 7.4.2
-  resolution: "@svgedit/svgcanvas@npm:7.4.2"
-  checksum: 10c0/d61c8aef2b533285d99314cacb34e63e7a397bb640f8491bf355f91c036f7f66763fe8dbff600051b8090c1f0f5b410f94a9415670b7fc60be96001fe9d06a22
   languageName: node
   linkType: hard
 

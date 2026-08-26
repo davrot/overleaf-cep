@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   blankDiagram,
   stripBrandingComments,
+  svgDimensions,
   toSvgDocument,
 } from '../../../frontend/js/util/diagram-model.ts'
 
@@ -44,6 +45,23 @@ describe('toSvgDocument', function () {
   it('returns null for non-SVG content (e.g. legacy model XML)', function () {
     expect(toSvgDocument('<mxGraphModel><root/></mxGraphModel>')).toBeNull()
     expect(toSvgDocument('plain text document')).toBeNull()
+  })
+})
+
+describe('svgDimensions', function () {
+  it('reads width/height from the root element', function () {
+    const svg = '<svg width="200" height="100"><rect/></svg>'
+    expect(svgDimensions(svg)).toEqual({ w: 200, h: 100 })
+  })
+
+  it('falls back to viewBox when one dimension is missing', function () {
+    const svg = '<svg width="0" viewBox="0 0 300 150"><rect/></svg>'
+    expect(svgDimensions(svg)).toEqual({ w: 300, h: 150 })
+  })
+
+  it('returns nulls when nothing usable is present', function () {
+    expect(svgDimensions('<svg></svg>')).toEqual({ w: null, h: null })
+    expect(svgDimensions('not an svg')).toEqual({ w: null, h: null })
   })
 })
 

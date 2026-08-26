@@ -136,11 +136,19 @@ function ImageEditorModal({
       mountedRef.current = false
       const editor = editorRef.current
       editorRef.current = null
-      if (editor && typeof editor.destroy === 'function') {
+      if (editor) {
         try {
-          editor.destroy()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(editor as any).__hostObserver?.disconnect()
         } catch (e) {
-          // already destroyed
+          // ignore
+        }
+        if (typeof editor.destroy === 'function') {
+          try {
+            editor.destroy()
+          } catch (e) {
+            // already destroyed
+          }
         }
       }
     }
@@ -287,20 +295,44 @@ function ImageEditorModal({
         // TUI's text editing uses a fabric canvas; when a text object enters
         // edit mode, fabric appends a hidden <textarea> (default: document.body)
         // and focuses it to capture keystrokes. The OL modal wraps its content
-        // in a focus-trap, which yanks focus back out of that textarea and so
-        // swallows every keystroke ("text input is ignored"). Keep the
-        // textarea INSIDE our modal container so the trap permits it.
+        // in a focus-trap, which yanks focus back out of body-level elements
+        // and so swallows every keystroke ("text input is ignored").
+        // The REAL fabric canvas is graphics._canvas (not .canvas) — set the
+        // container on whichever instance exists so the textarea is born
+        // INSIDE our modal container where the focus trap permits it.
         try {
-          const graphics = (editor as unknown as { _graphics?: { canvas?: { hiddenTextareaContainer?: Element } } })?._graphics
-          const fabricCanvas = graphics?.canvas
           const host = document.createElement('div')
           host.style.position = 'absolute'
           host.style.left = '-10000px'
           host.style.top = '0'
           container.appendChild(host)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const graphics = (editor as any)?._graphics
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fabricCanvas = (graphics as any)?._canvas ?? (graphics as any)?.canvas
           if (fabricCanvas && 'hiddenTextareaContainer' in fabricCanvas) {
             fabricCanvas.hiddenTextareaContainer = host
           }
+          // Safety net: no matter WHICH canvas instance fabric uses, any
+          // hidden textarea that still appears in document.body is moved
+          // into the modal (inside the focus trap) and re-focused.
+          const reparent = (el: Element) => {
+            if (el.parentNode === host) return
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            host.appendChild(el) // moving a focused node keeps focus
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ;(el as HTMLInputElement).focus({ preventScroll: true })
+          }
+          const observer = new MutationObserver(() => {
+            const stray = document.body.querySelector(
+              'textarea[data-fabric-hiddentextarea]'
+            )
+            if (stray) reparent(stray)
+          })
+          observer.observe(document.body, { childList: true, subtree: false })
+          // held for teardown below
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(editorRef.current as any).__hostObserver = observer
         } catch (e) {
           // Non-fatal: text editing may still work if focus lands correctly.
         }
@@ -378,49 +410,8 @@ function ImageEditorModal({
   // T3: after the (replacing) upload succeeds, the real-time socket updates
   // the file tree. Wait briefly for the new file ref to appear, then
   // re-select it through the file-tree-open context — the canonical way to
-  // Direct zoom controls. TUI's built-in help-menu "zoomIn" only toggles a
-  // wheel-zoom mode (and "zoomOut" pops a zoom history that is empty at
-  // first), which is why those icons appeared dead. These drive the zoom
-  // component's actual zoom() API with a definite step at the canvas center.
-  const zoomCanvas = useCallback((dir: number) => {
-    const editor = editorRef.current
-    if (!editor) return
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const graphics = (editor as any)._graphics
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const zoom = (graphics as any)?.getComponent?.('zoom')
-      const canvas = (zoom as any)?.getCanvas?.()
-      const current = Number((zoom as any)?.zoomLevel)
-      if (typeof (zoom as any)?.zoom !== 'function' || !canvas) return
-      const base = Number.isFinite(current) && current > 0 ? current : 1
-      const level = Math.min(
-        5,
-        Math.max(0.4, base * (dir > 0 ? 1.3 : 1 / 1.3))
-      )
-      ;(zoom as any).zoom(
-        {
-          x: (canvas.width || 600) / 2,
-          y: (canvas.height || 450) / 2,
-        },
-        level
-      )
-    } catch (e) {
-      // non-fatal: zoom is a convenience control
-    }
-  }, [])
-
-  const resetZoomCanvas = useCallback(() => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const graphics = (editorRef.current as any)?._graphics
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const zoom = (graphics as any)?.getComponent?.('zoom')
-      if ((zoom as any)?.resetZoom) (zoom as any).resetZoom()
-    } catch (e) {
-      // non-fatal
-    }
-  }, [])
+  // (Direct zoom buttons removed on request: TUI's own help-menu ZoomIn/
+  //  ZoomOut/Hand/Reset icons work, and the footer keeps only Close + Save.)
 
   // refresh the file view (new hash → new preview). Falls back gracefully
   // if it never shows up (the tree still updates via the socket).
@@ -582,30 +573,6 @@ function ImageEditorModal({
           </>
         ) : (
           <>
-            <OLButton
-              variant="secondary"
-              onClick={() => zoomCanvas(-1)}
-              disabled={!ready}
-              aria-label={t('zoom_out', 'Zoom out')}
-            >
-              −
-            </OLButton>
-            <OLButton
-              variant="secondary"
-              onClick={() => zoomCanvas(1)}
-              disabled={!ready}
-              aria-label={t('zoom_in', 'Zoom in')}
-            >
-              +
-            </OLButton>
-            <OLButton
-              variant="secondary"
-              onClick={resetZoomCanvas}
-              disabled={!ready}
-              aria-label={t('reset_zoom', 'Reset zoom')}
-            >
-              1:1
-            </OLButton>
             <OLButton variant="secondary" onClick={requestClose}>
               {t('close')}
             </OLButton>
