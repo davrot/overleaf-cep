@@ -115,6 +115,61 @@ document.addEventListener('svgedit:ready', rebrand)
 setTimeout(rebrand, 400)
 setTimeout(rebrand, 1500)
 
+/*
+ * Right-click context menu fit-up (canvas menu + layer menus).
+ *
+ * Upstream svg-edit positions its context menus at raw cursor page
+ * coordinates, clamped only by `screen.width - 250` / `screen.height -
+ * 426` — i.e. the HOST OS SCREEN (standalone svg-edit runs full-window).
+ * Embedded inside the Overleaf editor pane that clamp is meaningless: on a
+ * small screen it drags the menu far AWAY from the cursor, on a large one
+ * it lets the menu run past the right/bottom edge of the IFRAME viewport
+ * where it is clipped — items (or the whole menu) become unreachable. The
+ * layer menus have no clamping at all.
+ *
+ * Host-side fix (no vendored-bundle edits): svg-edit binds its openers to
+ * `contextmenu`/`click` listeners on the inner workarea elements, so a
+ * DOCUMENT-level listener (bubble phase) runs right after the bundle has
+ * written its inline `top`/`left`. We then re-place each currently visible
+ * menu: follow the cursor when it fits, pin flush to the viewport edge
+ * when it does not (never beyond it).
+ */
+function clampContextMenusToViewport (event) {
+  try {
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const px = event && Number.isFinite(event.pageX) ? event.pageX : null
+    const py = event && Number.isFinite(event.pageY) ? event.pageY : null
+    const hosts = document.querySelectorAll('se-cmenu_canvas-dialog, se-cmenu-layers')
+    for (const host of Array.from(hosts)) {
+      if (!host.shadowRoot) continue
+      for (const menu of Array.from(host.shadowRoot.querySelectorAll('.contextMenu'))) {
+        if (menu.style.display === 'none') continue // closed: leave as-is
+        const rect = menu.getBoundingClientRect()
+        if (!rect.width || !rect.height) continue
+        // Anchor at the cursor (upstream intent: menu top-left at the
+        // cursor). Upstream's own clamp (screen.width/height) is wrong in
+        // an embedded pane, so it is *replaced*, not extended. Pin flush to
+        // the viewport edge (top-left if it doesn't even fit) when the
+        // menu would overflow the viewport below/right of the cursor.
+        const ax = px != null ? px : parseFloat(menu.style.left)
+        const ay = py != null ? py : parseFloat(menu.style.top)
+        if (Number.isNaN(ax) || Number.isNaN(ay)) continue
+        const x = Math.max(0, Math.min(ax, vw - rect.width))
+        const y = ay + rect.height <= vh
+          ? Math.max(0, ay)
+          : Math.max(0, vh - rect.height)
+        menu.style.left = x + 'px'
+        menu.style.top = y + 'px'
+      }
+    }
+  } catch (e) {
+    // Pure positioning assistance; never break the editor over it.
+  }
+}
+document.addEventListener('contextmenu', clampContextMenusToViewport)
+document.addEventListener('click', clampContextMenusToViewport)
+
 const api = {
   ready: false,
   load (svg) {

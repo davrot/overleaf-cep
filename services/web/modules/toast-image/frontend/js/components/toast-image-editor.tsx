@@ -337,6 +337,21 @@ function ImageEditorModal({
           // Non-fatal: text editing may still work if focus lands correctly.
         }
 
+        // Debug/E2E hook: expose the REAL fabric canvas (the same instance
+        // the text-editing fix targets) so keystroke capture can be
+        // verified from the outside. Read-only getter; remove freely.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(window as any).__olTuiFabric = () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const g = (editorRef.current as any)?._graphics
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return g ? g._canvas ?? g.canvas : null
+          }
+        } catch (e) {
+          // ignore
+        }
+
         // Readiness + dirty tracking: TUI fires its invoker events on the
         // UI instance (ImageEditor#_attachInvokerEvents). The invoker
         // fires 'executeCommand' with history name 'Load' when the
