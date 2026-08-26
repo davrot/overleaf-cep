@@ -66,9 +66,7 @@ svgEditor.setConfig({
 svgEditor.init()
 
 /*
- * Rebrand the app shell: drop the external home-page item, neutralise the
- * main-menu "SVG-Edit" label + logo, set a document title, and — just in
- * case — remove the storage dialog node.
+ * Normalise the left-bar tail to the reference order (idempotent).
  */
 function normaliseLeftBarOrder () {
   try {
@@ -99,6 +97,12 @@ function normaliseLeftBarOrder () {
   }
 }
 
+/*
+ * Rebrand the app shell: drop the external home-page item, neutralise the
+ * main-menu "SVG-Edit" label + logo, set a document title — and run the
+ * host-side normalisations (left-bar tail order, file-op pruning, image
+ * tool swap), all idempotent.
+ */
 function rebrand () {
   try {
     const homepage = document.getElementById('tool_editor_homepage')
@@ -133,10 +137,158 @@ function rebrand () {
     const storage = document.getElementById('se-storage-dialog')
     if (storage) storage.remove()
 
+    pruneDangerousFileOps()
     normaliseLeftBarOrder()
+    wireImageToolToFileDialog()
   } catch (e) {
     // Rebranding is cosmetic; never break the editor over it.
   }
+}
+
+/*
+ * Remove the client-side file operations that are unsafe inside Overleaf.
+ * The parent owns the document (every canvas change syncs into the `.svg`
+ * through onChanged), so these menu items can only cost or confuse data:
+ *   - New (tool_clear)  -> clears the canvas -> a cleared canvas syncs to
+ *     the document (content loss)
+ *   - Open (tool_open)  -> svgCanvas.clear() + load a local disk file -> the
+ *     foreign content overwrites the document
+ *   - Save / Save as    -> File-System-Access browser download. Looks like a
+ *     save, stores nothing in the project
+ * Kept on purpose:
+ *   - Import (tool_import): embeds the chosen file as a data URI (raster)
+ *     or inline SVG, or supports drop-to-import — content that is safe
+ *     inside an Overleaf-owned document
+ *   - the Image tool (core): a canvas URL/path href mode the user may still
+ *     want (postponed removal)
+ *
+ * Warning (why the key blocker below is mandatory): these se-menu-item
+ * elements register their shortcut keys ("N", "S") as keydown listeners on
+ * the whole DOCUMENT in their connectedCallback, and those listeners are
+ * never removed when the element is detached — the handlers keep firing.
+ * A capture-phase blocker covering exactly their firing conditions (bare
+ * N/S, no modifiers, target = BODY = canvas focused) replaces them.
+ */
+function pruneDangerousFileOps () {
+  for (const id of ['tool_clear', 'tool_open', 'tool_save', 'tool_save_as']) {
+    const el = document.getElementById(id)
+    if (el) el.remove()
+  }
+  if (window.__olKeyBlocker) return
+  window.__olKeyBlocker = true
+  document.addEventListener('keydown', (e) => {
+    if (e.target && e.target.nodeName === 'BODY' 
+      && !e.ctrlKey && !e.metaKey && !e.altKey
+      && (e.key === 'n' || e.key === 'N' || e.key === 's' || e.key === 'S')) {
+      e.stopImmediatePropagation()
+      e.preventDefault()
+    }
+  }, true)
+}
+
+window.__olImageToolWired = false
+function wireImageToolToFileDialog () {
+  if (window.__olImageToolWired) return
+  const old = document.getElementById('tool_image')
+  if (!old) {
+    setTimeout(wireImageToolToFileDialog, 300)
+    return
+  }
+  const bar = old.parentElement
+  // Replace the core URL-prompt tool (typed paths produce broken <image>
+  // references in a parent-owned document) with a local-file-dialog tool.
+  // User decision (option a, preferred): click → file dialog → the chosen
+  // file is embedded (SVG inline, raster as data URI), exactly like the
+  // opensave Import / drop-to-import path, so the result is portable
+  // content inside the Overleaf document.
+  const replacement = document.createElement('se-button')
+  replacement.setAttribute('id', 'tool_image')
+  replacement.setAttribute('title', 'Add image: choose an image file from your computer')
+  replacement.setAttribute('src', 'image.svg')
+  replacement.dataset.olImageTool = 'file-dialog'
+
+  const fileInput = document.createElement('input')
+  fileInput.type = 'file'
+  fileInput.accept = 'image/svg+xml,image/png,image/jpeg,image/webp,image/gif'
+  fileInput.className = 'ol-image-file-input'
+  fileInput.style.display = 'none'
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0]
+    const reset = () => {
+      fileInput.value = ''
+      try { svgEditor.topPanel.updateContextPanel() } catch (e) { /* ignore */ }
+    }
+    if (!file) return
+    let svgCanvas = null
+    try { svgCanvas = svgEditor.svgCanvas } catch (e) { /* ignore */ }
+    if (!svgCanvas) return
+    const fail = (err) => {
+      // eslint-disable-next-line no-console
+      console.warn('diagram embed: image import failed', err)
+      reset()
+    }
+    try {
+      if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          try {
+            svgCanvas.importSvgString(String(reader.result), false)
+            svgCanvas.alignSelectedElements('m', 'page')
+            svgCanvas.alignSelectedElements('c', 'page')
+            reset()
+          } catch (err) { fail(err) }
+        }
+        reader.onerror = fail
+        reader.readAsText(file)
+        return
+      }
+      const reader = new FileReader()
+      reader.onloadend = ({ target }) => {
+        const result = target.result
+        const finish = (width, height) => {
+          try {
+            const el = svgCanvas.addSVGElementsFromJson({
+              element: 'image',
+              attr: {
+                x: 0,
+                y: 0,
+                width,
+                height,
+                style: 'pointer-events:inherit'
+              }
+            })
+            svgCanvas.setHref(el, result)
+            svgCanvas.selectOnly([el])
+            svgCanvas.alignSelectedElements('m', 'page')
+            svgCanvas.alignSelectedElements('c', 'page')
+            reset()
+          } catch (err) { fail(err) }
+        }
+        const img = new Image()
+        img.addEventListener('load', () => {
+          finish(img.naturalWidth || img.width || 100, img.naturalHeight || img.height || 100)
+        })
+        img.addEventListener('error', () => finish(100, 100))
+        img.src = result
+      }
+      reader.onerror = fail
+      reader.readAsDataURL(file)
+    } catch (err) {
+      fail(err)
+    }
+  })
+  replacement.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try { svgEditor.leftPanel.updateLeftPanel('tool_image') } catch (e) { /* ignore */ }
+    fileInput.click()
+  })
+  // Keep the input OUT of the toolbar container (it would become a
+  // foreign child of the left bar and show up in toolbar inventories).
+  document.body.appendChild(fileInput)
+  bar.insertBefore(replacement, old)
+  old.remove()
+  window.__olImageToolWired = true
 }
 
 // An extension may insert its button (or re-insert by fixed index) AFTER a
@@ -157,6 +309,17 @@ function attachLeftTailGuard () {
     if (timer) clearTimeout(timer)
     timer = setTimeout(normaliseLeftBarOrder, 120)
   }).observe(bar, { childList: true })
+  // The editor's main menu: ext-opensave inserts its items asynchronously,
+  // and if that happens AFTER the last rebrand timestamp, the dangerous
+  // items (New/Open/Save/Save as) would survive. Re-prune on any child
+  // change; the prune is idempotent, so this converges.
+  const menu = document.getElementById('main_button')
+  if (menu && !window.__olMenuPruneGuard) {
+    window.__olMenuPruneGuard = true
+    new MutationObserver(() => {
+      setTimeout(pruneDangerousFileOps, 50)
+    }).observe(menu, { childList: true })
+  }
 }
 attachLeftTailGuard()
 
