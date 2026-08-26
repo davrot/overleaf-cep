@@ -70,6 +70,35 @@ svgEditor.init()
  * main-menu "SVG-Edit" label + logo, set a document title, and — just in
  * case — remove the storage dialog node.
  */
+function normaliseLeftBarOrder () {
+  try {
+    // Reference left-bar tail: tool_text, tool_shapelib, tool_image,
+    // tools_polygon, tool_connect, tool_eyedropper. The extensions insert
+    // their buttons by fixed index or append, and their inits resolve
+    // asynchronously, so the tail order (and image's slot among them) is a
+    // race. The head (select/zoom/panning/fhpath/line/path/rect/ellipse)
+    // is deterministic (core + ext-panning inserts right after zoom) and is
+    // left alone. All six ids below exist in the reference layout; moving
+    // only between them is cosmetic and self-cancels (no-op once sorted).
+    const tailPairs = [
+      ['tool_text', 'tool_shapelib'],
+      ['tool_shapelib', 'tool_image'],
+      ['tool_image', 'tools_polygon'],
+      ['tools_polygon', 'tool_connect'],
+      ['tool_connect', 'tool_eyedropper'],
+    ]
+    for (const [a, c] of tailPairs) {
+      const elA = document.getElementById(a)
+      const elC = document.getElementById(c)
+      if (!elA || !elC) continue
+      if (elA.compareDocumentPosition(elC) & Node.DOCUMENT_POSITION_FOLLOWING) continue
+      elA.after(elC)
+    }
+  } catch (e) {
+    // Purely cosmetic; never break the editor over it.
+  }
+}
+
 function rebrand () {
   try {
     const homepage = document.getElementById('tool_editor_homepage')
@@ -104,31 +133,32 @@ function rebrand () {
     const storage = document.getElementById('se-storage-dialog')
     if (storage) storage.remove()
 
-    // Normalise the left-bar tail to the reference order
-    // (… tool_text, tool_shapelib, tool_image, tools_polygon, tool_connect,
-    // tool_eyedropper): each extension inserts itself by index/append and
-    // the inits resolve asynchronously, so the tail order is a race. The
-    // head (select/zoom/panning/fhpath/line/path/rect/ellipse) is inserted
-    // deterministically by the core + ext-panning and needs no help. Cosmetic
-    // only — never move an element the reference does not own.
-    const tailPairs = [
-      ['tool_text', 'tool_shapelib'],
-      ['tool_shapelib', 'tool_image'],
-      ['tool_image', 'tools_polygon'],
-      ['tools_polygon', 'tool_connect'],
-      ['tool_connect', 'tool_eyedropper'],
-    ]
-    for (const [a, c] of tailPairs) {
-      const elA = document.getElementById(a)
-      const elC = document.getElementById(c)
-      if (!elA || !elC) continue
-      if (elA.compareDocumentPosition(elC) & Node.DOCUMENT_POSITION_FOLLOWING) continue
-      elA.after(elC)
-    }
+    normaliseLeftBarOrder()
   } catch (e) {
     // Rebranding is cosmetic; never break the editor over it.
   }
 }
+
+// An extension may insert its button (or re-insert by fixed index) AFTER a
+// rebrand run, undoing the normalisation. Watch the left bar's direct
+// children and re-apply 120 ms after the last change; the pass is a no-op
+// once the order is stable, so this converges.
+window.__olLeftTailGuard = false
+function attachLeftTailGuard () {
+  const bar = document.getElementById('tools_left')
+  if (!bar) {
+    setTimeout(attachLeftTailGuard, 300)
+    return
+  }
+  if (window.__olLeftTailGuard) return
+  window.__olLeftTailGuard = true
+  let timer = null
+  new MutationObserver(() => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(normaliseLeftBarOrder, 120)
+  }).observe(bar, { childList: true })
+}
+attachLeftTailGuard()
 
 // `svgedit:ready` fires at the end of init() (after the ready queue ran).
 document.addEventListener('svgedit:ready', rebrand)
