@@ -12,10 +12,13 @@ Create a figure for `\includegraphics`:
    the raw SVG source.
 3. **Save** — the editor keeps the **SVG source** in the document
    (editable, diffable, versioned) and re-creates the companions:
-   - **`name.png`** (bitmap raster),
-   - **`name.pdf`** (VECTOR PDF, browser-side `svg2pdf.js` + `jsPDF`) —
-     so `\includegraphics{diagram}` picks the PDF, with the PNG as
-     fallback.
+   - **`name.png`** (bitmap raster, 2× the diagram size),
+   - **`name.pdf`** (VECTOR PDF, browser-side `svg2pdf.js` + `jsPDF`), with
+     the **page size exactly matching the diagram** (px → pt at 96 dpi,
+     zero offset) so `\includegraphics{diagram}` renders at the diagram's
+     natural size — no A4 letterboxing/rescaling (A4 + margin-fit only as
+     fallback for SVGs without usable dimensions).
+     The PNG serves as bitmap fallback.
 
 Everything ships inside our own image and works fully offline — no CDN,
 no telemetry, no external origin.
@@ -74,6 +77,34 @@ Host hardening in `embed.js`:
   of the storage prompt, the `svgeditstore` cookie, cached auto-load and
   the `beforeunload` auto-save); `noStorageOnLoad` is set as a second
   layer, and `?storagePrompt=false` is in the URL as a third,
+- **disk-backed file ops are pruned post-boot** (embed.js
+  `pruneDangerousFileOps`): New/Open/Save/Save as from the opensave menu
+  are removed — the parent owns the document, so a cleared canvas or a
+  loaded local file would sync into (or overwrite) the project source, and
+  a File-System-Access “save” would masquerade as a project save. Import
+  (data-URI / inline-SVG embed) and drop-to-import are kept. The removed
+  menu items’ shortcut keys (bare N/S) keep firing through document-level
+  listeners that survive detachment, so a capture-phase keydown blocker
+  replaces them (bare N or S with target = BODY is swallowed). A
+  MutationObserver on the editor menu re-prunes if ext-opensave attaches
+  its items late.
+- **the Image tool (core) is replaced with a local-file-dialog tool**
+  (embed.js `wireImageToolToFileDialog`; user decision, option a):
+  click → native file dialog → the chosen file is embedded right on the
+  canvas (SVG inline, raster as data URI — same pipeline as Import and
+  drag-and-drop). The stock tool asked for a typed URL/path instead, which
+  produces `\u003cimage href=\u003e` references that break inside an
+  Overleaf-owned document. A project-file-tree picker (option b) remains a
+  possible future addition (would fetch the project file and inline it;
+  note that relative `href`s inside the canvas resolve against the embed
+  origin, not the project, hence inlining).
+- **left-bar tail order is normalised** to the reference layout
+  (`normaliseLeftBarOrder` + observer): the extension inits resolve
+  asynchronously and insert by fixed index/append, so the tail
+  (…text, shapelib, image, polygon, connect, eyedropper) is a race; the
+  guard re-applies the order after any late insertion and is a no-op once
+  stable. The full toolbar (14 buttons, exact order) was verified against
+  the live reference (svgedit.netlify.app).
 - **branding is neutralised** post-boot: the external home-page menu item
   is removed, the main-menu label/logo are replaced with “Diagram”, and
   the canvas library's `<!-- Created with … -->` comment is stripped from
