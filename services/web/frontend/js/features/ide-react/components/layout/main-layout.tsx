@@ -14,6 +14,7 @@ import { useRailContext } from '../../context/rail-context'
 import HistoryContainer from '@/features/ide-react/components/history-container'
 import { DefaultSynctexControl } from '@/features/pdf-preview/components/detach-synctex-control'
 import importOverleafModules from '../../../../../macros/import-overleaf-module.macro'
+import MainLayoutMobile from './main-layout-mobile'
 
 const mainEditorLayoutPanels: Array<{
   import: { default: ElementType }
@@ -36,12 +37,17 @@ export default function MainLayout() {
     pdfIsOpen: isPdfOpen,
     pdfPanelRef,
   } = usePdfPane()
-  const { view, pdfLayout } = useLayoutContext()
+  const { view, pdfLayout, isMobileLayout } = useLayoutContext()
 
   const editorIsOpen =
     view === 'editor' || view === 'file' || pdfLayout === 'sideBySide'
 
   const { t } = useTranslation()
+
+  if (isMobileLayout) {
+    return <MainLayoutMobile />
+  }
+
 
   return (
     <div className="ide-redesign-main">

@@ -25,6 +25,8 @@ import usePersistedState from '@/shared/hooks/use-persisted-state'
 import { repositionAllTooltips } from '@/features/source-editor/extensions/tooltips-reposition'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
 import { useFeatureFlag } from './split-test-context'
+import { useMobileLayout } from '../hooks/use-mobile-layout'
+import { getEffectivePdfLayout } from '../utils/mobile-viewport'
 
 export type IdeLayout = 'sideBySide' | 'flat'
 export type IdeView = 'editor' | 'file' | 'pdf' | 'history'
@@ -49,6 +51,12 @@ export type LayoutContextValue = LayoutContextOwnStates & {
   detachRole: DetachRole
   changeLayout: (newLayout: IdeLayout, newView?: IdeView) => void
   setView: (view: IdeView | null) => void
+  /**
+   * True when the mobile IDE layout is active (see the mobile plan).
+   * Desktop code must not branch on this except via additive branches that
+   * are no-ops when false.
+   */
+  isMobileLayout: boolean
   setChatIsOpen: Dispatch<SetStateAction<LayoutContextValue['chatIsOpen']>>
   setReviewPanelOpen: Dispatch<
     SetStateAction<LayoutContextValue['reviewPanelOpen']>
@@ -88,7 +96,7 @@ const reviewPanelStorageKey = `ui.reviewPanelOpen.${getMeta('ol-project_id')}`
 
 export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   // what to show in the "flat" view (editor or pdf)
-  const [view, _setView] = useState<IdeView | null>('editor')
+  const { isEnabled: mobileLayoutEnabled } = useMobileLayout()
   const [openFile, setOpenFile] = useState<BinaryFile | null>(null)
   const historyToggleEmitter = useScopeEventEmitter('history:toggle', true)
   const { isOpen: railIsOpen, setIsOpen: setRailIsOpen } = useRailContext()
@@ -96,6 +104,10 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   // Whether we came from a file or a document when we left the ide
   const lastIdeView = useRef<IdeView>('editor')
   const { sendEvent } = useEditorAnalytics()
+
+  // Initialize the view and pdf layout, forcing a single-pane layout on
+  // mobile (see mobile plan, Phase 0). Desktop layout state is unchanged.
+  const [view, _setView] = useState<IdeView | null>('editor')
 
   const setView = useCallback(
     (value: IdeView | null) => {
@@ -158,7 +170,12 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   const [projectSearchIsOpen, setProjectSearchIsOpen] = useState(false)
 
   // whether to display the editor and preview side-by-side or full-width ("flat")
-  const [pdfLayout, setPdfLayout] = useState<IdeLayout>('sideBySide')
+  // Desktop: always start in 'sideBySide' (byte-for-byte with pre-mobile
+  // behavior; the `pdf.layout` storage key is write-only on desktop).
+  // Mobile: always start flat (single-pane, see mobile plan Phase 0).
+  const [pdfLayout, setPdfLayout] = useState<IdeLayout>(() =>
+    getEffectivePdfLayout(mobileLayoutEnabled)
+  )
 
   const [persistedFocusMode, setPersistedFocusMode] =
     usePersistedState<boolean>('ui.focus-mode', false)
@@ -265,6 +282,14 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
     },
     [setPdfLayout, setView, restoreView]
   )
+
+  // Mobile layout only uses single-pane layouts: whenever the mobile layout
+  // becomes active, force the pdf pane to be flat (see mobile plan, Phase 0).
+  useEffect(() => {
+    if (mobileLayoutEnabled) {
+      changeLayout('flat')
+    }
+  }, [mobileLayoutEnabled, changeLayout])
 
   // Force codemirror to reposition all tooltips to prevent an issue
   // where tooltips would sometimes show on top of the pdf preview
@@ -391,6 +416,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       settingsShown,
       openFile,
       pdfLayout,
+      isMobileLayout: mobileLayoutEnabled,
       pdfPreviewOpen,
       projectSearchIsOpen,
       setProjectSearchIsOpen,
@@ -442,6 +468,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       handleDetach,
       focusMode,
       setFocusMode,
+      mobileLayoutEnabled,
     ]
   )
 

@@ -100,6 +100,7 @@ const createInitialValue = () =>
     handleDetach: cy.stub(),
     focusMode: false,
     setFocusMode: cy.stub(),
+    isMobileLayout: false,
   }) satisfies LayoutContextValue
 
 const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {

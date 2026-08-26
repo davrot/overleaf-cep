@@ -1,7 +1,7 @@
 const { defineConfig } = require('vitest/config')
+const path = require('path')
 
 const COVERAGE_ENABLED = process.env.COVERAGE_UNIT_TESTS === 'true'
-
 let reporterOptions = {}
 if (process.env.CI && process.env.JUNIT_ROOT_SUITE_NAME) {
   reporterOptions = {
@@ -20,6 +20,18 @@ if (process.env.CI && process.env.JUNIT_ROOT_SUITE_NAME) {
 }
 
 module.exports = defineConfig({
+  esbuild: {
+    // The web app compiles JSX with the automatic runtime (babel preset-react
+    // 'automatic'); match it so `.tsx` fixtures don't need `import React`.
+    jsx: 'automatic',
+  },
+  resolve: {
+    alias: {
+      // Mirror tsconfig.json "@/*" paths for unit tests (mirrors the babel
+      // module-resolver alias in test/frontend/bootstrap.js).
+      '@': path.resolve(__dirname, 'frontend/js'),
+    },
+  },
   test: {
     setupFiles: ['./test/unit/bootstrap.mjs'],
     globals: true,

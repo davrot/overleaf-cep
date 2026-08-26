@@ -1,4 +1,5 @@
 import { Panel } from 'react-resizable-panels'
+import { useLayoutContext } from '@/shared/context/layout-context'
 import { useRailContext } from '@/features/ide-react/context/rail-context'
 import classNames from 'classnames'
 import { useCallback, useMemo } from 'react'
@@ -33,6 +34,39 @@ export default function RailPanel({
       handlePaneCollapse()
     }
   }, [tabHasChanged, handlePaneCollapse])
+
+  // Mobile: the rail is rendered inside a full-screen drawer where there is no
+  // react-resizable-panels <PanelGroup> ancestor, so render a plain container
+  // instead of <Panel> (which would throw). No-op the panel ref on mobile.
+  const { isMobileLayout } = useLayoutContext()
+
+  if (isMobileLayout) {
+    return (
+      <div
+        id={`ide-redesign-sidebar-panel-${isHistoryView ? 'file-tree' : selectedTab}`}
+        className={classNames('ide-rail-panel-mobile', {
+          hidden: isReviewPanelOpen || focusMode,
+        })}
+      >
+        {isHistoryView && <HistorySidebar />}
+        <div
+          className={classNames('ide-rail-content', {
+            hidden: isHistoryView,
+          })}
+        >
+          <Tab.Content className="ide-rail-tab-content">
+            {railTabs
+              .filter(shouldIncludeElement)
+              .map(({ key, component, mountOnFirstLoad }) => (
+                <Tab.Pane eventKey={key} key={key} mountOnEnter={!mountOnFirstLoad}>
+                  {component}
+                </Tab.Pane>
+              ))}
+          </Tab.Content>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Panel

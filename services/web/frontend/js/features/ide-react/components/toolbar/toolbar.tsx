@@ -19,6 +19,8 @@ import { useFeatureFlag } from '@/shared/context/split-test-context'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import SplitTestBadge from '@/shared/components/split-test-badge'
+import { MobileToolbar } from './mobile-toolbar'
+import { useMobileLayout } from '@/shared/hooks/use-mobile-layout'
 
 const [publishModalModules] = importOverleafModules('publishModal')
 const SubmitProjectButton = publishModalModules?.import.NewPublishToolbarButton
@@ -26,6 +28,7 @@ const SubmitProjectButton = publishModalModules?.import.NewPublishToolbarButton
 export const Toolbar = () => {
   const { view, restoreView, focusMode, setFocusMode, pdfLayout, setView } =
     useLayoutContext()
+  const { isEnabled: isMobileLayout } = useMobileLayout()
   const { cobranding, isRestrictedTokenMember } = useEditorContext()
   const { permissionsLevel } = useIdeReactContext()
   const showUpgradePrompt = getMeta('ol-showUpgradePrompt')
@@ -52,6 +55,10 @@ export const Toolbar = () => {
     setView(newView)
     eventTracking.sendMB('focus-mode-switch-view', { view: newView })
   }, [view, setView])
+
+  if (isMobileLayout) {
+    return <MobileToolbar />
+  }
 
   if (focusMode) {
     const showViewSwitcher = pdfLayout === 'flat'

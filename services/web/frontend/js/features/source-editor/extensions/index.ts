@@ -40,7 +40,7 @@ import { sourceOnly, visual } from './visual/visual'
 import { inlineBackground } from './inline-background'
 import { indentationMarkers } from './indentation-markers'
 import { codemirrorDevTools } from '../languages/latex/codemirror-dev-tools'
-import { keymaps } from './keymaps'
+import { currentKeymaps } from './keymaps'
 import { shortcuts } from './shortcuts'
 import { effectListeners } from './effect-listeners'
 import { highlightSpecialChars } from './highlight-special-chars'
@@ -116,7 +116,7 @@ export const createExtensions = (options: Record<string, any>): Extension[] => [
       }
     },
   }),
-  keymaps,
+  currentKeymaps(),
   goToLinePanel(),
   filterCharacters(),
 

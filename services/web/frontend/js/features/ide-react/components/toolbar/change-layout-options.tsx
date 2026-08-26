@@ -17,6 +17,7 @@ import { Shortcut } from '@/shared/components/shortcut'
 import classNames from 'classnames'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
+import { useMobileLayout } from '@/shared/hooks/use-mobile-layout'
 import SplitTestBadge from '@/shared/components/split-test-badge'
 
 type LayoutOption =
@@ -126,6 +127,17 @@ export default function ChangeLayoutOptions() {
   const { t } = useTranslation()
   const { sendEvent } = useEditorAnalytics()
   const focusModeEnabled = useFeatureFlag('focus-mode')
+  // Mobile layout (see MOBILE_PLAN.md): there is no side-by-side / detach /
+  // focus-mode choice on mobile — the mobile "more" sheet embeds the desktop
+  // menu bar, so the layout options must be hidden there (and desktop
+  // rendering is unchanged).
+  const { isMobileLayout } = useMobileLayout()
+
+  // On mobile there is nothing to show: no layout options and no
+  // focus-mode toggle. Desktop still renders everything.
+  if (isMobileLayout) {
+    return null
+  }
 
   const detachable = 'BroadcastChannel' in window
 

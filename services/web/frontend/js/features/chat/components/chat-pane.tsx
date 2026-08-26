@@ -6,10 +6,12 @@ import { FetchError } from '@/infrastructure/fetch-json'
 import { FullSizeLoadingSpinner } from '@/shared/components/loading-spinner'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useUserContext } from '@/shared/context/user-context'
+import { useLayoutContext } from '@/shared/context/layout-context'
 import { lazy, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import classNames from 'classnames'
 import RailPanelHeader from '@/features/ide-react/components/rail/rail-panel-header'
+
 import withErrorBoundary from '@/infrastructure/error-boundary'
 
 const MessageList = lazy(() => import('./message-list'))
@@ -31,6 +33,33 @@ export const ChatPane = () => {
     markMessagesAsRead,
     error,
   } = useChatContext()
+  const { isMobileLayout } = useLayoutContext()
+
+  // Mobile (iOS/Android) keyboard handling: keep the visible viewport above
+  // the soft keyboard so the input + latest messages stay reachable. The
+  // drawer is 100dvh; when the soft keyboard opens `window.innerHeight`
+  // shrinks, so we shrink the pane height accordingly (scroll-into-view is
+  // handled by `.chat`'s own scrolling). See the mobile plan, Phase 5.
+  useEffect(() => {
+    if (!isMobileLayout) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = (event: Event) => {
+      const ev = event as unknown as { target?: { offsetTop?: number } }
+      const height = vv.height
+      const offsetTop = ev.target?.offsetTop ?? vv.offsetTop
+      document.documentElement.style.setProperty(
+        '--mobile-chat-inset',
+        `${window.innerHeight - (height + offsetTop)}px`
+      )
+    }
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [isMobileLayout])
 
   useEffect(() => {
     if (!initialMessagesLoaded) {

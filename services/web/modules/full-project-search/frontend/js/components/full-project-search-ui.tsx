@@ -39,7 +39,7 @@ import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 
 const FullProjectSearchUI: FC = () => {
   const { t } = useTranslation()
-  const { setProjectSearchIsOpen } = useLayoutContext()
+  const { setProjectSearchIsOpen, isMobileLayout } = useLayoutContext()
   const { projectSnapshot } = useProjectContext()
   const { openDocs } = useEditorManagerContext()
   const { pathInFolder } = useFileTreePathContext()
@@ -207,6 +207,7 @@ const FullProjectSearchUI: FC = () => {
               <OLFormControl
                 type="search"
                 name="search"
+                enterKeyHint={isMobileLayout ? 'search' : undefined}
                 size="sm"
                 aria-label={t('search')}
                 spellCheck={false}

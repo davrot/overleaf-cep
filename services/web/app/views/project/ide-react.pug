@@ -23,8 +23,18 @@ block content
 				span.loading-screen-ellip .
 
 block append meta
+	//- The IDE renders without a viewport meta by default (the controller
+	//- passes `metadata: { viewport: false }`); the mobile IDE layout (see the
+	//- mobile plan, Phase 0) needs `matchMedia` breakpoints to track the
+	//- physical device width and content zoom disabled (the IDE is zoom-free
+	//- on mobile), so declare its own viewport meta here.
+	meta(name='mobile-web-app-capable' content='yes')
+	meta(
+		name='viewport'
+		content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'
+	)
 	include editor/_meta
-
+	
 block prepend foot-scripts
 	script(
 		type='text/javascript'

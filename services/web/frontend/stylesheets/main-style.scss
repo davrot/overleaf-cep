@@ -53,3 +53,7 @@
 
 // DS unified access styles
 @import 'ciam/all';
+
+// Mobile IDE layout (mobile plan, Phase 0/2). Imported LAST so that on
+// equal specificity it wins over the desktop editor rules.
+@import 'mobile/layout';

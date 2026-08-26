@@ -61,6 +61,33 @@ globalThis.cancelAnimationFrame = global.cancelAnimationFrame =
   window.cancelAnimationFrame
 globalThis.requestAnimationFrame = global.requestAnimationFrame =
   window.requestAnimationFrame
+
+// jsdom does not provide window.matchMedia; mock it with a no-op MQL.
+class MockMatchMediaList {
+  constructor(query) {
+    this.media = query
+    this.matches = false
+    this.addEventListener = (_type, listener) => {
+      if (!this._listeners) this._listeners = []
+      if (!listener) return
+      this._listeners.push(listener)
+    }
+    this.removeEventListener = (_type, listener) => {
+      if (this._listeners) {
+        this._listeners = this._listeners.filter(l => l !== listener)
+      }
+    }
+  }
+
+  fire(matches) {
+    const event = { matches }
+    ;(this._listeners || []).forEach(l => l(event))
+  }
+}
+
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query) => new MockMatchMediaList(query)
+}
 globalThis.sessionStorage = global.sessionStorage = window.sessionStorage
 
 // add polyfill for ResizeObserver

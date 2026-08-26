@@ -3,6 +3,7 @@ import { defaultKeymap, historyKeymap } from '@codemirror/commands'
 import { lintKeymap } from '@codemirror/lint'
 import { scrollOneLineKeymap } from './scroll-one-line'
 import { foldingKeymap } from './folding-keymap'
+import { isMobileDevice } from '../utils/isMobileDevice'
 
 const ignoredDefaultKeybindings = new Set([
   // NOTE: disable "Mod-Enter" as it's used for "Compile"
@@ -24,23 +25,41 @@ const ignoredDefaultMacKeybindings = new Set([
   'Shift-Alt-m',
 ])
 
-const filteredDefaultKeymap = defaultKeymap.filter(
-  // We only filter on keys, so if the keybinding doesn't have a key,
-  // allow it
-  item => {
-    if (item.key && ignoredDefaultKeybindings.has(item.key)) {
-      return false
-    }
-    if (item.mac && ignoredDefaultMacKeybindings.has(item.mac)) {
-      return false
-    }
+function isKeyBindingDisabled(item: { key?: string; mac?: string }): boolean {
+  if (item.key && ignoredDefaultKeybindings.has(item.key)) {
     return true
   }
+  if (item.mac && ignoredDefaultMacKeybindings.has(item.mac)) {
+    return true
+  }
+  return false
+}
+
+function isMobileKeyBindingDisabled(item: { key?: string; mac?: string }): boolean {
+  if (isKeyBindingDisabled(item)) {
+    return true
+  }
+  // Mobile: drop Alt-family bindings (AltGr conflicts on on-screen keyboards)
+  if (
+    item.key &&
+    (item.key.startsWith('Alt-') || item.key.includes('Alt-'))
+  ) {
+    return true
+  }
+  return false
+}
+
+const desktopFilteredDefaultKeymap = defaultKeymap.filter(
+  item => !isKeyBindingDisabled(item)
+)
+
+const mobileFilteredDefaultKeymap = defaultKeymap.filter(
+  item => !isMobileKeyBindingDisabled(item)
 )
 
 export const keymaps = keymap.of([
   // The default CodeMirror keymap, with a few key bindings filtered out.
-  ...filteredDefaultKeymap,
+  ...desktopFilteredDefaultKeymap,
   // Key bindings for undo/redo/undoSelection/redoSelection
   ...historyKeymap,
   // Key bindings for “open lint panel” and “next diagnostic”
@@ -50,3 +69,22 @@ export const keymaps = keymap.of([
   // Key bindings for scrolling the viewport
   ...scrollOneLineKeymap,
 ])
+
+/**
+ * Keymaps for touch/mobile input devices (see MOBILE_PLAN.md, Phase 3).
+ * On mobile we additionally drop Alt-family bindings because on-screen
+ * keyboards trigger AltGr for them rather than the intended modifier.
+ */
+export const mobileKeymaps = keymap.of([
+  ...mobileFilteredDefaultKeymap,
+  ...historyKeymap,
+  ...lintKeymap,
+  ...foldingKeymap,
+  ...scrollOneLineKeymap,
+])
+
+// Exported for the extension bundle (see 'extensions/index.ts'). The bundle
+// picks the touch-tuned keymap when the device is a touch input.
+export function currentKeymaps() {
+  return isMobileDevice() ? mobileKeymaps : keymaps
+}

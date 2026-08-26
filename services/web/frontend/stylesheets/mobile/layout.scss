@@ -1,0 +1,480 @@
+// Mobile IDE layout (mobile plan, Phase 0/2).
+// Imported LAST in main-style.scss so that on equal specificity it wins over
+// the desktop editor rules. The rules below are either scoped to
+// `.ide-redesign-main-mobile` (rendered only when `isMobileLayout` is true)
+// or to `body.ide-mobile-active` (set by <MainLayoutMobile/> for portaled
+// overlays like toasts, alerts and modals). Nothing here applies to a
+// desktop render.
+
+// The IDE root should use the full dynamic viewport height on mobile so the
+// sticky toolbar, single pane and bottom bar all fit (Phase 7). This is an
+// IDE-only override — the `main-style` bundle is shared with marketing pages
+// via `layout-base.pug`, so it must NOT hit `html`/`body` globally.
+// (#ide-root already gets 100vh/100dvh from @include full-height-stacked-page;
+// we re-assert here because this mobile sheet is imported last and wins on
+// equal specificity.)
+#ide-root {
+  height: 100dvh;
+}
+
+.ide-redesign-main-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  touch-action: manipulation;
+
+  // The toolbar on mobile is a single row.
+  .ide-redesign-toolbar-mobile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    min-height: 48px; // HIG tap target minimum
+
+    .ide-redesign-toolbar-menu {
+      display: flex;
+      align-items: center;
+    }
+
+    .ide-redesign-toolbar-project-mobile {
+      flex: 1 1 auto;
+      min-width: 0;
+
+      // The mobile project title is a <ToolbarProjectTitle/>; keep it on one
+      // ellipsized line so the toolbar row doesn't wrap.
+      &.ide-redesign-toolbar-project-dropdown {
+        display: block;
+        min-width: 0;
+      }
+
+      .ide-redesign-toolbar-project-name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .ide-redesign-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .ide-redesign-toolbar-button {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 10px;
+      color: inherit;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+    }
+  }
+
+  // The main body takes the remaining vertical space (single pane).
+  .ide-redesign-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ide-mobile-pane {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+
+    // Source-editor touch tuning (Phase 3): font size bump, tap targets and
+    // a keyboard-aware autocomplete dropdown, scoped to the mobile pane only.
+    // The editor font size is an inline `--font-size` style on `.cm-editor`
+    // (set by `extensions/theme.ts`), so `max(var(--font-size), 16px)` keeps
+    // larger user settings but bumps the 12 px desktop default to 16 px
+    // (iOS Safari zooms on tap if inputs are < 16 px).
+    .cm-content,
+    .cm-gutters {
+      font-size: max(var(--font-size), 16px);
+    }
+
+    .cm-line {
+      min-height: 2em; // ~44px tap target on 16px font
+    }
+
+    // Plan (Phase 3): keep line numbers, reduce gutter right padding.
+    .cm-gutters .cm-lineNumbers {
+      font-size: 0.9em;
+      padding-right: 0.25em;
+    }
+
+    .cm-tooltip-autocomplete > * {
+      max-height: 50dvh; // keyboard-aware on mobile
+    }
+
+    // Touch states (Phase 3): `:hover`-only affordances never fire on pure
+    // touch; mirror them with `:active` on the rows that use them.
+    .file-tree-folder-list .entity:active,
+    [data-testid='history-version']:active {
+      background: var(--bg-light-primary, rgba(0, 0, 0, 0.08));
+    }
+
+    // PDF pane on mobile (Phase 4): full-height single pane.
+    .pdf {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      // Synctex controls are meaningless without a side-by-side split; hide
+      // them on mobile (Phase 4).
+      .synctex-controls,
+      .synctex-control {
+        display: none;
+      }
+
+      // Hybrid (top) PDF toolbar row (Phase 4).
+      .toolbar-pdf-hybrid {
+        min-height: 48px;
+      }
+
+      // Touch tap targets for the PDF viewport controls (zoom in/out, page
+      // number) rendered into #toolbar-pdf-controls (Phase 4).
+      .pdfjs-viewer-controls {
+        button,
+        .ol-select {
+          min-width: 44px;
+          min-height: 44px;
+        }
+      }
+    }
+  }
+
+  // File-tree rows (.file-tree-doc / .file-tree-folder <li> rows inside
+  // the drawer) get a >=44 px tap target on mobile (Phase 5). The whole
+  // row is the click / select target, and the per-item three-dot
+  // `.entity-menu-toggle` is always in the DOM.
+  .file-tree-folder-list-inner > li {
+    min-height: 44px;
+  }
+
+  .file-tree-folder-list .entity {
+    min-height: 44px;
+  }
+
+  .file-tree-folder-list .file-tree-entity-button {
+    min-height: 44px;
+  }
+
+  // History list rows get a >=44 px tap target on mobile (Phase 5).
+  // (The row element carries `data-testid="history-version"`, not a class.)
+  [data-testid='history-version'] {
+    min-height: 44px;
+  }
+}
+
+// Full-screen bottom sheet (Phase 1).
+.ide-mobile-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: var(--bg-primary-themed, white);
+  color: var(--content-primary-themed, black);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .ide-mobile-sheet-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px;
+  }
+
+  .ide-mobile-sheet-close {
+    min-width: 44px;
+    min-height: 44px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ide-mobile-sheet-content {
+    flex: 1 1 auto;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 12px 24px;
+  }
+
+  .ide-mobile-sheet-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+// Full-screen drawer for the mobile rail (Phase 2) and modals (Phase 6).
+// The drawer renders *above* everything else in the IDE: the toolbar row and
+// bottom bar both use z-index < 1055 (see .ide-mobile-bottom-bar).
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1055;
+  background: var(--bg-primary-themed, var(--bg-light-primary, white));
+  color: var(--content-primary-themed, var(--content-primary, black));
+  display: flex;
+  flex-direction: column;
+
+  .drawer-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+
+    .focus-trap-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: auto;
+    }
+
+    .drawer-inner {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: auto;
+    }
+
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      min-height: 48px;
+      padding: 8px 12px;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .drawer-close {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 10px;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .drawer-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .drawer-content {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+    }
+  }
+}
+
+// Bottom bar (sticky at the bottom of the mobile main layout, Phase 0).
+// It is a flex child of .ide-redesign-main-mobile (not absolute) so it never
+// covers the single pane; it uses safe-area padding for notched devices.
+.ide-mobile-bottom-bar {
+  flex: 0 0 auto;
+  z-index: 10;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 12px calc(env(safe-area-inset-bottom) + 8px);
+  background: var(--bg-light-primary, white);
+  color: var(--content-primary, black);
+  border-top: 1px solid var(--border-divider-themed, #ccc);
+  touch-action: manipulation;
+
+  .ide-mobile-bottom-bar-btn {
+    flex: 1;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 4px 8px;
+
+    &.active {
+      color: var(--green-10, #396);
+    }
+
+    .ide-mobile-bottom-bar-label {
+      font-size: 0.75rem;
+      line-height: 1rem;
+    }
+  }
+}
+
+// Chat inside the mobile rail drawer (Phase 5): the input should stay
+// visible above the soft keyboard. `ChatPane` writes `--mobile-chat-inset`
+// on <html> from `window.visualViewport` (see chat-pane.tsx). The drawer
+// for the rail is <Drawer id="ide-mobile-rail-drawer"/> (see rail.tsx).
+#ide-mobile-rail-drawer {
+  display: flex;
+  flex-direction: column;
+
+  // The soft keyboard (iOS/Android) does not move the fixed drawer, so we
+  // shrink the drawer by the keyboard height, which ChatPane writes to
+  // <html> as --mobile-chat-inset from window.visualViewport (see
+  // chat-pane.tsx). Defaults to 0px on non-chat tabs / desktop browsers
+  // without visualViewport.
+  height: calc(100% - var(--mobile-chat-inset, 0px));
+
+  > .drawer-container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .focus-trap-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .drawer-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ide-rail,
+  .tab-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .ide-rail-tabs-nav {
+    flex: 0 0 auto;
+  }
+
+  .chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    .chat-wrapper {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+
+      .chat {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        height: auto !important; // override the fixed-height desktop rule
+
+        .messages {
+          flex: 1 1 auto;
+          min-height: 0;
+        }
+
+        .new-message {
+          flex: 0 0 auto;
+
+          #chat-input {
+            min-height: 44px;
+            font-size: 16px; // 16px avoids iOS zoom-on-focus
+            padding: 10px 12px;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Mobile chrome (toasts / alerts / modals) (Phase 6). These overlays are
+// portaled to <body>, so they are scoped with body.ide-mobile-active (set by
+// <MainLayoutMobile/>) instead of .ide-redesign-main-mobile.
+body.ide-mobile-active {
+  .global-toasts {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    bottom: calc(env(safe-area-inset-bottom) + 64px);
+    width: auto;
+
+    [role='alert'] {
+      max-width: 100%;
+    }
+  }
+
+  .global-alerts {
+    height: auto;
+
+    [role='alert'] {
+      min-width: 0;
+      width: 100%;
+    }
+  }
+
+  // Modals (including the settings modal) become full-height bottom sheets
+  // (Phase 6). Bootstrap's modal + backdrop are portaled to <body>, so this
+  // scope only hits when the mobile layout is active.
+  .modal {
+    height: 100dvh;
+    overflow: hidden;
+
+    .modal-dialog {
+      height: 100%;
+      max-width: none;
+      width: 100%;
+    }
+
+    .modal-content {
+      height: 100%;
+      border-radius: 0;
+      display: flex;
+      flex-direction: column;
+
+      .modal-body {
+        overflow: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      .modal-header {
+        min-height: 48px;
+      }
+
+      .modal-footer {
+        padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+      }
+    }
+  }
+}

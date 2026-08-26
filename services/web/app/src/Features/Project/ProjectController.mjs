@@ -492,6 +492,7 @@ const _ProjectController = {
       'overleaf-library',
       'compile-timeout-cta',
       'focus-mode',
+      'ide-mobile-layout',
       'editor-upgrade-button-relocation',
       'markdown-visual',
       'ai-disabled-collaborators',

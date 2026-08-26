@@ -581,6 +581,7 @@ const makeLayoutProvider = (
         handleDetach,
         focusMode: layout.focusMode ?? false,
         setFocusMode: layout.setFocusMode ?? (() => {}),
+        isMobileLayout: layout.isMobileLayout ?? false,
       }),
       [
         reattach,

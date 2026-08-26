@@ -31,6 +31,7 @@ import RailModals from './rail-modals'
 import RailOverflowDropdown from './rail-overflow-dropdown'
 import useRailOverflow from '@/features/ide-react/hooks/use-rail-overflow'
 import importOverleafModules from '../../../../../macros/import-overleaf-module.macro'
+import { Drawer } from '@/shared/components/drawer/drawer'
 import { shouldIncludeElement } from '@/features/ide-react/util/rail-utils'
 import { useEditorContext } from '@/shared/context/editor-context'
 import useEventListener from '@/shared/hooks/use-event-listener'
@@ -73,7 +74,8 @@ export const RailLayout = () => {
   const gitBridgeEnabled = getMeta('ol-gitBridgeEnabled')
   const { isOverleaf } = getMeta('ol-ExposedSettings')
 
-  const { view, setSettingsShown, focusMode } = useLayoutContext()
+  const { view, setSettingsShown, focusMode, isMobileLayout } =
+    useLayoutContext()
 
   const { markMessagesAsRead } = useChatContext()
 
@@ -257,6 +259,72 @@ export const RailLayout = () => {
       ),
     }
   }, [t, isOpen, selectedTab, tabsInOverflow])
+
+  // Mobile layout: the rail is a full-screen drawer overlay (no
+  // react-resizable-panels <Panel>/<HorizontalResizeHandle>). The desktop
+  // <TabContainer> + <Nav> is re-used verbatim so that every tab, module
+  // rail entry and rail action behaves exactly as it does on desktop.
+  // (See the mobile plan, Phase 2.)
+  if (isMobileLayout) {
+    return (
+      <Drawer
+        isOpen={isOpen}
+        title={t('sidebar')}
+        onClose={() => setIsOpen(false)}
+        id="ide-mobile-rail-drawer"
+      >
+        <TabContainer
+          mountOnEnter
+          unmountOnExit={false}
+          transition={false}
+          activeKey={selectedTab}
+          onSelect={onTabSelect}
+          id="ide-mobile-rail-tabs"
+        >
+          <div className="ide-rail ide-rail-mobile-drawer" aria-label={t('sidebar')}>
+            <Nav activeKey={selectedTab} className="ide-rail-tabs-nav">
+              <div className="ide-rail-tabs-wrapper">
+                {railTabs
+                  .filter(shouldIncludeElement)
+                  .map(({ icon, key, indicator, title, disabled, ref, tab }) => {
+                    const Component = tab ?? RailTab
+                    return (
+                      <Component
+                        open={isOpen && selectedTab === key}
+                        key={key}
+                        eventKey={key}
+                        icon={icon}
+                        indicator={indicator}
+                        title={title}
+                        disabled={disabled}
+                        ref={ref}
+                      />
+                    )
+                  })}
+                <RailActionElement key="more-options" action={moreOptionsAction} />
+              </div>
+              <nav aria-label={t('help_editor_settings')}>
+                {railActions.map(action => (
+                  <RailActionElement
+                    key={action.key}
+                    action={action}
+                    ref={action.ref}
+                  />
+                ))}
+              </nav>
+            </Nav>
+          </div>
+          <RailPanel
+            isReviewPanelOpen={isReviewPanelOpen}
+            isHistoryView={isHistoryView}
+            railTabs={railTabs}
+            focusMode={focusMode}
+          />
+          <RailModals />
+        </TabContainer>
+      </Drawer>
+    )
+  }
 
   return (
     <TabContainer
