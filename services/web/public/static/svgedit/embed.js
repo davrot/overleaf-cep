@@ -103,6 +103,16 @@ function rebrand () {
 
     const storage = document.getElementById('se-storage-dialog')
     if (storage) storage.remove()
+
+    // Normalise the left-bar tail to the reference order
+    // (… tools_polygon, tool_connect, tool_eyedropper): ext-eyedropper
+    // inserts itself at a fixed index while ext-connector appends, so
+    // whichever async init resolves first wins the slot. Cosmetic only.
+    const connect = document.getElementById('tool_connect')
+    const eyedropper = document.getElementById('tool_eyedropper')
+    if (connect && eyedropper && connect.nextElementSibling !== eyedropper) {
+      connect.after(eyedropper)
+    }
   } catch (e) {
     // Rebranding is cosmetic; never break the editor over it.
   }
