@@ -105,13 +105,25 @@ function rebrand () {
     if (storage) storage.remove()
 
     // Normalise the left-bar tail to the reference order
-    // (… tools_polygon, tool_connect, tool_eyedropper): ext-eyedropper
-    // inserts itself at a fixed index while ext-connector appends, so
-    // whichever async init resolves first wins the slot. Cosmetic only.
-    const connect = document.getElementById('tool_connect')
-    const eyedropper = document.getElementById('tool_eyedropper')
-    if (connect && eyedropper && connect.nextElementSibling !== eyedropper) {
-      connect.after(eyedropper)
+    // (… tool_text, tool_shapelib, tool_image, tools_polygon, tool_connect,
+    // tool_eyedropper): each extension inserts itself by index/append and
+    // the inits resolve asynchronously, so the tail order is a race. The
+    // head (select/zoom/panning/fhpath/line/path/rect/ellipse) is inserted
+    // deterministically by the core + ext-panning and needs no help. Cosmetic
+    // only — never move an element the reference does not own.
+    const tailPairs = [
+      ['tool_text', 'tool_shapelib'],
+      ['tool_shapelib', 'tool_image'],
+      ['tool_image', 'tools_polygon'],
+      ['tools_polygon', 'tool_connect'],
+      ['tool_connect', 'tool_eyedropper'],
+    ]
+    for (const [a, c] of tailPairs) {
+      const elA = document.getElementById(a)
+      const elC = document.getElementById(c)
+      if (!elA || !elC) continue
+      if (elA.compareDocumentPosition(elC) & Node.DOCUMENT_POSITION_FOLLOWING) continue
+      elA.after(elC)
     }
   } catch (e) {
     // Rebranding is cosmetic; never break the editor over it.
