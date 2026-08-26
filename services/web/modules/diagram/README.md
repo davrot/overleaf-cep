@@ -32,6 +32,13 @@ Overleaf at `/static/svgedit/`:
 - `images/`, `components/` — icons and picker assets,
 - `extensions/` — the built-in extensions (shapes, polystar, panning,
   markers, grid, eyedropper, connector, opensave, layer view),
+- `extensions/_virtual/_vite/preload-helper.js` and
+  `extensions/node_modules/browser-fs-access/` — shared bundle
+  dependencies of the extension modules (every `ext-*.js` statically
+  imports the preload helper; `ext-opensave` imports browser-fs-access).
+  **If you re-vendor the SVG-Edit dist, keep these paths** — without them
+  all extension toolbars silently fail to load (each extension import 404s
+  and only a console error is logged, so the editor still boots),
 - `LICENSE` — see **License** below.
 
 It runs in a **same-origin iframe** (`embed.html` + `embed.js`) and
@@ -118,7 +125,14 @@ SVG-Edit 7.4.2 ships under a permissive OR-licensing choice
 vendored at `services/web/public/static/svgedit/LICENSE`
 (`LICENSE-MIT.txt` from the package) and the version/provenance is this
 README. The vendored tree is unmodified except for the added `embed.*`
-host files and the removal of source maps/tests.
+host files and the removal of source maps/tests. Two official-dist
+dependency files that were dropped during the original copy were
+restored byte-identical from the official 7.4.2 dist
+(svgedit.netlify.app): `extensions/_virtual/_vite/preload-helper.js`
+(Vite, MIT) and `extensions/node_modules/browser-fs-access/dist/
+index.modern.js` (browser-fs-access, Apache-2.0 — one of SVG-Edit's own
+OR-license options). Both are required for the extension modules to
+load at all.
 
 ## Notes & limitations
 
