@@ -10,6 +10,7 @@
  * is needed (this used to be maxGraph's ImageExport; svgcanvas exports the
  * SVG string directly).
  */
+import { svgDimensions } from './diagram-model'
 
 function svgToImage(svgXml: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -48,8 +49,68 @@ export function svgToPngBlob(
   )
 }
 
-/** Vector PDF via svg2pdf.js + jsPDF (browser-only, fully offline).
- * svg2pdf.js v2 API: `svg2pdf(element, pdf, { x, y, width, height })`. */
+/**
+ * Vector PDF via svg2pdf.js + jsPDF (browser-only, fully offline).
+ * svg2pdf.js v2 API: `svg2pdf(element, pdf, { x, y, width, height })`.
+ *
+ * Page-size rule: the PDF page is exactly the size of the SVG document
+ * (px → pt at 96 dpi), drawn at full page with zero offset. The companion
+ * therefore renders at the diagram's natural size with `\includegraphics`
+ * — no A4 letterboxing, no rescaling. (The previous behaviour — always
+ * A4 with the diagram fitted inside — changed the apparent size of the
+ * document; e.g. a 400×300 px diagram came out on a 595×842 pt page.)
+ */
+
+/** Convert CSS pixels to PDF points (1 px = 1/96 inch = 0.75 pt). */
+export function pxToPt(px: number): number {
+  return px * 0.75
+}
+
+/** A4 in points — the only fallback page (SVG without usable dimensions). */
+export const A4_PT = { w: 595.28, h: 841.89 } as const
+
+/**
+ * Pure PDF page size for a diagram: the SVG's own dimensions (width/height
+ * attributes, else the viewBox), converted to pt. When the SVG carries no
+ * usable dimensions (rare — svg-edit always sets width/height), fall back
+ * to A4 with the legacy margin-fit so the export stays usable.
+ */
+export function pdfPageSize(svgText: string): {
+  w: number
+  h: number
+  fallback: boolean
+} {
+  const dims = svgDimensions(svgText)
+  const w = dims.w != null && Number.isFinite(dims.w) && dims.w > 0 ? dims.w : null
+  const h = dims.h != null && Number.isFinite(dims.h) && dims.h > 0 ? dims.h : null
+  if (w != null && h != null) {
+    return { w: pxToPt(w), h: pxToPt(h), fallback: false }
+  }
+  return { w: A4_PT.w, h: A4_PT.h, fallback: true }
+}
+
+/**
+ * Pure content fit (fallback path only): preserve the content's aspect
+ * ratio inside a page minus margin, centred. `contentRatio` null → square.
+ */
+export function fitContent(
+  pageW: number,
+  pageH: number,
+  margin: number,
+  contentRatio: number | null
+): { x: number; y: number; w: number; h: number } {
+  const maxW = Math.max(1, pageW - 2 * margin)
+  const maxH = Math.max(1, pageH - 2 * margin)
+  const ratio = contentRatio != null && contentRatio > 0 ? contentRatio : 1
+  let w = maxW
+  let h = maxW / ratio
+  if (h > maxH) {
+    h = maxH
+    w = maxH * ratio
+  }
+  return { x: margin, y: margin, w, h }
+}
+
 export async function svgToPdfBlob(svgText: string): Promise<Blob> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jsPdfModule: any = await import('jspdf')
@@ -64,41 +125,33 @@ export async function svgToPdfBlob(svgText: string): Promise<Blob> {
     throw new Error('svg2pdf.js is not available in this browser')
   }
 
-  // Fit the diagram onto an A4 page with a 25pt margin, preserving the
-  // intrinsic aspect ratio (svg2pdf uses width/height like <img> sizing).
-  const doc = new jsPDFCtor({ unit: 'pt', format: 'a4' })
-  const pageW: number = 595.28 // A4 @ pt
-  const pageH: number = 841.89
-  const margin = 25
-  const maxW = pageW - 2 * margin
-  const maxH = pageH - 2 * margin
+  const page = pdfPageSize(svgText)
+  const doc = new jsPDFCtor({ unit: 'pt', format: [page.w, page.h] })
 
-  let ratio = 1
-  try {
-    const probe = new DOMParser().parseFromString(svgText, 'image/svg+xml')
-    const root = probe.querySelector('svg')
-    const iw = Number(root?.getAttribute('width'))
-    const ih = Number(root?.getAttribute('height'))
+  let box: { x: number; y: number; w: number; h: number }
+  if (page.fallback) {
+    // No usable SVG dimensions: keep the legacy A4 margin-fit so the
+    // export is still sensible.
+    const iw = Number(svgDimensions(svgText).w)
+    const ih = Number(svgDimensions(svgText).h)
+    let ratio: number | null = null
     if (Number.isFinite(iw) && iw > 0 && Number.isFinite(ih) && ih > 0) {
       ratio = iw / ih
     }
-  } catch (e) {
-    // default ratio 1:1
-  }
-  let w = maxW
-  let h = maxW / ratio
-  if (h > maxH) {
-    h = maxH
-    w = maxH * ratio
+    box = fitContent(page.w, page.h, 25, ratio)
+  } else {
+    // Page == document size: draw the diagram at full page, zero offset.
+    box = { x: 0, y: 0, w: page.w, h: page.h }
   }
 
   const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svgEl.innerHTML = svgText
+  // svg2pdf.js v2 option names are width/height (plus x/y offset).
   await svg2pdf(svgEl.firstElementChild ?? svgEl, doc, {
-    x: margin,
-    y: margin,
-    width: w,
-    height: h,
+    x: box.x,
+    y: box.y,
+    width: box.w,
+    height: box.h,
   })
   return doc.output('blob') as unknown as Blob
 }
