@@ -43,3 +43,17 @@
 .toast-image-editor-modal .tie-canvas-load-btn {
   display: none !important;
 }
+
+/* Selected (active) tool button in TUI's tool column: TUI gives the active
+   item a WHITE background. Its icon color comes from runtime-injected CSS
+   (theme's menu.activeIcon.color) — if that ever regresses to white the
+   icon is invisible (white-on-white). This belt keeps the active item's
+   icon and label dark regardless of the injected value. */
+.toast-image-editor-modal .tui-image-editor-menu > .tui-image-editor-item.active svg use {
+  fill: #1e1e1e !important;
+  stroke: #1e1e1e !important;
+}
+.toast-image-editor-modal .tui-image-editor-menu > .tui-image-editor-item.active label,
+.toast-image-editor-modal .tui-image-editor-menu > .tui-image-editor-item.active span {
+  color: #1e1e1e !important;
+}

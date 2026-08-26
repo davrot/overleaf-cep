@@ -259,12 +259,18 @@ function ImageEditorModal({
               'header.backgroundImage': 'none',
               'header.backgroundColor': '#2d2d2d',
               'menu.normalIcon.color': '#ccc',
-              'menu.activeIcon.color': '#fff',
+              // TUI inverts the SELECTED tool item to a white background
+              // (`.tui-image-editor-item.active { background-color:#fff }`),
+              // so its icon/label must be dark — white here was invisible
+              // (white-on-white). Matches TUI's own standard theme intent
+              // (dark active icon on the white active background).
+              'menu.activeIcon.color': '#1e1e1e',
               'menu.disabledIcon.color': '#555',
               'menu.hoverIcon.color': '#fff',
               'submenu.backgroundColor': '#2d2d2d',
               'submenu.partition.color': '#444',
               'submenu.normalIcon.color': '#ccc',
+              // Submenu panels stay dark; keep the active icon light there.
               'submenu.activeIcon.color': '#fff',
               'submenu.normalLabel.color': '#ccc',
               'submenu.activeLabel.color': '#fff',
