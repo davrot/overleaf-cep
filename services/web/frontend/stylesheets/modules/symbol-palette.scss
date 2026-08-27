@@ -61,8 +61,7 @@
 .symbol-palette-tab-list[role='tablist'] {
   background: none;
   border-bottom: none;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
   display: flex;
 }
 
@@ -99,6 +98,7 @@
 .symbol-palette-items {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   padding: var(--spacing-03);
 }
 
@@ -135,6 +135,7 @@
 }
 
 .symbol-palette-search {
+  min-width: 0;
   padding: var(--spacing-01) var(--spacing-05);
   margin: 0 var(--spacing-03) var(--spacing-03);
   line-height: 1;
@@ -203,12 +204,15 @@
 .symbol-palette-rail-panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  contain: layout paint;
   height: 100%;
   overflow: hidden;
 }
 
 .symbol-palette-rail-panel-body {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -216,12 +220,14 @@
 
 .symbol-palette-rail-panel-body .symbol-palette-container {
   height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
 .symbol-palette-rail-panel-body .symbol-palette {
   min-height: 0;
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -229,6 +235,7 @@
 
 .symbol-palette-rail-panel-body .symbol-palette-body {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   min-height: 0;
 }
