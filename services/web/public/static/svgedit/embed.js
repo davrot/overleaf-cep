@@ -268,7 +268,8 @@ function wireImageToolToFileDialog () {
         img.addEventListener('load', () => {
           finish(img.naturalWidth || img.width || 100, img.naturalHeight || img.height || 100)
         })
-        img.addEventListener('error', () => finish(100, 100))
+        // Decode failed: do NOT leave a broken placeholder on the canvas.
+        img.addEventListener('error', () => fail(new Error('image could not be decoded')))
         img.src = result
       }
       reader.onerror = fail
