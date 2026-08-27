@@ -2,7 +2,12 @@ import { expect, it, describe } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { EXPORT_WRAPPERS, wrapLatex } from '../../../frontend/js/utils/equation-export.mjs'
+import {
+  DEFAULT_WRAPPER,
+  EXPORT_WRAPPERS,
+  splitEquation,
+  wrapLatex,
+} from '../../../frontend/js/utils/equation-export.mjs'
 import {
   SEARCH_RESULT_LIMIT,
   searchCommands,
@@ -73,6 +78,84 @@ describe('wrapLatex', () => {
       'inline',
       'display',
     ])
+  })
+})
+
+describe('splitEquation', () => {
+  it('defaults to the inline wrapper for bare bodies', () => {
+    expect(DEFAULT_WRAPPER).toBe('inline')
+    expect(splitEquation('x = 1')).toEqual({ body: 'x = 1', wrapper: 'inline' })
+  })
+
+  it('splits inline math fences', () => {
+    expect(splitEquation('$x = 1$')).toEqual({
+      body: 'x = 1',
+      wrapper: 'inline',
+    })
+  })
+
+  it('splits $$...$$ display math', () => {
+    expect(splitEquation('$$x = 1$$')).toEqual({
+      body: 'x = 1',
+      wrapper: 'display',
+    })
+  })
+
+  it('splits \\[...] display math', () => {
+    expect(splitEquation('\\[x = 1\\]')).toEqual({
+      body: 'x = 1',
+      wrapper: 'display',
+    })
+  })
+
+  it('splits equation environments', () => {
+    expect(
+      splitEquation('\\begin{equation}\nx = 1\n\\end{equation}')
+    ).toEqual({ body: 'x = 1', wrapper: 'equation' })
+  })
+
+  it('maps starred equation environments to the unstarred wrapper', () => {
+    expect(splitEquation('\\begin{equation*}x\\end{equation*}')).toEqual({
+      body: 'x',
+      wrapper: 'equation',
+    })
+  })
+
+  it('splits eqnarray environments', () => {
+    expect(splitEquation('\\begin{eqnarray}a & b\\end{eqnarray}')).toEqual({
+      body: 'a & b',
+      wrapper: 'eqnarray',
+    })
+  })
+
+  it('trims whitespace around the body', () => {
+    expect(splitEquation('  $ x $  ')).toEqual({ body: 'x', wrapper: 'inline' })
+    expect(splitEquation('\\[ x \\]')).toEqual({ body: 'x', wrapper: 'display' })
+  })
+
+  it('falls back to the inline wrapper for unrecognised content', () => {
+    expect(splitEquation('a \\\\ b')).toEqual({
+      body: 'a \\\\ b',
+      wrapper: 'inline',
+    })
+  })
+
+  it('round-trips: wrapLatex(split(x)) reproduces the canonical form', () => {
+    const cases = [
+      ['$x = 1$', 'inline'],
+      ['$$x = 1$$', 'display'],
+      ['\\[x = 1\\]', 'display'],
+      ['\\begin{equation}\nx = 1\n\\end{equation}', 'equation'],
+      ['\\begin{eqnarray}a & b\\end{eqnarray}', 'eqnarray'],
+      ['x = 1', 'inline'],
+    ]
+    for (const [src, expectedWrapper] of cases) {
+      const split = splitEquation(src)
+      expect(split.wrapper).toBe(expectedWrapper)
+      expect(wrapLatex(split.body, split.wrapper)).toBe(
+        wrapLatex(split.body, expectedWrapper)
+      )
+    }
   })
 })
 

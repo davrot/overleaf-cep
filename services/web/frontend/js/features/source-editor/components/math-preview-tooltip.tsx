@@ -89,13 +89,28 @@ const MathPreviewTooltipMenu: FC = () => {
             ancestorNode
           )
           if (mathContainer) {
+            // Dispatch the equation in its canonical form so the modal can
+            // split it into body + environment:
+            // - equation/eqnarray environments arrive whole (content already
+            //   includes the environment)
+            // - display math ($$...$$ / \[...\]) is canonicalised to \[...\]
+            // - inline math arrives as bare body
+            let latex = mathContainer.content
+            if (mathContainer.displayMode && !/\\begin\{/.test(latex)) {
+              latex = `\\[${latex}\\]`
+            }
             // bubbles: the toolbar button listens on window via
             // useEventListener — a document-dispatched custom event must
-            // bubble to reach it
+            // bubble to reach it. from/to mark the equation's range in the
+            // document so the button can select it (Export then replaces it)
             document.dispatchEvent(
               new CustomEvent('latex-editor:open', {
                 bubbles: true,
-                detail: { latex: mathContainer.content },
+                detail: {
+                  latex,
+                  from: ancestorNode.from,
+                  to: ancestorNode.to,
+                },
               })
             )
             return

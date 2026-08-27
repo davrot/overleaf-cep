@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { MathLiveInput } from './mathlive-input'
 import { latexCommands } from '../data/latex-commands.mjs'
 import { searchCommands } from '../utils/command-search.mjs'
-import { wrapLatex } from '../utils/equation-export.mjs'
+import {
+  DEFAULT_WRAPPER,
+  splitEquation,
+  wrapLatex,
+} from '../utils/equation-export.mjs'
 
 type Props = {
     onInsert: (latex: string) => void
@@ -21,12 +25,18 @@ export const EquationEditorModal: FC<Props> = ({
     initialLatex,
 }) => {
     const { t } = useTranslation()
-    const [latex, setLatex] = useState(initialLatex ?? '')
+    // Pre-loaded content (e.g. from "Open in Equation Editor") is split into
+    // body + environment, so the modal always holds a coherent pair that
+    // wrapLatex(body, wrapper) can reproduce exactly.
+    const initialSplit = initialLatex ? splitEquation(initialLatex) : null
+    const [latex, setLatex] = useState(initialSplit ? initialSplit.body : '')
     const [minimized, setMinimized] = useState(false)
     const [showRawLatex, setShowRawLatex] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [searchOpen, setSearchOpen] = useState(false)
-    const [exportWrapper, setExportWrapper] = useState<ExportWrapper>('plain')
+    const [exportWrapper, setExportWrapper] = useState<ExportWrapper>(
+      initialSplit ? (initialSplit.wrapper as ExportWrapper) : DEFAULT_WRAPPER
+    )
     const [keyboardVisible, setKeyboardVisible] = useState(false)
     const mathfieldRef = useRef<any>(null)
     const modalRef = useRef<HTMLDivElement>(null)
@@ -108,9 +118,11 @@ export const EquationEditorModal: FC<Props> = ({
     const handleImport = useCallback(() => {
         const selected = onImport()
         if (selected) {
-            setLatex(selected)
+            const { body, wrapper } = splitEquation(selected)
+            setLatex(body)
+            setExportWrapper(wrapper as ExportWrapper)
             if (mathfieldRef.current) {
-                mathfieldRef.current.setValue(selected)
+                mathfieldRef.current.setValue(body)
             }
         }
     }, [onImport])
@@ -150,13 +162,6 @@ export const EquationEditorModal: FC<Props> = ({
         document.addEventListener('mousedown', handleClick)
         return () => document.removeEventListener('mousedown', handleClick)
     }, [searchOpen])
-
-    // Set initial latex into mathfield once it's ready
-    useEffect(() => {
-        if (initialLatex && mathfieldRef.current) {
-            mathfieldRef.current.setValue(initialLatex)
-        }
-    }, [initialLatex])
 
     const header = (
       /* eslint-disable-next-line jsx-a11y/no-static-element-interactions */

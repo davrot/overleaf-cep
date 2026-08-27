@@ -17,6 +17,8 @@ import { EquationEditorModal } from './equation-editor-modal'
 
 type OpenDetail = {
   latex?: string
+  from?: number
+  to?: number
 }
 
 const equationEditorAvailable = getMeta('ol-latexEditorAvailable')
@@ -41,6 +43,12 @@ const LatexEditorToolbarButton: FC = () => {
   const [initialLatex, setInitialLatex] = useState<string | undefined>(
     undefined
   )
+  // Document range of the equation we opened ("Open in Equation Editor");
+  // when set, the original equation is selected so Export replaces it.
+  const [replaceRange, setReplaceRange] = useState<{
+    from: number
+    to: number
+  } | null>(null)
 
   const handleInsert = useCallback(
     (latex: string) => {
@@ -58,9 +66,9 @@ const LatexEditorToolbarButton: FC = () => {
     const state = view.state
     const main = state.selection.main
     if (!main.empty) {
-      // A range is selected: import it (stripping inline-math delimiters)
-      const selected = state.sliceDoc(main.from, main.to)
-      return selected.replace(/^\$/, '').replace(/\$$/, '')
+      // A range is selected: import it raw — the modal splits it into
+      // body + environment (wrapLatex can then reproduce it)
+      return state.sliceDoc(main.from, main.to)
     }
     // Empty selection: import the equation under the cursor (same math
     // container extraction the math preview tooltip uses)
@@ -79,6 +87,7 @@ const LatexEditorToolbarButton: FC = () => {
 
   const handleOpen = useCallback(() => {
     setInitialLatex(undefined)
+    setReplaceRange(null)
     setOpen(true)
   }, [])
 
@@ -86,18 +95,40 @@ const LatexEditorToolbarButton: FC = () => {
     const detail = ((event as CustomEvent<OpenDetail>).detail ||
       {}) as OpenDetail
     setInitialLatex(detail.latex || undefined)
+    setReplaceRange(
+      typeof detail.from === 'number' &&
+        typeof detail.to === 'number' &&
+        detail.to > detail.from
+        ? { from: detail.from, to: detail.to }
+        : null
+    )
     setOpen(true)
   }, [])
 
   const handleClose = useCallback(() => {
     setOpen(false)
     setInitialLatex(undefined)
+    setReplaceRange(null)
   }, [])
 
   // "Open in Equation Editor" from the math preview tooltip options menu
   useEventListener('latex-editor:open', (event: Event) =>
     handleOpenWithLatex(event)
   )
+
+  // Mark the original equation in the document: select its range once the
+  // editor is open, so Export (insert-at-selection) replaces it exactly.
+  useEffect(() => {
+    if (!open || !replaceRange) return
+    try {
+      const { from, to } = replaceRange
+      if (from >= 0 && to > from && to <= view.state.doc.length) {
+        view.dispatch({ selection: { anchor: from, head: to } })
+      }
+    } catch {
+      // stale range (document changed): leave the selection as-is
+    }
+  }, [open, replaceRange, view])
 
   if (!equationEditorAvailable) {
     return null

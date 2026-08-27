@@ -9,6 +9,9 @@
  */
 export const EXPORT_WRAPPERS = ['plain', 'equation', 'eqnarray', 'inline', 'display']
 
+// Default export form for content with no detectable fence
+export const DEFAULT_WRAPPER = 'inline'
+
 // MathLive renders a typed space as a text-space token
 const LATEX_SPACE_TOKEN = '\\text{ }'
 
@@ -38,4 +41,44 @@ export function wrapLatex(latex, wrapper) {
     default:
       return body
   }
+}
+
+/**
+ * Split an equation *as it appears in the document* into its bare body and
+ * the wrapper (env / fence) that surrounds it, so the modal can show a
+ * coherent (body, environment) pair. `wrapLatex(body, wrapper)` then
+ * reproduces the original equation. Starred environments map to the
+ * unstarred wrapper (the environment kind is preserved).
+ *
+ * Pure and unit-testable; no DOM or regex catastrophic-backtracking risk.
+ * Returns { body: string, wrapper: ExportWrapper }.
+ */
+export function splitEquation(latex) {
+  let s = String(latex ?? '').trim()
+
+  // \begin{eqnarray[*]} ... \end{eqnarray[*]}
+  let m = s.match(/^\\begin\{(eqnarray\*?)\}([\s\S]*)\\end\{\1\}\s*$/)
+  if (m) return { body: m[2].trim(), wrapper: 'eqnarray' }
+
+  // \begin{equation[*]} ... \end{equation[*]}
+  m = s.match(/^\\begin\{(equation\*?)\}([\s\S]*)\\end\{\1\}\s*$/)
+  if (m) return { body: m[2].trim(), wrapper: 'equation' }
+
+  // \[ ... \]
+  if (/^\\\[/.test(s) && s.endsWith('\\]') && s.length >= 4) {
+    return { body: s.slice(2, -2).trim(), wrapper: 'display' }
+  }
+
+  // $$ ... $$  (before the single-$ case so it is not swallowed)
+  if (s.startsWith('$$') && s.endsWith('$$') && s.length >= 4) {
+    return { body: s.slice(2, -2).trim(), wrapper: 'display' }
+  }
+
+  // $ ... $
+  if (s.startsWith('$') && s.endsWith('$') && s.length >= 2) {
+    return { body: s.slice(1, -1).trim(), wrapper: 'inline' }
+  }
+
+  // No fence detected: treat as a bare body with the default wrapper
+  return { body: s, wrapper: DEFAULT_WRAPPER }
 }
