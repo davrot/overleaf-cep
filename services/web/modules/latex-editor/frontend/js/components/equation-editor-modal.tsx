@@ -1,243 +1,370 @@
-import {
-  ChangeEventHandler,
-  FC,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import React, { FC, useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/shared/components/ol/ol-button'
-import OLFormSelect from '@/shared/components/ol/ol-form-select'
-import OLFormSwitch from '@/shared/components/ol/ol-form-switch'
-import {
-  OLModal,
-  OLModalBody,
-  OLModalFooter,
-  OLModalHeader,
-  OLModalTitle,
-} from '@/shared/components/ol/ol-modal'
-import { useCodeMirrorViewContext } from '@/features/source-editor/components/codemirror-context'
+import { MathLiveInput } from './mathlive-input'
 import { latexCommands } from '../data/latex-commands.mjs'
 import { searchCommands } from '../utils/command-search.mjs'
-import { EXPORT_WRAPPERS, wrapLatex } from '../utils/equation-export.mjs'
-import { MathLiveInput } from './mathlive-input'
+import { wrapLatex } from '../utils/equation-export.mjs'
 
 type Props = {
-  initialLatex?: string
-  onClose: () => void
+    onInsert: (latex: string) => void
+    onImport: () => string
+    onClose: () => void
+    initialLatex?: string
 }
 
-const WRAPPER_KEYS: Record<string, string> = {
-  plain: 'equation_editor_wrap_plain',
-  equation: 'equation_editor_wrap_equation',
-  eqnarray: 'equation_editor_wrap_eqnarray',
-  inline: 'equation_editor_wrap_inline',
-  display: 'equation_editor_wrap_display',
-}
+type ExportWrapper = 'plain' | 'equation' | 'eqnarray' | 'inline' | 'display'
 
-/**
- * Equation Editor: visual LaTeX equation composer (MathLive) with command
- * search, import-from-selection, and export to the document cursor.
- */
-export const EquationEditorModal: FC<Props> = ({ initialLatex, onClose }) => {
-  const { t } = useTranslation()
-  const view = useCodeMirrorViewContext()
+export const EquationEditorModal: FC<Props> = ({
+    onInsert,
+    onImport,
+    onClose,
+    initialLatex,
+}) => {
+    const { t } = useTranslation()
+    const [latex, setLatex] = useState(initialLatex ?? '')
+    const [minimized, setMinimized] = useState(false)
+    const [showRawLatex, setShowRawLatex] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [searchOpen, setSearchOpen] = useState(false)
+    const [exportWrapper, setExportWrapper] = useState<ExportWrapper>('plain')
+    const [keyboardVisible, setKeyboardVisible] = useState(false)
+    const mathfieldRef = useRef<any>(null)
+    const modalRef = useRef<HTMLDivElement>(null)
+    const searchWrapperRef = useRef<HTMLDivElement>(null)
 
-  const [latex, setLatex] = useState(initialLatex ?? '')
-  const [showRawLatex, setShowRawLatex] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [exportWrapper, setExportWrapper] = useState('plain')
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
-  const mathfieldRef = useRef<any>(null)
+    // Drag state
+    const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null)
+    const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+    const dragging = useRef(false)
 
-  const searchResults = useMemo(
-    () => searchCommands(latexCommands, searchQuery),
-    [searchQuery]
-  )
-  const searchOpen = searchQuery.trim().length > 0
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if ((e.target as HTMLElement).closest('button, input, label')) return
+        e.preventDefault()
+        const modal = modalRef.current
+        if (!modal) return
+        const rect = modal.getBoundingClientRect()
+        dragging.current = true
+        setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+        if (!position) {
+            setPosition({ x: rect.left, y: rect.top })
+        }
+    }, [position])
 
-  const insertIntoMathfield = useCallback((text: string) => {
-    if (mathfieldRef.current?.executeCommand) {
-      mathfieldRef.current.executeCommand(['insert', text])
-      mathfieldRef.current.focus()
-    } else {
-      setLatex(prev => prev + text)
-    }
-  }, [])
+    useEffect(() => {
+        if (!dragOffset) return
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!dragging.current) return
+            const modal = modalRef.current
+            const mw = modal?.offsetWidth ?? 840
+            const mh = modal?.offsetHeight ?? 400
+            const maxX = window.innerWidth - mw
+            const maxY = window.innerHeight - mh
+            setPosition({
+                x: Math.max(0, Math.min(e.clientX - dragOffset.x, maxX)),
+                y: Math.max(0, Math.min(e.clientY - dragOffset.y, maxY)),
+            })
+        }
+        const handleMouseUp = () => {
+            dragging.current = false
+            setDragOffset(null)
+        }
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+        }
+    }, [dragOffset])
 
-  const insertAtCursor = useCallback(
-    (text: string) => {
-      const { from, to } = view.state.selection.main
-      view.dispatch({
-        changes: { from, to, insert: text },
-        selection: { anchor: from + text.length },
-      })
-      view.focus()
-    },
-    [view]
-  )
+    const modalStyle: React.CSSProperties | undefined = position
+        ? { left: position.x, top: position.y, transform: 'none' }
+        : undefined
 
-  const handleInsertCommand = useCallback(
-    (entry: { cmd?: string; insert?: string }) => {
-      insertIntoMathfield(entry.insert ?? entry.cmd ?? '')
-      setSearchQuery('')
-    },
-    [insertIntoMathfield]
-  )
+    // Search across all commands
+    const searchResults = useMemo(
+        () => searchCommands(latexCommands, searchQuery),
+        [searchQuery]
+    )
 
-  const handleExport = useCallback(() => {
-    insertAtCursor(wrapLatex(latex, exportWrapper))
-    onClose()
-  }, [exportWrapper, insertAtCursor, latex, onClose])
+    const insertIntoMathfield = useCallback((text: string) => {
+        if (mathfieldRef.current) {
+            mathfieldRef.current.executeCommand(['insert', text])
+            mathfieldRef.current.focus()
+        } else {
+            setLatex(prev => prev + text)
+        }
+    }, [])
 
-  const handleImport = useCallback(() => {
-    const { from, to } = view.state.selection.main
-    const selected = view.state.sliceDoc(from, to)
-    if (selected) {
-      setLatex(selected)
-      mathfieldRef.current?.setValue(selected)
-    }
-  }, [view])
+    const handleInsertCommand = useCallback((cmdLatex: string) => {
+        insertIntoMathfield(cmdLatex)
+        setSearchQuery('')
+        setSearchOpen(false)
+    }, [insertIntoMathfield])
 
-  const handleClear = useCallback(() => {
-    setLatex('')
-    if (mathfieldRef.current) {
-      mathfieldRef.current.setValue('')
-      mathfieldRef.current.focus()
-    }
-  }, [])
+    const handleExport = useCallback(() => {
+        onInsert(wrapLatex(latex, exportWrapper))
+    }, [latex, onInsert, exportWrapper])
 
-  const handleSearchKeydown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' && searchResults.length > 0) {
-        event.preventDefault()
-        handleInsertCommand(searchResults[0])
-      }
-    },
-    [handleInsertCommand, searchResults]
-  )
-
-  const handleWrapperChange: ChangeEventHandler<HTMLSelectElement> = useCallback(
-    event => setExportWrapper(event.target.value),
-    []
-  )
-
-  return (
-    <OLModal show size="lg" onHide={onClose}>
-      <OLModalHeader>
-        <OLModalTitle>{t('equation_editor')}</OLModalTitle>
-      </OLModalHeader>
-
-      <OLModalBody className="equation-editor-body">
-        {showRawLatex ? (
-          <textarea
-            className="form-control equation-editor-raw-textarea"
-            value={latex}
-            onChange={event => setLatex(event.target.value)}
-            placeholder={t('equation_editor_raw_latex_placeholder')}
-            aria-label={t('equation_editor_raw_latex_label')}
-            rows={4}
-          />
-        ) : (
-          <MathLiveInput
-            value={latex}
-            onChange={setLatex}
-            mathfieldRef={mathfieldRef}
-            keyboardVisible={keyboardVisible}
-          />
-        )}
-
-        <div className="equation-editor-toolbar-row">
-          <div className="equation-editor-search">
-            <input
-              type="search"
-              className="form-control equation-editor-search-input"
-              placeholder={t('equation_editor_search_placeholder')}
-              value={searchQuery}
-              onChange={event => setSearchQuery(event.target.value)}
-              onKeyDown={handleSearchKeydown}
-              aria-label={t('equation_editor_search_placeholder')}
-            />
-            {searchOpen &&
-              (searchResults.length > 0 ? (
-                <ul className="equation-editor-search-results">
-                  {searchResults.map(result => (
-                    <li key={result.cmd}>
-                      <button
-                        type="button"
-                        className="equation-editor-search-result"
-                        onClick={() => handleInsertCommand(result)}
-                      >
-                        <code>{result.cmd}</code>
-                        <span>{result.desc}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="equation-editor-search-results">
-                  <div className="equation-editor-search-no-results">
-                    {t('equation_editor_no_results')}
-                  </div>
-                </div>
-              ))}
-          </div>
-          <div className="form-check form-switch equation-editor-raw-switch">
-            <OLFormSwitch
-              id="equation-editor-show-raw-latex"
-              checked={showRawLatex}
-              onChange={event => setShowRawLatex(event.target.checked)}
-            />
-            <label
-              className="form-check-label"
-              htmlFor="equation-editor-show-raw-latex"
-            >
-              {t('equation_editor_show_raw_latex')}
-            </label>
-          </div>
-        </div>
-      </OLModalBody>
-
-      <OLModalFooter className="equation-editor-footer">
-        <div className="equation-editor-footer-actions">
-          <OLButton variant="secondary" onClick={handleImport}>
-            {t('equation_editor_import_selection')}
-          </OLButton>
-          <OLButton variant="ghost" onClick={handleClear}>
-            {t('equation_editor_clear')}
-          </OLButton>
-          <OLButton
-            variant={keyboardVisible ? 'secondary' : 'ghost'}
-            onClick={() => setKeyboardVisible(v => !v)}
-            aria-label={
-              keyboardVisible
-                ? t('equation_editor_hide_keyboard')
-                : t('equation_editor_show_keyboard')
+    const handleImport = useCallback(() => {
+        const selected = onImport()
+        if (selected) {
+            setLatex(selected)
+            if (mathfieldRef.current) {
+                mathfieldRef.current.setValue(selected)
             }
-            aria-pressed={keyboardVisible}
-          >
-            ⌨
-          </OLButton>
-          <OLFormSelect
-            aria-label={t('equation_editor_export_wrapper')}
-            title={t('equation_editor_export_wrapper')}
-            value={exportWrapper}
-            onChange={handleWrapperChange}
-          >
-            {EXPORT_WRAPPERS.map(wrapper => (
-              <option key={wrapper} value={wrapper}>
-                {t(WRAPPER_KEYS[wrapper])}
-              </option>
-            ))}
-          </OLFormSelect>
+        }
+    }, [onImport])
+
+    const handleClear = useCallback(() => {
+        setLatex('')
+        if (mathfieldRef.current) {
+            mathfieldRef.current.setValue('')
+            mathfieldRef.current.focus()
+        }
+    }, [])
+
+    // Close on Escape key (search dropdown first, then the editor window)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (searchOpen) {
+                    setSearchOpen(false)
+                    setSearchQuery('')
+                } else {
+                    onClose()
+                }
+            }
+        }
+        document.addEventListener('keydown', handleKeyDown)
+        return () => document.removeEventListener('keydown', handleKeyDown)
+    }, [onClose, searchOpen])
+
+    // Close search dropdown when clicking outside
+    useEffect(() => {
+        if (!searchOpen) return
+        const handleClick = (e: MouseEvent) => {
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
+                setSearchOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClick)
+        return () => document.removeEventListener('mousedown', handleClick)
+    }, [searchOpen])
+
+    // Set initial latex into mathfield once it's ready
+    useEffect(() => {
+        if (initialLatex && mathfieldRef.current) {
+            mathfieldRef.current.setValue(initialLatex)
+        }
+    }, [initialLatex])
+
+    const header = (
+      /* eslint-disable-next-line jsx-a11y/no-static-element-interactions */
+      <div className="latex-editor-header" onMouseDown={handleMouseDown} style={{ cursor: 'grab' }}>
+            <div className="latex-editor-header-group">
+                <div className="latex-editor-title modal-title">
+                    {t('equation_editor')}
+                </div>
+            </div>
+            <div className="latex-editor-header-group latex-editor-actions">
+                {!minimized && (
+                    <label className="latex-editor-raw-toggle">
+                        <input
+                            type="checkbox"
+                            checked={showRawLatex}
+                            onChange={e => setShowRawLatex(e.target.checked)}
+                        />
+                        {t('equation_editor_show_raw_latex')}
+                    </label>
+                )}
+                <button
+                    type="button"
+                    className="latex-editor-minimize"
+                    onClick={() => setMinimized(!minimized)}
+                    title={minimized ? t('equation_editor_restore') : t('equation_editor_minimize')}
+                    aria-label={minimized ? t('equation_editor_restore') : t('equation_editor_minimize')}
+                >
+                    {minimized ? '□' : '−'}
+                </button>
+                <button
+                    type="button"
+                    className="latex-editor-close-button"
+                    onClick={onClose}
+                    aria-label={t('equation_editor_close_dialog')}
+                />
+            </div>
         </div>
-        <OLButton variant="primary" onClick={handleExport}>
-          {t('equation_editor_export_to_cursor')}
-        </OLButton>
-      </OLModalFooter>
-    </OLModal>
-  )
+    )
+
+    if (minimized) {
+        return (
+            <div
+                className="latex-editor-modal latex-editor--minimized"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('equation_editor')}
+                ref={modalRef}
+                style={modalStyle}
+            >
+                {header}
+            </div>
+        )
+    }
+
+    return (
+        <div
+            className="latex-editor-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('equation_editor')}
+            ref={modalRef}
+            style={modalStyle}
+        >
+            {header}
+
+            <div className="latex-editor-body">
+                <div className="latex-editor-content">
+                    {showRawLatex ? (
+                        <textarea
+                            className="latex-editor-raw-textarea"
+                            value={latex}
+                            onChange={e => {
+                                setLatex(e.target.value)
+                                if (mathfieldRef.current) {
+                                    mathfieldRef.current.setValue(e.target.value)
+                                }
+                            }}
+                            placeholder={t('equation_editor_raw_latex_placeholder')}
+                            aria-label={t('equation_editor_raw_latex_label')}
+                        />
+                    ) : (
+                        <MathLiveInput
+                            value={latex}
+                            onChange={setLatex}
+                            mathfieldRef={mathfieldRef}
+                            keyboardVisible={keyboardVisible}
+                        />
+                    )}
+
+                    <div className="latex-editor-action-bar">
+                        <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={handleImport}
+                            title={t('equation_editor_import_selection_title')}
+                        >
+                            {t('equation_editor_import_selection')}
+                        </button>
+
+                        <div className="latex-editor-search-wrapper" ref={searchWrapperRef}>
+                            <input
+                                type="search"
+                                className="latex-editor-search-input"
+                                placeholder={t('equation_editor_search_placeholder')}
+                                value={searchQuery}
+                                onChange={e => {
+                                    setSearchQuery(e.target.value)
+                                    setSearchOpen(e.target.value.trim().length > 0)
+                                }}
+                                onFocus={() => {
+                                    if (searchQuery.trim()) setSearchOpen(true)
+                                }}
+                                aria-label={t('equation_editor_search_label')}
+                            />
+                            {searchOpen &&
+                                searchQuery.trim() &&
+                                (searchResults.length > 0 ? (
+                                    <div className="latex-editor-search-dropdown">
+                                        {searchResults.map((r, i) => (
+                                            <button
+                                                key={`${r.cmd}-${i}`}
+                                                type="button"
+                                                className="latex-editor-search-result"
+                                                onClick={() => handleInsertCommand(r.insert ?? r.cmd)}
+                                            >
+                                                <code className="latex-editor-cmd-code">
+                                                    {r.cmd}
+                                                </code>
+                                                <span className="latex-editor-cmd-desc">
+                                                    {r.desc}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="latex-editor-search-dropdown">
+                                        <div className="latex-editor-no-results">
+                                            {t('equation_editor_no_results')}
+                                        </div>
+                                    </div>
+                                ))}
+                        </div>
+
+                        <div className="latex-editor-action-spacer" />
+                        <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={handleClear}
+                            title={t('equation_editor_clear_title')}
+                        >
+                            {t('equation_editor_clear')}
+                        </button>
+                        <button
+                            type="button"
+                            className={`btn btn-sm latex-editor-keyboard-toggle ${keyboardVisible ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                            onClick={() => setKeyboardVisible(v => !v)}
+                            title={
+                                keyboardVisible
+                                    ? t('equation_editor_hide_keyboard')
+                                    : t('equation_editor_show_keyboard')
+                            }
+                            aria-label={
+                                keyboardVisible
+                                    ? t('equation_editor_hide_keyboard')
+                                    : t('equation_editor_show_keyboard')
+                            }
+                            aria-pressed={keyboardVisible}
+                        >
+                            ⌨
+                        </button>
+                        <div className="latex-editor-export-group">
+                            <select
+                                className="latex-editor-export-select"
+                                value={exportWrapper}
+                                onChange={e => setExportWrapper(e.target.value as ExportWrapper)}
+                                aria-label={t('equation_editor_export_wrapper')}
+                                title={t('equation_editor_export_wrapper_title')}
+                            >
+                                <option value="plain">
+                                    {t('equation_editor_wrap_plain')}
+                                </option>
+                                <option value="equation">
+                                    {t('equation_editor_wrap_equation')}
+                                </option>
+                                <option value="eqnarray">
+                                    {t('equation_editor_wrap_eqnarray')}
+                                </option>
+                                <option value="inline">
+                                    {t('equation_editor_wrap_inline')}
+                                </option>
+                                <option value="display">
+                                    {t('equation_editor_wrap_display')}
+                                </option>
+                            </select>
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={handleExport}
+                                title={t('equation_editor_export_title')}
+                            >
+                                {t('equation_editor_export_to_cursor')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
 }
 
 export default EquationEditorModal

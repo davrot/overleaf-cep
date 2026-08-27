@@ -1,27 +1,30 @@
 /**
- * Pure export logic for the LaTeX equation editor: wraps the equation in the
- * chosen LaTeX container. Keeping this free of DOM/React makes it unit
- * testable.
- */
-
-export const EXPORT_WRAPPERS = [
-  'plain',
-  'equation',
-  'eqnarray',
-  'inline',
-  'display',
-]
-
-/**
- * Wrap an equation's LaTeX in the given container.
+ * Wraps a LaTeX equation body with an environment / math fence for
+ * insertion into the Overleaf document. `latex` is the content of the
+ * editor (MathLive or raw textarea), `wrapper` selects the export form.
  *
- * @param {string} latex - LaTeX of the equation body
- * @param {string} wrapper - one of EXPORT_WRAPPERS; anything else returns the
- *   body unchanged
- * @returns {string} the wrapped LaTeX
+ * Leading/trailing whitespace and trailing text-space tokens produced
+ * by MathLive (e.g. a cursor space rendered as `\text{ }`) are trimmed
+ * before wrapping, so the exported equation is clean both sides.
  */
-export function wrapLatex(latex, wrapper = 'plain') {
-  const body = typeof latex === 'string' ? latex : ''
+export const EXPORT_WRAPPERS = ['plain', 'equation', 'eqnarray', 'inline', 'display']
+
+// MathLive renders a typed space as a text-space token
+const LATEX_SPACE_TOKEN = '\\text{ }'
+
+function trimLatex(latex) {
+  let body = String(latex).trim()
+  while (body.startsWith(LATEX_SPACE_TOKEN)) {
+    body = body.slice(LATEX_SPACE_TOKEN.length).trimStart()
+  }
+  while (body.endsWith(LATEX_SPACE_TOKEN)) {
+    body = body.slice(0, -LATEX_SPACE_TOKEN.length).trimEnd()
+  }
+  return body
+}
+
+export function wrapLatex(latex, wrapper) {
+  const body = trimLatex(latex)
   switch (wrapper) {
     case 'equation':
       return `\\begin{equation}\n${body}\n\\end{equation}`

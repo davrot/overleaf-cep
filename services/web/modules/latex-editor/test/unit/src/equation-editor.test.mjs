@@ -48,6 +48,23 @@ describe('wrapLatex', () => {
     expect(wrapLatex('', 'equation')).toBe('\\begin{equation}\n\n\\end{equation}')
   })
 
+  it('trims leading and trailing whitespace', () => {
+    expect(wrapLatex('  x^2  ', 'inline')).toBe('$x^2$')
+    expect(wrapLatex('\t x = 1\n', 'display')).toBe('\\[x = 1\\]')
+  })
+
+  it('trims MathLive text-space tokens at both ends', () => {
+    expect(wrapLatex('x^2\\text{ }', 'inline')).toBe('$x^2$')
+    expect(wrapLatex('\\text{ }x^2', 'plain')).toBe('x^2')
+    expect(wrapLatex('  \\text{ }x^2\\text{ }  ')).toBe('x^2')
+  })
+
+  it('keeps interior text-space tokens intact', () => {
+    expect(wrapLatex('a\\text{ }+\\text{ }b', 'plain')).toBe(
+      'a\\text{ }+\\text{ }b'
+    )
+  })
+
   it('exposes a stable list of wrappers', () => {
     expect(EXPORT_WRAPPERS).toEqual([
       'plain',
