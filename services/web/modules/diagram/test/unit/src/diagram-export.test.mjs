@@ -37,6 +37,23 @@ describe('pdfPageSize', function () {
   })
 })
 
+describe('jsPDF page-size handling (regression: jsPDF 4.x defaults to portrait)', function () {
+  it('keeps a landscape custom format only when orientation is explicit', async function () {
+    const mod = await import('jspdf')
+    const J = mod.jsPDF ?? mod.default
+    // What the export pipeline does:
+    const withOrient = new J({ unit: 'pt', format: [722.75, 510.73], orientation: 'landscape' })
+    expect(withOrient.internal.pageSize.getWidth('pt')).toBeCloseTo(722.75)
+    expect(withOrient.internal.pageSize.getHeight('pt')).toBeCloseTo(510.73)
+    // The quirk this guards against: without an explicit orientation jsPDF
+    // treats the pair as portrait and silently swaps it (landscape canvas
+    // would come out transposed):
+    const without = new J({ unit: 'pt', format: [722.75, 510.73] })
+    expect(without.internal.pageSize.getWidth('pt')).toBeCloseTo(510.73)
+    expect(without.internal.pageSize.getHeight('pt')).toBeCloseTo(722.75)
+  })
+})
+
 describe('fitContent', function () {
   const PW = A4_PT.w
   const PH = A4_PT.h

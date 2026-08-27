@@ -126,7 +126,15 @@ export async function svgToPdfBlob(svgText: string): Promise<Blob> {
   }
 
   const page = pdfPageSize(svgText)
-  const doc = new jsPDFCtor({ unit: 'pt', format: [page.w, page.h] })
+  // Explicit orientation is required: jsPDF defaults to portrait and
+  // *swaps* a landscape [width, height] pair into [height, width]
+  // (observed on jsPDF 4.x: a 722.75x510.73 canvas came out as a
+  // 510.73x722.75 page), so the page would silently transpose.
+  const doc = new jsPDFCtor({
+    unit: 'pt',
+    format: [page.w, page.h],
+    orientation: page.w >= page.h ? 'landscape' : 'portrait',
+  })
 
   let box: { x: number; y: number; w: number; h: number }
   if (page.fallback) {
