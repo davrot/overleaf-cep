@@ -3,7 +3,9 @@
  *
  * Everything happens in the browser — no server dependency, no network:
  *
- *   SVG  ──(canvas)────────> PNG bitmap
+ *   SVG  ──(canvas)────────> PNG bitmap (rasterised exactly onto the
+ *                            requested pixel size — the diagram canvas at
+ *                            2× scale, no letterboxing, no extra space)
  *   SVG  ──(svg2pdf.js + jsPDF)──> VECTOR PDF for `\includegraphics`
  *
  * The SVG itself is the document source, so no intermediate serialisation
@@ -37,7 +39,7 @@ export function svgToPngBlob(
           reject(new Error('Canvas 2D not available in this browser'))
           return
         }
-        ctx.drawImage(img, 0, 0)
+        ctx.drawImage(img, 0, 0, width, height)
         canvas.toBlob(
           blob =>
             blob
