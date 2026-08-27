@@ -24,6 +24,12 @@ import { mathPreviewStateField } from '../extensions/math-preview'
 import { getTooltip } from '@codemirror/view'
 import ReactDOM from 'react-dom'
 import OLDropdownMenuItem from '@/shared/components/ol/ol-dropdown-menu-item'
+import getMeta from '@/utils/meta'
+import {
+  mathAncestorNode,
+  parseMathContainer,
+} from '../utils/tree-operations/math'
+import { descendantsOfNodeWithType } from '../utils/tree-operations/ancestors'
 
 const MathPreviewTooltipContainer: FC = () => {
   const state = useCodeMirrorStateContext()
@@ -58,6 +64,8 @@ const MathPreviewTooltipContainer: FC = () => {
 
 const MathPreviewTooltipMenu: FC = () => {
   const { t } = useTranslation()
+  const state = useCodeMirrorStateContext()
+  const latexEditorAvailable = getMeta('ol-latexEditorAvailable')
 
   const [showDisableModal, setShowDisableModal] = useState(false)
   const { setMathPreview } = useProjectSettingsContext()
@@ -67,6 +75,35 @@ const MathPreviewTooltipMenu: FC = () => {
   const onHide = useCallback(() => {
     window.dispatchEvent(new Event('editor:hideMathTooltip'))
   }, [])
+
+  const onOpenEquationEditor = useCallback(() => {
+    const range = state.selection.main
+    if (range.empty) {
+      const ancestorNode = mathAncestorNode(state, range.from)
+      if (ancestorNode) {
+        const [node] = descendantsOfNodeWithType(ancestorNode, 'Math', 'Math')
+        if (node) {
+          const mathContainer = parseMathContainer(
+            state,
+            node,
+            ancestorNode
+          )
+          if (mathContainer) {
+            document.dispatchEvent(
+              new CustomEvent('latex-editor:open', {
+                detail: { latex: mathContainer.content },
+              })
+            )
+            return
+          }
+        }
+      }
+    }
+    // Fallback: open the editor with empty content
+    document.dispatchEvent(
+      new CustomEvent('latex-editor:open', { detail: { latex: '' } })
+    )
+  }, [state])
 
   const keyDownListener = useCallback(
     (event: KeyboardEvent) => {
@@ -94,6 +131,16 @@ const MathPreviewTooltipMenu: FC = () => {
           />
         </DropdownToggle>
         <DropdownMenu flip={false}>
+          {latexEditorAvailable && (
+            <OLDropdownMenuItem
+              onClick={onOpenEquationEditor}
+              description={t(
+                'math_tooltip_open_in_equation_editor_description'
+              )}
+            >
+              {t('math_tooltip_open_in_equation_editor')}
+            </OLDropdownMenuItem>
+          )}
           <OLDropdownMenuItem
             onClick={onHide}
             description={t('temporarily_hides_the_preview')}

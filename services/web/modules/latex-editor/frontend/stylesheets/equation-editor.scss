@@ -1,0 +1,105 @@
+// LaTeX Equation Editor module.
+// MathLive's CSS (math-field + KaTeX font-faces) is imported from the npm
+// package and bundled into the image; KaTeX fonts are also copied to
+// js/libs/mathlive-<version>/fonts for MathLive's fontsDirectory.
+// Nothing is loaded from a CDN at runtime.
+@import 'mathlive/static.css';
+
+.equation-editor-body {
+  display: flex;
+  flex-flow: column;
+  gap: 1rem;
+}
+
+math-field.equation-editor-mathfield {
+  align-items: center;
+  min-height: 6rem;
+  width: 100%;
+  font-size: 1.25rem;
+}
+
+.equation-editor-raw-textarea {
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+.equation-editor-toolbar-row {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 0.75rem;
+
+  .equation-editor-search {
+    flex-grow: 1;
+    position: relative;
+    min-width: 12rem;
+  }
+
+  .equation-editor-raw-switch {
+    margin-bottom: 0;
+  }
+}
+
+.equation-editor-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 16rem;
+  overflow-y: auto;
+  background-color: var(--white, #fff);
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 15%);
+}
+
+.equation-editor-search-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #f1f3f5;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background-color: #f1f3f5;
+  }
+
+  code {
+    flex-shrink: 0;
+    font-family: monospace;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #6c757d;
+  }
+}
+
+.equation-editor-search-no-results {
+  padding: 0.5rem 0.75rem;
+  color: #6c757d;
+}
+
+.equation-editor-footer {
+  gap: 0.75rem;
+
+  .equation-editor-footer-actions {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+// Keep MathLive's virtual keyboard above the modal overlay
+.math-virtual-keyboard {
+  z-index: 1080 !important;
+}

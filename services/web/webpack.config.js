@@ -63,6 +63,7 @@ const mathjaxDir = getModuleDirectory('mathjax')
 const pdfjsDir = getModuleDirectory('pdfjs-dist')
 const dictionariesDir = getModuleDirectory('@overleaf/dictionaries')
 const pyodideDir = getModuleDirectory('pyodide')
+const mathliveDir = getModuleDirectory('mathlive')
 
 const vendorDir = path.join(__dirname, 'frontend/js/vendor')
 
@@ -78,6 +79,13 @@ const DICTIONARIES_VERSION =
 if (DICTIONARIES_VERSION !== PackageVersions.version.dictionaries) {
   throw new Error(
     '"@overleaf/dictionaries" version de-synced, update services/web/app/src/infrastructure/PackageVersions.js'
+  )
+}
+
+const MATHLIVE_VERSION = require('mathlive/package.json').version
+if (MATHLIVE_VERSION !== PackageVersions.version.mathlive) {
+  throw new Error(
+    '"mathlive" version de-synced, update services/web/app/src/infrastructure/PackageVersions.js'
   )
 }
 
@@ -412,6 +420,13 @@ module.exports = {
           to: 'js/libs/pyodide',
           toType: 'dir',
           context: pyodideDir,
+        },
+        // Copy MathLive KaTeX fonts for the LaTeX equation editor (no CDN)
+        {
+          from: 'fonts/**/*',
+          to: `js/libs/mathlive-${PackageVersions.version.mathlive}/fonts`,
+          toType: 'dir',
+          context: mathliveDir,
         },
         {
           from: 'python_stdlib.zip',
