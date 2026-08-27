@@ -34,6 +34,7 @@ export const Editor = () => {
       className={classNames('ide-redesign-editor-content', {
         hidden: openEntity?.type !== 'doc' || selectedEntityCount !== 1,
       })}
+      style={{ minHeight: 0, overflow: 'hidden' }}
     >
       <div className="ide-redesign-editor-panel" style={{ height: '100%' }}>
         {pythonRunnerModule &&
