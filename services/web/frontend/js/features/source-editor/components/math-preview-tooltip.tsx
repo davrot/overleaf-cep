@@ -89,8 +89,12 @@ const MathPreviewTooltipMenu: FC = () => {
             ancestorNode
           )
           if (mathContainer) {
+            // bubbles: the toolbar button listens on window via
+            // useEventListener — a document-dispatched custom event must
+            // bubble to reach it
             document.dispatchEvent(
               new CustomEvent('latex-editor:open', {
+                bubbles: true,
                 detail: { latex: mathContainer.content },
               })
             )
@@ -101,7 +105,10 @@ const MathPreviewTooltipMenu: FC = () => {
     }
     // Fallback: open the editor with empty content
     document.dispatchEvent(
-      new CustomEvent('latex-editor:open', { detail: { latex: '' } })
+      new CustomEvent('latex-editor:open', {
+        bubbles: true,
+        detail: { latex: '' },
+      })
     )
   }, [state])
 

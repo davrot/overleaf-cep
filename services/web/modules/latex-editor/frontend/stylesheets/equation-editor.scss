@@ -10,6 +10,9 @@
  * Uses Overleaf's --*-themed CSS vars that auto-switch with data-theme.
  */
 
+/* MathLive (math-field, virtual keyboard) + bundled KaTeX fonts */
+@import 'mathlive/static.css';
+
 /* ── Portal root ── */
 
 #latex-editor-modal-root {

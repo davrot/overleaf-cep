@@ -429,7 +429,7 @@ module.exports = {
         // Copy MathLive KaTeX fonts for the LaTeX equation editor (no CDN)
         {
           from: 'fonts/**/*',
-          to: `js/libs/mathlive-${PackageVersions.version.mathlive}/fonts`,
+          to: `js/libs/mathlive-${PackageVersions.version.mathlive}`,
           toType: 'dir',
           context: mathliveDir,
         },
