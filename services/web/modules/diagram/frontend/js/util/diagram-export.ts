@@ -53,27 +53,26 @@ export function svgToPngBlob(
  * Vector PDF via svg2pdf.js + jsPDF (browser-only, fully offline).
  * svg2pdf.js v2 API: `svg2pdf(element, pdf, { x, y, width, height })`.
  *
- * Page-size rule: the PDF page is exactly the size of the SVG document
- * (px → pt at 96 dpi), drawn at full page with zero offset. The companion
- * therefore renders at the diagram's natural size with `\includegraphics`
- * — no A4 letterboxing, no rescaling. (The previous behaviour — always
- * A4 with the diagram fitted inside — changed the apparent size of the
- * document; e.g. a 400×300 px diagram came out on a 595×842 pt page.)
+ * Page-size rule: the PDF page is exactly the size of the diagram
+ * document, drawn at full page with zero offset — 1 SVG user unit =
+ * 1 PDF point. SVG-Edit's coordinate space is points (its standard A4
+ * canvas is 842×595 = A4 landscape in points), so the companion renders
+ * at precisely the size the diagram has in the editor (`\includegraphics`
+ * at natural size, no A4 letterboxing, no rescaling). The previous
+ * behaviour — always A4 with the diagram fitted inside — changed the
+ * apparent size of the document; an intermediate 96-dpi px→pt mapping
+ * additionally shrank everything by 25%.
  */
-
-/** Convert CSS pixels to PDF points (1 px = 1/96 inch = 0.75 pt). */
-export function pxToPt(px: number): number {
-  return px * 0.75
-}
 
 /** A4 in points — the only fallback page (SVG without usable dimensions). */
 export const A4_PT = { w: 595.28, h: 841.89 } as const
 
 /**
  * Pure PDF page size for a diagram: the SVG's own dimensions (width/height
- * attributes, else the viewBox), converted to pt. When the SVG carries no
- * usable dimensions (rare — svg-edit always sets width/height), fall back
- * to A4 with the legacy margin-fit so the export stays usable.
+ * attributes, else the viewBox), units mapped 1:1 to PDF points (see the
+ * module note above). When the SVG carries no usable dimensions (rare —
+ * svg-edit always sets width/height), fall back to A4 with the legacy
+ * margin-fit so the export stays usable.
  */
 export function pdfPageSize(svgText: string): {
   w: number
@@ -84,7 +83,8 @@ export function pdfPageSize(svgText: string): {
   const w = dims.w != null && Number.isFinite(dims.w) && dims.w > 0 ? dims.w : null
   const h = dims.h != null && Number.isFinite(dims.h) && dims.h > 0 ? dims.h : null
   if (w != null && h != null) {
-    return { w: pxToPt(w), h: pxToPt(h), fallback: false }
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    return { w: r2(w), h: r2(h), fallback: false }
   }
   return { w: A4_PT.w, h: A4_PT.h, fallback: true }
 }

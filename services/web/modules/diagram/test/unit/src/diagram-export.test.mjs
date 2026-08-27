@@ -1,34 +1,29 @@
 import { describe, it, expect } from 'vitest'
 import {
-  pxToPt,
   A4_PT,
   pdfPageSize,
   fitContent,
 } from '../../../frontend/js/util/diagram-export.ts'
 
-describe('pxToPt', function () {
-  it('converts CSS pixels to points at 96dpi (0.75 pt per px)', function () {
-    expect(pxToPt(96)).toEqual(72)
-    expect(pxToPt(400)).toEqual(300)
-    expect(pxToPt(300)).toEqual(225)
-    expect(pxToPt(1)).toBeCloseTo(0.75)
-  })
-})
-
 describe('pdfPageSize', function () {
-  it('uses the SVG width/height as the page size', function () {
+  it('uses the SVG width/height as the page size (1 unit = 1 pt)', function () {
     const p = pdfPageSize('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"></svg>')
-    expect(p).toEqual({ w: 300, h: 225, fallback: false })
+    expect(p).toEqual({ w: 400, h: 300, fallback: false })
   })
 
   it('accepts px-suffixed dimensions', function () {
     const p = pdfPageSize('<svg width="200px" height="100px"></svg>')
-    expect(p).toEqual({ w: 150, h: 75, fallback: false })
+    expect(p).toEqual({ w: 200, h: 100, fallback: false })
+  })
+
+  it('rounds to two decimals', function () {
+    const p = pdfPageSize('<svg width="722.7467811158798" height="510.7296137339056"></svg>')
+    expect(p).toEqual({ w: 722.75, h: 510.73, fallback: false })
   })
 
   it('falls back to the viewBox for width/height', function () {
     const p = pdfPageSize('<svg viewBox="0 0 50 50"></svg>')
-    expect(p).toEqual({ w: 37.5, h: 37.5, fallback: false })
+    expect(p).toEqual({ w: 50, h: 50, fallback: false })
   })
 
   it('returns the A4 fallback for SVGs without usable dimensions', function () {

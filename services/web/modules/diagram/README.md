@@ -14,10 +14,11 @@ Create a figure for `\includegraphics`:
    (editable, diffable, versioned) and re-creates the companions:
    - **`name.png`** (bitmap raster, 2× the diagram size),
    - **`name.pdf`** (VECTOR PDF, browser-side `svg2pdf.js` + `jsPDF`), with
-     the **page size exactly matching the diagram** (px → pt at 96 dpi,
-     zero offset) so `\includegraphics{diagram}` renders at the diagram's
-     natural size — no A4 letterboxing/rescaling (A4 + margin-fit only as
-     fallback for SVGs without usable dimensions).
+     **page size exactly equal to the diagram's own size** (1 SVG user
+     unit = 1 pt — SVG-Edit's coordinate space is points, its standard A4
+     canvas is 842×595 — zero offset) so `\includegraphics{diagram}` renders
+     at the diagram's natural size — no A4 letterboxing/rescaling (A4 +
+     margin-fit only as fallback for SVGs without usable dimensions).
      The PNG serves as bitmap fallback.
 
 Everything ships inside our own image and works fully offline — no CDN,
