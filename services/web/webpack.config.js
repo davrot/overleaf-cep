@@ -1,4 +1,5 @@
 const path = require('path')
+const fs = require('fs')
 const { globSync } = require('glob')
 const webpack = require('webpack')
 const CopyPlugin = require('copy-webpack-plugin')
@@ -82,7 +83,11 @@ if (DICTIONARIES_VERSION !== PackageVersions.version.dictionaries) {
   )
 }
 
-const MATHLIVE_VERSION = require('mathlive/package.json').version
+// mathlive's package.json is not listed in its "exports" map, so resolve the
+// version from the installed package directory instead of a subpath require
+const MATHLIVE_VERSION = JSON.parse(
+  fs.readFileSync(path.join(mathliveDir, 'package.json'), 'utf8')
+).version
 if (MATHLIVE_VERSION !== PackageVersions.version.mathlive) {
   throw new Error(
     '"mathlive" version de-synced, update services/web/app/src/infrastructure/PackageVersions.js'
