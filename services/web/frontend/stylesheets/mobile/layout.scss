@@ -6,17 +6,6 @@
 // overlays like toasts, alerts and modals). Nothing here applies to a
 // desktop render.
 
-// The IDE root should use the full dynamic viewport height on mobile so the
-// sticky toolbar, single pane and bottom bar all fit (Phase 7). This is an
-// IDE-only override — the `main-style` bundle is shared with marketing pages
-// via `layout-base.pug`, so it must NOT hit `html`/`body` globally.
-// (#ide-root already gets 100vh/100dvh from @include full-height-stacked-page;
-// we re-assert here because this mobile sheet is imported last and wins on
-// equal specificity.)
-#ide-root {
-  height: 100dvh;
-}
-
 .ide-redesign-main-mobile {
   display: flex;
   flex-direction: column;
@@ -178,11 +167,14 @@
   }
 }
 
-// Full-screen bottom sheet (Phase 1).
+// Full-screen bottom sheet (Phase 1). Z-index is below Bootstrap modals
+// raised to 1060 under body.ide-mobile-active (bug M5), and above the rail
+// drawer (.drawer, 1045), so a modal opened from inside the sheet or the
+// drawer always renders on top deterministically.
 .ide-mobile-sheet {
   position: fixed;
   inset: 0;
-  z-index: 1050;
+  z-index: 1055;
   background: var(--bg-primary-themed, white);
   color: var(--content-primary-themed, black);
   display: flex;
@@ -225,15 +217,25 @@
 
 // Full-screen drawer for the mobile rail (Phase 2) and modals (Phase 6).
 // The drawer renders *above* everything else in the IDE: the toolbar row and
-// bottom bar both use z-index < 1055 (see .ide-mobile-bottom-bar).
+// bottom bar both use z-index < 1045 (see .ide-mobile-bottom-bar), and
+// Bootstrap modals are scoped to 1060 under body.ide-mobile-active (bug M5
+// below), so a modal (e.g. rename from the file tree) opened while the
+// drawer is open always renders on top of it deterministically.
 .drawer {
   position: fixed;
   inset: 0;
-  z-index: 1055;
+  z-index: 1045;
   background: var(--bg-primary-themed, var(--bg-light-primary, white));
   color: var(--content-primary-themed, var(--content-primary, black));
   display: flex;
   flex-direction: column;
+
+  // The drawer is always mounted (see drawer.tsx, bug M3) so that the rail's
+  // tab content keeps its state (scroll, drafts, focus); when closed it is
+  // hidden here instead of unmounted.
+  &.drawer-hidden {
+    display: none;
+  }
 
   .drawer-container {
     position: relative;
@@ -422,6 +424,20 @@
 // portaled to <body>, so they are scoped with body.ide-mobile-active (set by
 // <MainLayoutMobile/>) instead of .ide-redesign-main-mobile.
 body.ide-mobile-active {
+  // Bootstrap's default z-index stack (BS 5.3): modal 1055, backdrop 1050 —
+  // the modal default matched .drawer's previous 1055, so a modal opened
+  // while the drawer is open (e.g. rename from the file tree: the file-tree
+  // drawer stays open) used to stack by DOM order only (M5). Scope the
+  // modals to the full-height mobile values *and* raise their z-index so it
+  // is deterministic: drawer (1045) < sheet (1055) < modal (1060). (Toasts
+  // stay below all of these, matching the desktop where they are below
+  // modals too; contact-modal's hard-coded 1065 remains above modals in
+  // both cases.)
+  .modal,
+  .modal-backdrop {
+    z-index: 1060;
+  }
+
   .global-toasts {
     left: 8px;
     right: 8px;

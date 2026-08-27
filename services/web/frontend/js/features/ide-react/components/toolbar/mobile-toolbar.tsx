@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRailContext } from '@/features/ide-react/context/rail-context'
 import MaterialIcon from '@/shared/components/material-icon'
+import FocusTrap from '@/shared/components/focus-trap'
 import ShareProjectButton from './share-project-button'
 import ShowHistoryButton from './show-history-button'
 import { OnlineUsers } from './online-users'
@@ -21,36 +22,61 @@ const SubmitProjectButton = publishModalModules?.import.NewPublishToolbarButton
  * Top row (always visible on mobile):
  *   [ hamburger ]  [ project name (truncated) ]  [ more ]
  *
- * "more" opens a bottom sheet with the remaining actions
- * (share / history / online users / download) plus the full
- * <ToolbarMenuBar/> (file / edit / insert / view / format / help) so every
- * desktop action stays reachable on mobile.
+ * - The hamburger toggles the rail drawer: it opens the *currently
+ *   selected* tab (file-tree / chat / …) and closes it again on the
+ *   second tap. Esc and the drawer close button also close it.
+ * - "more" opens a full-screen sheet with the remaining actions
+ *   (share / history / online users / download) plus the full
+ *   <ToolbarMenuBar/> (file / edit / insert / view / format / help) so
+ *   every desktop action stays reachable on mobile. The sheet is
+ *   focus-trapped and focus returns to the "more" button on close.
  *
- * This component REPLACES the desktop <Toolbar/> when `isMobileLayout` is
- * true (see toolbar.tsx). It owns the "more" sheet open/closed state.
+ * This component REPLACES the desktop <Toolbar/> when `isMobileLayout`
+ * is true (see toolbar.tsx). It owns the "more" sheet open/closed state.
  */
 export function MobileToolbar() {
   const { t } = useTranslation()
-  const { openTab } = useRailContext()
-  const { cobranding } = useEditorContext()
+  const { selectedTab, isOpen, openTab, setIsOpen } = useRailContext()
+  const { cobranding, isRestrictedTokenMember } = useEditorContext()
   const { permissionsLevel } = useIdeReactContext()
   const [moreOpen, setMoreOpen] = useState(false)
+  const moreButtonRef = useRef<HTMLButtonElement>(null)
 
   const shouldDisplaySubmitButton =
     (permissionsLevel === 'owner' || permissionsLevel === 'readAndWrite') &&
     SubmitProjectButton
 
-  // Close the "more" bottom sheet on Escape (mirrors <Drawer/> behavior).
+  // Close the sheet and return focus to the "more" trigger (a11y: the
+  // sheet is an aria-modal dialog, focus must not be lost when the sheet
+  // closes). Used by the close button *and* the Escape handler below.
+  const handleSheetClose = () => {
+    setMoreOpen(false)
+    moreButtonRef.current?.focus()
+  }
+
+  // Close the "more" sheet on Escape (mirrors <Drawer/> behavior).
   useEffect(() => {
     if (!moreOpen) return
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setMoreOpen(false)
+        handleSheetClose()
       }
     }
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
   }, [moreOpen])
+
+  // The hamburger toggles the rail drawer (opens the *selected* tab, or
+  // closes the drawer). Previously it always opened the file-tree tab,
+  // so the drawer could not be closed from the toolbar and selecting the
+  // chat tab was lost on the next tap (bug M1).
+  const handleToggleRail = () => {
+    if (isOpen) {
+      setIsOpen(false)
+    } else {
+      openTab(selectedTab)
+    }
+  }
 
   return (
     <>
@@ -63,8 +89,10 @@ export function MobileToolbar() {
           <button
             type="button"
             className="ide-redesign-toolbar-button ide-mobile-toolbar-hamburger"
-            onClick={() => openTab('file-tree')}
+            onClick={handleToggleRail}
             aria-label={t('sidebar')}
+            aria-expanded={isOpen}
+            aria-controls="ide-mobile-rail-drawer"
             data-testid="mobile-toolbar-hamburger"
           >
             <MaterialIcon type="menu" />
@@ -77,6 +105,7 @@ export function MobileToolbar() {
           <button
             type="button"
             className="ide-redesign-toolbar-button"
+            ref={moreButtonRef}
             onClick={() => setMoreOpen(true)}
             aria-label={t('more_options')}
             aria-expanded={moreOpen}
@@ -89,26 +118,19 @@ export function MobileToolbar() {
       </nav>
 
       {moreOpen && (
-        <>
-          <button
-            type="button"
-            className="ide-mobile-sheet-backdrop"
-            aria-label={t('close')}
-            onClick={() => setMoreOpen(false)}
-            data-testid="mobile-sheet-backdrop"
-          />
-          <div
-            className="ide-mobile-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('more_options')}
-            data-testid="mobile-toolbar-sheet"
-          >
+        <div
+          className="ide-mobile-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('more_options')}
+          data-testid="mobile-toolbar-sheet"
+        >
+          <FocusTrap active={moreOpen}>
             <div className="ide-mobile-sheet-header">
               <button
                 type="button"
                 className="ide-mobile-sheet-close"
-                onClick={() => setMoreOpen(false)}
+                onClick={handleSheetClose}
                 data-testid="mobile-sheet-close"
               >
                 <MaterialIcon type="close" />
@@ -120,7 +142,10 @@ export function MobileToolbar() {
                 <OnlineUsers />
                 <div className="ide-mobile-sheet-action-row">
                   <ShareProjectButton />
-                  <ShowHistoryButton />
+                  {/* Keep parity with the desktop toolbar: the history
+                    button is hidden for restricted token members (they
+                    can still reach history via the rail). */}
+                  {!isRestrictedTokenMember && <ShowHistoryButton />}
                   {shouldDisplaySubmitButton && cobranding && (
                     <SubmitProjectButton cobranding={cobranding} />
                   )}
@@ -131,8 +156,8 @@ export function MobileToolbar() {
                 <ToolbarMenuBar />
               </div>
             </div>
-          </div>
-        </>
+          </FocusTrap>
+        </div>
       )}
     </>
   )

@@ -40,7 +40,16 @@ export const ChatPane = () => {
   // drawer is 100dvh; when the soft keyboard opens `window.innerHeight`
   // shrinks, so we shrink the pane height accordingly (scroll-into-view is
   // handled by `.chat`'s own scrolling). See the mobile plan, Phase 5.
+  // The `--mobile-chat-inset` variable lives on <html>, so it is removed
+  // on mount (clear any stale value from a previous run) and on unmount
+  // (so a keyboard still animating does not leave a stale inset that
+  // shrinks the next drawer — bug H2). The drawer's CSS falls back to 0px
+  // while the variable is not set.
   useEffect(() => {
+    // Remove any stale value (e.g. from a keyboard that was still animating
+    // open when we were unmounted) so the drawer is not shrunk by the
+    // previous chat session (bug H2).
+    document.documentElement.style.removeProperty('--mobile-chat-inset')
     if (!isMobileLayout) return
     const vv = window.visualViewport
     if (!vv) return
@@ -58,6 +67,10 @@ export const ChatPane = () => {
     return () => {
       vv.removeEventListener('resize', update)
       vv.removeEventListener('scroll', update)
+      // Remove the variable on unmount so a stale keyboard height does not
+      // shrink the next drawer open (bug H2). The drawer's CSS falls back
+      // to 0px while it is not mounted.
+      document.documentElement.style.removeProperty('--mobile-chat-inset')
     }
   }, [isMobileLayout])
 

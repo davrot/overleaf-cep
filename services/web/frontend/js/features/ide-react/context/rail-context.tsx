@@ -2,6 +2,7 @@ import { sendSearchEvent } from '@/features/event-tracking/search-events'
 import { useProjectContext } from '@/shared/context/project-context'
 import useEventListener from '@/shared/hooks/use-event-listener'
 import usePersistedState from '@/shared/hooks/use-persisted-state'
+import { useMobileLayout } from '@/shared/hooks/use-mobile-layout'
 import { isMac } from '@/shared/utils/os'
 import {
   createContext,
@@ -57,9 +58,15 @@ const RailContext = createContext<
 
 export const RailProvider: FC<React.PropsWithChildren> = ({ children }) => {
   const { projectId } = useProjectContext()
+  // Mobile plan (L2): on mobile the rail state is *not* persisted, so the
+  // mount-time reset in <MainLayoutMobile/> force-closes the drawer for the
+  // session without overwriting the desktop session's persisted state for
+  // the same project id. Desktop behavior (persist `true`) is unchanged.
+  const { isEnabled: isMobileLayout } = useMobileLayout()
   const [isOpen, setIsOpen] = usePersistedState(
     `rail-is-open-${projectId}`,
-    true
+    true,
+    { persist: !isMobileLayout }
   )
   const [resizing, setResizing] = useState(false)
   const [activeModal, setActiveModalInternal] = useState<RailModalKey | null>(

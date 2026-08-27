@@ -26,10 +26,6 @@ import { useFeatureFlag } from '../context/split-test-context'
 export const MOBILE_LAYOUT_MATCH_MEDIA_QUERY = '(max-width: 767.98px)'
 const IDE_MOBILE_LAYOUT_FLAG = 'ide-mobile-layout'
 
-// `isMobileDevice` is not SSR safe (it touches navigator); guard for SSR.
-const isTouchInput =
-  typeof navigator !== 'undefined' && isMobileDevice()
-
 // The `?mobileLayout=true` param is a dev/QA override (guarded by the flag).
 function getDevMobileMode(): boolean {
   if (typeof window === 'undefined') {
@@ -37,6 +33,17 @@ function getDevMobileMode(): boolean {
   }
   const params = new URLSearchParams(window.location.search)
   return params.get('mobileLayout') === 'true'
+}
+
+// `isMobileDevice` is not SSR safe (it touches navigator); guard for SSR.
+// Computed per call so it is re-evaluated on each hook render (it is a cheap
+// `navigator`/`matchMedia` check) rather than frozen at module import time
+// (bug M6).
+function getIsTouchInput(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+  return isMobileDevice()
 }
 
 function getInitialMobileLayout(): boolean {
@@ -69,6 +76,7 @@ export function useMobileLayout() {
 
   // The flag gates everything: when it is disabled the mobile layout is
   // dead code (desktop rendering is unchanged).
+  const isTouchInput = getIsTouchInput()
   const isMobileLayout = flagEnabled && isMobileLayoutViewport
   const devMobileMode = flagEnabled && isDevMobileMode
 

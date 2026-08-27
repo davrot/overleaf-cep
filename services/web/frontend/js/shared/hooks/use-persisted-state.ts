@@ -14,6 +14,13 @@ type UsePersistedStateOptions<Value, PersistedValue> = {
     toPersisted: (value: Value) => PersistedValue
     fromPersisted: (persisted: PersistedValue) => Value
   }
+  /**
+   * If false, setter calls skip the localStorage write and only update the
+   * in-memory state. Used when a reset must not overwrite state persisted
+   * by another surface (e.g. the mobile mount force-closes the rail without
+   * persisting `false` for the same project id — bug L2).
+   */
+  persist?: boolean
 }
 
 function usePersistedState<Value, PersistedValue = Value>(
@@ -29,6 +36,7 @@ function usePersistedState<Value, PersistedValue = Value>(
     options?: UsePersistedStateOptions<Value, PersistedValue>
   }>(() => ({ defaultValue, options }))
   const listen = allOptions.options?.listen || false
+  const persist = allOptions.options?.persist ?? true
   const { toPersisted, fromPersisted } = allOptions.options?.converter || {}
   const storedDefaultValue = allOptions.defaultValue
 
@@ -59,16 +67,18 @@ function usePersistedState<Value, PersistedValue = Value>(
           ? newValue(value)
           : newValue
 
-        if (actualNewValue === storedDefaultValue) {
-          localStorage.removeItem(key)
-        } else {
-          setItem(key, actualNewValue)
+        if (persist) {
+          if (actualNewValue === storedDefaultValue) {
+            localStorage.removeItem(key)
+          } else {
+            setItem(key, actualNewValue)
+          }
         }
 
         return actualNewValue
       })
     },
-    [key, storedDefaultValue, setItem]
+    [key, persist, storedDefaultValue, setItem]
   )
 
   useEffect(() => {

@@ -42,11 +42,14 @@ describe('Mobile IDE layout full flow (mobile plan, Phase 2 / 9)', function () {
     cy.get('[data-testid="mobile-bottom-bar"]').should('exist')
   })
 
-  it('rail drawer is closed before the hamburger and closes on Esc', function () {
+  it('rail drawer is hidden before the hamburger and closes on Esc', function () {
     mountMainLayout('history')
 
-    // The rail drawer is closed before the hamburger is clicked.
-    cy.get('#ide-mobile-rail-drawer').should('not.exist')
+    // The rail drawer is closed before the hamburger is clicked (M3: it
+    // stays mounted so rail tab state survives, but is hidden via CSS).
+    cy.get('#ide-mobile-rail-drawer')
+      .parents('.drawer')
+      .should('have.class', 'drawer-hidden')
 
     // Open the drawer via the hamburger (mobile toolbar, Phase 1).
     cy.get('[data-testid="mobile-toolbar-hamburger"]').click()
@@ -56,12 +59,15 @@ describe('Mobile IDE layout full flow (mobile plan, Phase 2 / 9)', function () {
       .parents('[role="dialog"]')
       .should('have.attr', 'aria-modal', 'true')
 
-    // Close it with Escape.
+    // Close it with Escape (back to the hidden-but-mounted state).
     cy.get('#ide-mobile-rail-drawer')
       .parents('[role="dialog"]')
       .find('[data-testid="drawer-close"]')
     cy.type('{esc}')
-    cy.get('#ide-mobile-rail-drawer').should('not.exist')
+    cy.get('#ide-mobile-rail-drawer').parents('.drawer').should(
+      'have.class',
+      'drawer-hidden'
+    )
   })
 
   it('bottom bar view toggle switches the single pane (editor -> pdf)', function () {

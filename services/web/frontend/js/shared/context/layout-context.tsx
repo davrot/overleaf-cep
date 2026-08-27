@@ -283,13 +283,36 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
     [setPdfLayout, setView, restoreView]
   )
 
-  // Mobile layout only uses single-pane layouts: whenever the mobile layout
-  // becomes active, force the pdf pane to be flat (see mobile plan, Phase 0).
+  // Desktop: pdfLayout always starts side-by-side; on mobile the layout is
+  // forced flat (single-pane). This effect handles the *transition* (mobile
+  // <-> desktop, e.g. rotating to landscape): it only fires when
+  // `mobileLayoutEnabled` actually changes (the guard avoids re-firing on
+  // every state change that re-creates deps), and it only touches
+  // *pdfLayout* — it must NOT reset `view` (bug H1: the drawer open/close
+  // used to re-run `changeLayout` and reset `view` to 'editor', so a user
+  // viewing the PDF lost their PDF view just by opening the drawer; bug
+  // M3.5: leaving mobile used to leave it in flat mode). On mobile the
+  // initial flat layout comes from `getEffectivePdfLayout`, so the effect
+  // only needs to persist it here.
+  const prevMobileLayoutEnabled = useRef(mobileLayoutEnabled)
   useEffect(() => {
-    if (mobileLayoutEnabled) {
-      changeLayout('flat')
+    if (mobileLayoutEnabled === prevMobileLayoutEnabled.current) {
+      return
     }
-  }, [mobileLayoutEnabled, changeLayout])
+    prevMobileLayoutEnabled.current = mobileLayoutEnabled
+    if (mobileLayoutEnabled) {
+      // entering mobile: force single-pane (view is already forced-flat
+      // on first render by `getEffectivePdfLayout`; keep it if the
+      // user is mid-navigation, e.g. rotating a phone into the IDE).
+      setPdfLayout('flat')
+    } else {
+      // leaving mobile (rotated to >=768px, etc.): restore the desktop
+      // default so the desktop layout doesn't stay in 'flat'. The LS
+      // `pdf.layout` key is write-only on desktop (never read for init),
+      // so persisting the mobile layout is inert on desktop.
+      setPdfLayout('sideBySide')
+    }
+  }, [mobileLayoutEnabled, setPdfLayout])
 
   // Force codemirror to reposition all tooltips to prevent an issue
   // where tooltips would sometimes show on top of the pdf preview

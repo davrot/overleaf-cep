@@ -11,8 +11,9 @@ import type { LayoutContextValue } from '../../../../frontend/js/shared/context/
  * drive the mobile branch through `useMobileLayout()` (viewport 390 px +
  * flag on) and the components through the same <RailProvider/> that
  * <MainLayoutMobile/> uses, then assert the WCAG-critical aria roles/states
- * directly (aria-current, aria-pressed, aria-expanded, aria-haspopup,
- * aria-label). Both the mobile toolbar and bottom bar are pure aria-state
+ * directly (aria-pressed, aria-expanded, aria-haspopup, aria-label). The
+ * bottom bar uses `aria-pressed` (not `aria-current`; bug L1 — files/chat
+ * tabs are not sequential "pages"), so only `aria-pressed` is asserted here. Both the mobile toolbar and bottom bar are pure aria-state
  * components, so focused mounts are cheaper and more stable than rendering
  * the full <MainLayout/> (which would pull in CodeMirror / pdf.js fixtures).
  */
@@ -80,22 +81,28 @@ describe('Mobile IDE a11y contract (mobile plan, Phase 8)', function () {
         .should('be.visible')
     })
 
-    it('marks the active bottom-bar tab with aria-current="page"', function () {
+    it('marks the active bottom-bar tab with aria-pressed="true"', function () {
       // <RailProvider/> initial state + view:'editor' (not pdf) => the
       // *files* tab is the active one (it is both selected and open).
       mountBottomBar({ pdfLayout: 'flat', view: 'editor' })
-      cy.get('[data-testid="mobile-bottom-bar-files"]')
-        .should('have.attr', 'aria-current', 'page')
+      cy.get('[data-testid="mobile-bottom-bar-files"]').should(
+        'have.attr',
+        'aria-pressed',
+        'true'
+      )
       // chat tab is not selected
       cy.get('[data-testid="mobile-bottom-bar-chat"]').should(
-        'not.have.attr',
-        'aria-current'
+        'have.attr',
+        'aria-pressed',
+        'false'
       )
-      // view tab: active state is driven by `view`, so with view='editor' it
-      // is *not* the pdf page
+      // view tab: it is pressed only while the PDF view is shown. With
+      // view='editor' the button offers to show the PDF, so it is *not*
+      // pressed.
       cy.get('[data-testid="mobile-bottom-bar-view"]').should(
-        'not.have.attr',
-        'aria-current'
+        'have.attr',
+        'aria-pressed',
+        'false'
       )
     })
   })

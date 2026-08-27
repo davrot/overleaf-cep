@@ -16,13 +16,39 @@ describe('<Drawer /> (mobile plan, Phase 2)', function () {
     }
   }
 
-  it('renders nothing when isOpen is false', function () {
+  it('stays mounted but is hidden (and inert) when isOpen is false', function () {
     const { container } = render(
       <Drawer isOpen={false} title="Files" onClose={() => {}}>
         <span>content</span>
       </Drawer>
     )
-    expect(container.querySelector('.drawer')).to.equal(null)
+    const dialog = container.querySelector('.drawer')
+    // The drawer is always mounted (bug M3) so the rail's tab state
+    // (file-tree scroll, review drafts, focus) survives open/close; when
+    // closed it is hidden via CSS (.drawer-hidden) and marked inert instead
+    // of unmounted.
+    expect(dialog).to.not.equal(null)
+    // chai does not narrow the `?` for TS, so use optional chaining below.
+    expect(dialog?.classList.contains('drawer-hidden')).to.equal(true)
+    expect(dialog?.getAttribute('aria-modal')).to.equal('false')
+    expect(dialog).to.have.property('inert', true)
+  })
+
+  it('removes inert (and .drawer-hidden) when isOpen becomes true', function () {
+    const { container, rerender } = render(
+      <Drawer isOpen={false} title="Files" onClose={() => {}}>
+        <span>content</span>
+      </Drawer>
+    )
+    rerender(
+      <Drawer isOpen={true} title="Files" onClose={() => {}}>
+        <span>content</span>
+      </Drawer>
+    )
+    const dialog = container.querySelector('.drawer')
+    expect(dialog?.classList.contains('drawer-hidden')).to.equal(false)
+    expect(dialog).to.have.property('inert', false)
+    expect(dialog?.getAttribute('aria-modal')).to.equal('true')
   })
 
   it('renders a modal dialog labeled by the title when isOpen is true', function () {

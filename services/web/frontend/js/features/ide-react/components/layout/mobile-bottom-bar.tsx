@@ -47,7 +47,6 @@ export function MobileBottomBar() {
           active: isOpen && selectedTab === 'file-tree',
         })}
         aria-pressed={isOpen && selectedTab === 'file-tree'}
-        aria-current={isOpen && selectedTab === 'file-tree' ? 'page' : undefined}
         onClick={handleFiles}
         data-testid="mobile-bottom-bar-files"
       >
@@ -60,7 +59,6 @@ export function MobileBottomBar() {
           active: isOpen && selectedTab === 'chat',
         })}
         aria-pressed={isOpen && selectedTab === 'chat'}
-        aria-current={isOpen && selectedTab === 'chat' ? 'page' : undefined}
         onClick={handleChat}
         data-testid="mobile-bottom-bar-chat"
       >
