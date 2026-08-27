@@ -258,6 +258,10 @@ function wireImageToolToFileDialog () {
               }
             })
             svgCanvas.setHref(el, result)
+            // The core add path skips the undo stack; without this the image
+            // would be impossible to remove via undo/redo (the SVG file import
+            // registers itself — see importSvgString in the bundle).
+            registerImportInHistory(svgCanvas, el)
             svgCanvas.selectOnly([el])
             svgCanvas.alignSelectedElements('m', 'page')
             svgCanvas.alignSelectedElements('c', 'page')
@@ -290,6 +294,30 @@ function wireImageToolToFileDialog () {
   bar.insertBefore(replacement, old)
   old.remove()
   window.__olImageToolWired = true
+}
+
+// The core add path (addSVGElementsFromJson) appends the element but skips
+// the undo stack, so an imported <image> would stay on the canvas through
+// undo/redo. Register it in the editor's own command stack, exactly like the
+// core SVG-file import does (new BatchCommand + InsertElementCommand +
+// addCommandToHistory). Best-effort: if the API shape changes, the import
+// still lands on the canvas.
+function registerImportInHistory (svgCanvas, el) {
+  try {
+    const hist = svgCanvas.history
+    if (!el || !hist || !hist.InsertElementCommand || !hist.BatchCommand) return
+    const batch = new hist.BatchCommand('Import image')
+    batch.addSubCommand(new hist.InsertElementCommand(el))
+    if (batch.isEmpty()) return
+    svgCanvas.addCommandToHistory(batch)
+    // Mirror the core import flow: notify the changed listeners so the
+    // parent document picks the image up immediately.
+    if (typeof svgCanvas.call === 'function') {
+      svgCanvas.call('changed', [svgCanvas.getSvgContent()])
+    }
+  } catch (err) {
+    // no-op: the image stays on the canvas even if history registration fails
+  }
 }
 
 // An extension may insert its button (or re-insert by fixed index) AFTER a
