@@ -1,7 +1,7 @@
 # Plan: ORCID picker · bib-editor fixes · templates
 
 Branch: `bib-editor` (origin `davrot/overleaf-cep`) — checkout `/root/junk_bib/overleaf-cep`
-Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 DONE → P3 (admin console) next** (2026-08-28).
+Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 DONE → P3 (admin console) in final verification** (2026-08-28). User feedback round 1 captured (§4.5: READMEs done, `__count__` i18n fix, nav restructure, blank-page fix; **P4 Zotero picker = NEW PHASE**).
 
 ### Progress log (verified)
 - **P0 DONE (2026-08-28)** — stray helper removed on both surfaces;
@@ -65,6 +65,102 @@ Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip
   `../../` → `../../../../` cross-module import), image `2a1eabb2…` (routes
   302-not-404, strings in bundle), cycled healthy. Remaining for P2 scope:
   none (templates zip/PDF publish = separate P3-adjacent items tracked below).
+- **P3 IN PROGRESS (2026-08-28)** — 3.0 admin foundation + 3a Manage Site shell:
+  New core feature `app/src/Features/SiteSettings/`:
+  - `SiteSettingsManager.mjs` — one site doc `{_id:'global', templates, zotero,
+    externalUrl, signup, updatedAt}` in `site_settings` (raw collection added to
+    `app/src/infrastructure/mongodb.mjs`); 5 s TTL cache + in-flight dedupe;
+    stored-wins-over-env (env = seed); per-request accessor (multi-worker safe);
+    `DEFAULT_TEMPLATE_CATEGORIES` = the 12 manual example categories (+ 'all'
+    implicit); masked-secret GET; validators per section; LAZY db import (safe
+    in test envs). `SecretCipher.mjs` — same cipher family/file/label as
+    zotero/github-sync `AccessTokenEncryptorHelper` (API: `encryptJson` /
+    **`decryptToJson** — note: `decryptJson` does not exist).
+  - Admin API: `modules/admin-tools/app/src/SiteSettingsController.mjs` + routes
+    `GET /admin/site`, `GET /admin/site-settings` (masked + per-category
+    `Template.countDocuments` counts), `PUT /admin/site-settings/:section`
+    (validated; secret '' = keep) — all under `ensureUserIsSiteAdmin`.
+  - De-bootgates: template-gallery (always registered; `ensureGalleryEnabled`
+    404s every gallery route when off; per-request categories in
+    `ExpressLocals` res.locals + `getTemplatesPageData`), zotero (always
+    registered; `ensureZoteroEnabled` 403 on link/groups endpoints + create-file
+    gate in `LinkedFilesController`; unlink stays open), registration-page
+    (always registered; `ensureRegistrationEnabled` 404/403 on /register).
+  - Manage Site UI (admin-tools module): `manage-site-react.pug` +
+    `pages/manage-site.tsx` + `site-settings/` component with 4 tabs
+    (Templates table: name link/on-off/count/description/Edit modal (name+desc)
+    per user design + gallery on/off; Zotero key+masked-secret; External-URLs
+    CIDR list + regex; Sign Up on/off + domain allowlist). ~26 new i18n keys by
+    hand in en.json + extracted-translations.json (not regenerated).
+  - Tests: `test/unit/src/site-settings.test.mjs` 12/12 (validators, defaults,
+    masking, env seeds, cipher round-trip); PLUS fixed a PRE-EXISTING syntax
+    error (unbalanced brace since commit 463e4d5034 #164) in
+    `test/unit/src/LinkedFiles/LinkedFilesController.test.mjs` + aligned its
+    final assertion with the implementation (error is thrown BY the agent
+    refresh call → `calledOnce`).
+  - Gates: scoped eslint 0 warn; linked-files+site-settings 16/16; FULL-SUITE
+    A/B: clean baseline 22 failed files / 215 failed tests vs WITH changes
+    21 failed files / 215 failed tests — ZERO new failures; the only file
+    delta is LinkedFilesController.test (broken in baseline, fixed by us);
+    the 215 pre-existing failures are Settings-less test-env issues in
+    untouched core suites (Project/User/Subscription/...).
+  - TODO next: lint test file, build (`make all`), cycle container, live-verify
+    (admin page, gallery on/off, category edit, persisted doc, registration &
+    zotero gates), commit + push; then 3b/3c/3d/3e.
+
+## 4.5 User feedback round 1 (2026-08-28, on the live admin console + orcid picker)
+
+Items as reported by the user (executing; see progress log):
+
+1. **Plan updated** — this section.
+2. **READMEs** — written/updated: `modules/orcid-picker/README.md`
+   (new), `modules/zotero/README.md` (new), `modules/registration-page/README.md`
+   (new), `app/src/Features/SiteSettings/README.md` (new),
+   `modules/template-gallery/README.md` + `modules/admin-tools/README.md`
+   (extended with the SiteSettings/de-bootgate + Manage Site entries).
+3. **P4 — Zotero picker (NEW PHASE, user-directed)**: same UX as the
+   ORCID picker (search/works/select/import into project `.bib` and
+   library), but source = the user's LINKED ZOTERO account via the
+   existing `modules/zotero` API surface (`ZoteroApiClient`
+   works/collections items, `?format=bibtex`), admin-gated by the
+   existing Manage Site → Zotero on/off. Reuse `splitImportText` +
+   `normaliseOrcidEntryKeys`, the Add-menu wiring, and the modal
+   design language. Phases: 4.1 API endpoints (list collections, list
+   works w/ pagination, fetch bibtex by keys) under the zotero module;
+   4.2 `zotero-picker-modal.tsx` + Add-menu entries on both surfaces;
+   4.3 tests + lint + build + live-verify + commit/push.
+4. **ORCID modal `{{count}}` bug (FIXED)**: this codebase's i18next
+   uses `__var__` interpolation (`frontend/js/i18n.ts` prefix `'__'`),
+   not `{{var}}` — the works sub-modal rendered literal `Select all
+   ({{count}})` / `Import selected ({{count}})`. Converted the 4
+   affected keys (en.json + extracted-translations.json) and the
+   modal's `t()` calls to `Select all (__count__)`,
+   `Import selected (__count__)`, `Importing __done__ of __total__…`,
+   `Works — __author__`. LESSON: always use `__var__` in i18n strings
+   in this tree.
+5. **Nav restructure (user-directed)** —
+   a) header navbar: **Admin management block removed**
+      (`admin-menu.tsx` no longer renders Manage Site/Users/Projects;
+      `default-navbar.tsx` hides the Admin dropdown when no
+      admin/dev items apply — dev flags unchanged);
+   b) **Account dropdown** (`account-menu-items.tsx`): new **Projects**
+      entry (→ `/project`) directly above Library; the Manage* links
+      grouped under a “Manage” section label (Manage Site →
+      **`/admin/site`** — the previously dead `/admin` link is gone,
+      Manage Users → `/admin/user`, Manage Projects →
+      `/admin/project`); dev-only items kept flat. NOTE: the first
+      attempt used a nested react-bootstrap `<Dropdown>` inside the
+      menu's `Dropdown.Menu` — the parent's root-close handler swallows
+      the inner toggle (broken, reported by the user) → switched to a
+      disabled label + flat items (proven pattern of this menu).
+6. **Blank `/admin/site` page (FIXED)**: `site-settings-root.tsx` used
+   `withErrorBoundary(Fallback)(Component)` but this tree's signature
+   is `withErrorBoundary(Wrapped, Fallback?)` (see
+   `frontend/js/infrastructure/error-boundary.tsx`) → module-init crash
+   `(0, a.A)(...) is not a function`. Now
+   `withErrorBoundary(SiteSettingsRoot, () => <GenericErrorBoundaryFallback />)`.
+   Audit rule: check the ACTUAL export/arg convention of shared helpers
+   before use (manage-users-root is the reference implementation).
 
 ### P1 ROOT CAUSE (code-verified; FIXED + VERIFIED 2026-08-28)
 

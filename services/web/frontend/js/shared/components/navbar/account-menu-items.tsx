@@ -61,6 +61,7 @@ export function AccountMenuItems({
         {sessionUser.email}
       </Dropdown.Item>
       <NavDropdownDivider />
+      <NavDropdownLinkItem href="/project">{t('projects')}</NavDropdownLinkItem>
       {navExtraItems.map((item, index) => (
         <NavDropdownLinkItem key={index} href={item.url}>
           {item.translatedText || item.text}
@@ -77,18 +78,31 @@ export function AccountMenuItems({
       {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup || nav.canDisplayAdminRedirect || nav.canDisplaySplitTestMenu || nav.canDisplaySurveyMenu || nav.canDisplayScriptLogMenu) && (
         <>
           <NavDropdownDivider />
-          {nav.canDisplayAdminMenu ? (
+          {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup) ? (
             <>
-              <NavDropdownLinkItem href="/admin">Manage Site</NavDropdownLinkItem>
-              <NavDropdownLinkItem href="/admin/user">
-                Manage Users
-              </NavDropdownLinkItem>
+              {/* Site-management links grouped under a "Manage" label
+                  (user feedback 2026-08-28). Kept as flat items — a nested
+                  <Dropdown> inside the react-bootstrap Dropdown.Menu is
+                  swallowed by the menu's root-close handler. */}
+              <Dropdown.Item as="li" disabled role="menuitem" className="small text-secondary">
+                Manage
+              </Dropdown.Item>
+              {nav.canDisplayAdminMenu ? (
+                <NavDropdownLinkItem href="/admin/site">
+                  Manage Site
+                </NavDropdownLinkItem>
+              ) : null}
+              {nav.canDisplayAdminMenu ? (
+                <NavDropdownLinkItem href="/admin/user">
+                  Manage Users
+                </NavDropdownLinkItem>
+              ) : null}
+              {nav.canDisplayProjectUrlLookup ? (
+                <NavDropdownLinkItem href="/admin/project">
+                  Manage Projects
+                </NavDropdownLinkItem>
+              ) : null}
             </>
-          ) : null}
-          {nav.canDisplayProjectUrlLookup ? (
-            <NavDropdownLinkItem href="/admin/project">
-              Manage Projects
-            </NavDropdownLinkItem>
           ) : null}
           {nav.canDisplayAdminRedirect && nav.adminUrl ? (
             <NavDropdownLinkItem href={nav.adminUrl}>

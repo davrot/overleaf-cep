@@ -1,5 +1,6 @@
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 import ZoteroController from './ZoteroController.mjs'
+import { ensureZoteroEnabled } from './ZoteroSection.mjs'
 
 export default {
   apply(webRouter) {
@@ -7,6 +8,7 @@ export default {
     webRouter.get(
       '/user/zotero/groups',
       AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
       ZoteroController.getGroups
     )
 
@@ -25,6 +27,7 @@ export default {
     webRouter.get(
       '/user/zotero/oauth',
       AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
       ZoteroController.oauth
     )
     // callback for Zotero OAuth flow

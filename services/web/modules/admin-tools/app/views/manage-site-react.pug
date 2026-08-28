@@ -1,0 +1,25 @@
+extends ../../../../app/views/layout-react
+
+block entrypointVar
+	- entrypoint = 'modules/admin-tools/pages/manage-site'
+
+block vars
+	- const suppressNavContentLinks = true
+	- const suppressNavbar = false
+	- const suppressFooter = true
+	- const suppressPugCookieBanner = true
+
+block append meta
+	meta(name='ol-userSettings' data-type='json' content=userSettings)
+	if suggestedLanguageSubdomainConfig
+		meta(
+			name='ol-suggestedLanguage'
+			data-type='json'
+			content=Object.assign(suggestedLanguageSubdomainConfig, {
+				lngName: translate(suggestedLanguageSubdomainConfig.lngCode),
+				imgUrl: buildImgPath('flags/24/' + suggestedLanguageSubdomainConfig.lngCode + '.png'),
+			})
+		)
+
+block content
+	#manage-site-root

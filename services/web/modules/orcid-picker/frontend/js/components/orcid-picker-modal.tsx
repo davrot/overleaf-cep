@@ -545,7 +545,7 @@ export default function OrcidPickerModal({
                   <OLFormCheckbox
                     checked={allSelected}
                     onChange={toggleAll}
-                    label={t('Select all ({{count}})', { count: works.length })}
+                    label={t('Select all (__count__)', { count: works.length })}
                   />
                 </div>
                 <div
@@ -632,11 +632,11 @@ export default function OrcidPickerModal({
             isLoading={importing}
           >
             {importing
-              ? t('Importing {{done}} of {{total}}…', {
+              ? t('Importing __done__ of __total__…', {
                   done: importProgress.done,
                   total: importProgress.total,
                 })
-              : t('Import selected ({{count}})', {
+              : t('Import selected (__count__)', {
                   count: selectedPutCodes.size,
                 })}
           </OLButton>

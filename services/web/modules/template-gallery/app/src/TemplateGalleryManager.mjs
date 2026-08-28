@@ -3,6 +3,7 @@ import logger from '@overleaf/logger'
 import mongoose from '../../../../app/src/infrastructure/Mongoose.mjs'
 import { Readable } from 'node:stream'
 import settings from '@overleaf/settings'
+import * as SiteSettingsManager from '../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
 import { OError } from '../../../../app/src/Features/Errors/Errors.js'
 import { Template } from './models/Template.mjs'
 import {
@@ -120,8 +121,21 @@ async function fetchTemplatePreview({ templateId, version, style }) {
 }
 
 async function getTemplatesPageData(category) {
-  const categoryName = settings.templateLinks.find(item => item.url.endsWith(`/${category}`))?.name
-  const templateLinks = categoryName ? undefined : settings.templateLinks.filter(link => link.url !== '/templates/all')
+  let links = (settings.templateLinks || []).map(l => ({ ...l }))
+  try {
+    const section = await SiteSettingsManager.getSection('templates', settings)
+    links = (section.categories || [])
+      .filter(c => c.enabled)
+      .map(c => ({
+        name: c.name,
+        url: `/templates/${c.key}`,
+        description: c.description || '',
+      }))
+  } catch {
+    // env-seed fallback (settings.templateLinks)
+  }
+  const categoryName = links.find(item => (item.url || '').endsWith(`/${category}`))?.name
+  const templateLinks = categoryName ? undefined : links.filter(link => link.url !== '/templates/all')
   return {
     categoryName,
     templateLinks

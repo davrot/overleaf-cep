@@ -29,3 +29,40 @@ upstream; the CE+ integration points are:
 - **Deep-audit finding (informational)** — the ds-nav stylesheets define
   namespaced `--ds-nav-*` custom properties on `body`; they are only
   consumed by the admin-tools page subtree, left as-is (low risk).
+
+## Manage Site (SiteSettings admin console, 2026-08-28)
+
+New admin-only page `/admin/site` (Manage Site) + API, backed by the
+**core `SiteSettings` feature**
+(`app/src/Features/SiteSettings/` — see its README):
+
+- `app/src/SiteSettingsController.mjs`
+  - `GET /admin/site` — renders `app/views/manage-site-react.pug`
+    (React entry `modules/admin-tools/pages/manage-site`).
+  - `GET /admin/site-settings` — all four sections
+    (`templates` / `zotero` / `externalUrl` / `signup`), secrets masked
+    (`clientSecret` never returned; `clientSecretSet` flag instead),
+    plus per-category `Template` counts for the templates section.
+  - `PUT /admin/site-settings/:section` — per-section replacement,
+    validated by the feature's validators (422 on bad input); an empty
+    secret in the payload keeps the stored value.
+  - All routes sit behind `AuthorizationMiddleware.ensureUserIsSiteAdmin`.
+- `frontend/js/pages/manage-site.tsx` +
+  `frontend/js/site-settings/site-settings-root.tsx` +
+  `frontend/js/site-settings/components/site-settings-page.tsx`
+  - Tabs: **Templates** (gallery switch; category table: name link,
+    on/off checkbox, template count, description, Edit modal for
+    name+description), **Zotero** (on/off, client key, masked client
+    secret — note the shared cipher with GitHub Sync),
+    **External URLs** (on/off, blocked CIDR list, allowed-resources
+    regex), **Sign Up** (on/off, allowed email domains).
+- Nav (user design, 2026-08-28): the site-management links live in the
+  **Account dropdown, grouped under a “Manage” section label** (Manage
+  Site → `/admin/site`, Manage Users → `/admin/user`, Manage Projects →
+  `/admin/project`) and a **Projects** entry (→ `/project`) sits above
+  Library. A nested react-bootstrap `<Dropdown>` inside the menu's
+  `Dropdown.Menu` was tried first and is broken (the parent menu's
+  root-close handler swallows the inner toggle) — the flat
+  label-plus-items pattern is the proven one in this menu. The header
+  navbar no longer carries the "Admin" management block
+  (`admin-menu.tsx` / `default-navbar.tsx` updated accordingly).

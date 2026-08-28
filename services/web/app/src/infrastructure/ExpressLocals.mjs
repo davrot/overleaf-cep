@@ -12,6 +12,7 @@ import PackageVersions from './PackageVersions.js'
 import Modules from './Modules.mjs'
 import Errors from '../Features/Errors/Errors.js'
 import AdminAuthorizationHelper from '../Features/Helpers/AdminAuthorizationHelper.mjs'
+import * as SiteSettingsManager from '../Features/SiteSettings/SiteSettingsManager.mjs'
 import { addOptionalCleanupHandlerAfterDrainingConnections } from './GracefulShutdown.mjs'
 import { sanitizeSessionUserForFrontEnd } from './FrontEndUser.mjs'
 import { expressify } from '@overleaf/promise-utils'
@@ -285,13 +286,26 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
   webRouter.use(useNonAdminDomainCapabilities)
   webRouter.use(useHasNonAdminDomainCapability)
 
-  webRouter.use(function (req, res, next) {
+  webRouter.use(async function (req, res, next) {
     // Clone the nav settings so they can be modified for each request
     res.locals.nav = {}
     for (const key in Settings.nav) {
       res.locals.nav[key] = _.clone(Settings.nav[key])
     }
     res.locals.templates = Settings.templateLinks
+    // Admin-managed categories (Manage Site → Templates) win over the
+    // env seed; fall back to the seed on read failure.
+    try {
+      const section = await SiteSettingsManager.getSection('templates', Settings)
+      res.locals.templates = (section.categories || []).filter(c => c.enabled).map(c => ({
+        name: c.name,
+        url: `/templates/${c.key}`,
+        description: c.description || '',
+      }))
+      res.locals.templatesEnabled = section.enabled !== false
+    } catch {
+      res.locals.templatesEnabled = true
+    }
     next()
   })
 

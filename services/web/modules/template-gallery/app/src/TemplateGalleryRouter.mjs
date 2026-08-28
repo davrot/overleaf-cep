@@ -5,6 +5,7 @@ import RateLimiterMiddleware from '../../../../app/src/Features/Security/RateLim
 import { RateLimiter } from '../../../../app/src/infrastructure/RateLimiter.mjs'
 import TemplateGalleryController from './TemplateGalleryController.mjs'
 import TemplateAuthorizationMiddleware from './TemplateAuthorizationMiddleware.mjs'
+import { ensureGalleryEnabled } from './TemplateGallerySection.mjs'
 
 const rateLimiterNewTemplate = new RateLimiter('create-template-from-project', {
   points: 20,
@@ -26,6 +27,7 @@ export default {
 
     webRouter.post(
       '/template/new/:Project_id',
+      ensureGalleryEnabled,
       AuthenticationController.requireLogin(),
       RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
       TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
@@ -34,12 +36,14 @@ export default {
 
     webRouter.get(
       '/template/:template_id',
+      ensureGalleryEnabled,
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateGalleryController.templateDetailsPage
     )
 
     webRouter.post(
       '/template/:template_id/edit',
+      ensureGalleryEnabled,
       AuthenticationController.requireLogin(),
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
@@ -48,6 +52,7 @@ export default {
 
     webRouter.delete(
       '/template/:template_id/delete',
+      ensureGalleryEnabled,
       AuthenticationController.requireLogin(),
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
@@ -56,24 +61,28 @@ export default {
 
     webRouter.get(
       '/templates/:category?',
+      ensureGalleryEnabled,
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateGalleryController.templatesCategoryPage
     )
 
     webRouter.get(
       '/api/template',
+      ensureGalleryEnabled,
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateGalleryController.getTemplateJSON
     )
 
     webRouter.get(
       '/api/templates',
+      ensureGalleryEnabled,
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateGalleryController.getCategoryTemplatesJSON
     )
 
     webRouter.get(
       '/template/:template_id/preview',
+      ensureGalleryEnabled,
       (req, res, next) => {
         const limiter = req.query.style === 'thumbnail' ? rateLimiterThumbnails : rateLimiter
         RateLimiterMiddleware.rateLimit(limiter)(req, res, next)

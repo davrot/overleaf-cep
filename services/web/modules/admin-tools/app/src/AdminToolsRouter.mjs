@@ -2,6 +2,7 @@ import logger from '@overleaf/logger'
 import UserListController from './UserListController.mjs'
 import ProjectListController from './ProjectListController.mjs'
 import AdminToolsController from './AdminToolsController.mjs'
+import SiteSettingsController from './SiteSettingsController.mjs'
 import AuthorizationMiddleware from '../../../../app/src/Features/Authorization/AuthorizationMiddleware.mjs'
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 
@@ -82,6 +83,20 @@ export default {
     webRouter.get('/admin/active-projects',
       AuthorizationMiddleware.ensureUserIsSiteAdmin,
       AdminToolsController.activeProjects,
+    )
+
+    // ---- Manage Site (SiteSettings: templates/zotero/external-urls/signup) ---
+    webRouter.get('/admin/site',
+      AuthorizationMiddleware.ensureUserIsSiteAdmin,
+      SiteSettingsController.manageSitePage
+    )
+    webRouter.get('/admin/site-settings',
+      AuthorizationMiddleware.ensureUserIsSiteAdmin,
+      SiteSettingsController.getSiteSettings
+    )
+    webRouter.put('/admin/site-settings/:section',
+      AuthorizationMiddleware.ensureUserIsSiteAdmin,
+      SiteSettingsController.updateSiteSettings
     )
   },
 }

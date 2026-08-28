@@ -65,3 +65,27 @@ Local fork changes (see git log on the `bib-editor` branch):
   Library / Projects / Templates with Templates active; template details
   page same chrome; `getTemplate` probes pass
   (`$where` / unknown key / bad `_id` → no data; `key=name` still works).
+
+## Admin-managed on/off + categories (SiteSettings, 2026-08-28)
+
+The gallery is no longer boot-gated on `OVERLEAF_TEMPLATE_GALLERY`:
+
+- `index.mjs` registers the router unconditionally; the env var survives
+  only as the **seed** for the admin-stored value.
+- `app/src/TemplateGallerySection.mjs`
+  - `templateSection()` — per-request read of the `templates` section of
+    the core `SiteSettings` feature (5 s TTL cache; **stored value wins
+    over env**; env vars `OVERLEAF_TEMPLATE_GALLERY`,
+    `OVERLEAF_TEMPLATE_CATEGORIES`, `TEMPLATE_<KEY>_NAME/DESCRIPTION`
+    apply only while the admin has not stored a value).
+  - `ensureGalleryEnabled` — applied to every gallery route in
+    `TemplateGalleryRouter`: gallery OFF → plain 404 (hidden, not
+    forbidden).
+- `TemplateGalleryManager.getTemplatesPageData` — category list comes
+  from the per-request section (stored wins), falling back to
+  `Settings.templateLinks` (env seed) on read errors.
+- `getSection().enabled === false` for a single category hides only
+  that category's page (its templates remain stored).
+- Manage UI: **Admin → Manage (submenu) → Manage Site** → Templates tab
+  (gallery on/off switch + per-category on/off, name, description and
+  live `Template` counts) — see `modules/admin-tools/README.md`.
