@@ -1,7 +1,116 @@
 # Plan: ORCID picker · bib-editor fixes · templates
 
 Branch: `bib-editor` (origin `davrot/overleaf-cep`) — checkout `/root/junk_bib/overleaf-cep`
-Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Ready to execute: P0 → P1 → P2 → P3.
+Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 (ORCID port) next** (2026-08-28).
+
+### Progress log (verified)
+- **P0 DONE (2026-08-28)** — stray helper removed on both surfaces;
+  mapping now a tested pure `helperKeyForField` (`utils/bib-form-helper.ts`,
+  4 unit tests); key dropped from `en.json` + `extracted-translations.json`.
+  Gates: eslint 0 warn, vitest 424/424, image `bib-editor-5c6dacf…` built
+  (stray string absent from bundle), container cycled healthy (image-ID match,
+  /tmp 1777, port 4000), **live-verified**: project form (greenwade93 → Author
+  row has no helper) + library Add→"Enter manually" (Author row no helper),
+  `strayOnPage=false` on both. Committed `011b72458a` (code) + `08b50ebc96`
+  (this plan), pushed to origin/bib-editor.
+  - Note: root `yarn install` was required (known-broken lockfile; sanctioned
+    ~4.7k-line prune committed with P0; `yarn install --immutable` passes).
+  - i18n pipeline follow-up (LOW, separate task): scanner glob
+    `modules/*/frontend/js/**` misses modules without `js/` (reference-picker,
+    symbol-palette) and drops some TSX `t()` calls → regenerating
+    `extracted-translations.json` now removes 797 keys (773 stale, 24 still used
+    incl. bib-editor strings + `Page range` helper). Do NOT regenerate until the
+    scanner config/transform is fixed + the 24 re-added (list obtainable via a
+    key-diff of the scanner output vs HEAD file).
+- **P1 IN PROGRESS** (2026-08-28) — deployed build now = current tree + P0.
+  Repro harness: CDP driver `/tmp/oly-e2e/cdp.mjs`; open entry = click
+  `.bibtex-entry-card-clickable` (role=button, id `bibtex-entry-card-<key>#0`);
+  list = `.bibtex-entry-list-body [data-index]`; panel = `bib-editor-panel` /
+  `bibtex-list-and-preview` (a CM6 `cm-panel` under `.cm-panels`); Visual mode =
+  "Visual" span near editor; project `sample.bib` entry `greenwade93` = baseline.
+  Open: identify the save control for the project form (no Check/Save button
+  inside `#bibtex-entry-form`; footer likely in panel toolbar) before the
+  reviewer-sequence repro (edit author → save → main.tex → back).
+
+  **2026-08-28 update — REPRODUCED (3×) + ROOT CAUSE identified + fix designed:**
+  Sequence (live TestProject/`sample.bib`, entry `greenwade93`): Visual → open
+  entry → type new author into `#bib-field-author-0` (flush fires on the file
+  switch — `bib-editor-panel.tsx` leave-watcher; spy: exactly ONE
+  `bib-editor:write`, zero `write-failed`) → click main.tex → click sample.bib →
+  **list shows the entry TWICE** (both rows with the new author). **Server truth
+  (fresh load) = exactly 1 entry with the new author** after every repro run →
+  server is correct; corruption is client-side only. Console (`?debug=true`):
+  `[inflightOpTimeout] Sending` ×N, `aborted`, `Received an ack for an op with
+  an outdated version.` ×3, `pollSavedStatus: assuming not saved` forever (op
+  never acked) → reviewer's 'Out of sync' on next interaction; reload → 1 entry.
+
+### P1 ROOT CAUSE (code-verified; FIXED + VERIFIED 2026-08-28)
+
+Protocol: vendor `services/web/frontend/js/vendor/libs/sharejs.js` +
+`services/real-time/app/js/DocumentUpdaterController.js`:
+1. `submitOp()` applies the op to the local snapshot WITHOUT advancing `version`
+   (`flush()` sends `v: this.version` pre-increment; version only advances in
+   `_onMessage` on ack/remote-apply).
+2. Server applies once (mongo content proves it) and acks the SENDER with pure
+   `{v, doc}`; the full op goes to collaborators — EXCEPT a `dup`-marked op
+   (resend already applied): controller comment: "Duplicate ops should just be
+   sent back to sending client for acknowledgement" → **sender receives its own
+   op back** (`client.emit('otUpdateApplied', update)`).
+3. Client own-op branch (`sharejs.js:1094`) requires
+   `inflightSubmittedIds.includes(msg.meta.source)` — but that list is only
+   pushed in `_connectionStateChanged('disconnected')` (~line 977), never on a
+   normal send. A mid-op socket/session churn (observed `aborted` = transport
+   abort/reconnect → new session id) → server-recorded `meta.source` (old
+   session) ∉ list → **dup echo misroutes to the REMOTE-OP branch (~line 1230)**:
+   `msg.v === this.version` still passes; `_xf(inflightOp, op)` self-xform
+   keeps BOTH inserts → **op applied a 2nd time locally** (duplicate entry,
+   `version++`).
+4. The true pure-ack then arrives `v < this.version` → "ack for an op with an
+   outdated version" → **discarded** → `inflightOp` never cleared → endless
+   `[inflightOpTimeout] Sending` + `assuming not saved` (dead state).
+5. Next state rebuild shows the corrupted snapshot (2 entries); next edit hits
+   the desynced version state → Out of sync modal; reload restores server truth.
+
+**Fix (minimal, vendor file — already carries Overleaf modifications):** extend
+the own-op branch condition at `sharejs.js:1094`: if `this.inflightOp` is set,
+`msg.v === this.version`, and the incoming op deep-equals `this.inflightOp`
+→ treat as own-op ack (reuse existing ack path: clear inflight, callbacks,
+`delayedFlush()`), plus a debug log when the rescue fires. GATES: CDP repro →
+1 entry / saved / no outdated-ack warn / no resend loop; plain-edit sanity; two-
+session collab sanity; eslint (scoped, 0 warn); bib-editor vitest 424/424;
+`make all` + cycle + live verify both surfaces; commit+push. Regression
+artifacts: move the CDP repro scripts from /tmp into the repo (scripts/ or the
+bib-editor module test dir) as the standing repro/test.
+
+**FIX APPLIED** (`frontend/js/vendor/libs/sharejs.js`): the own-op branch
+condition (the `msg.op === undefined …` line) is extended with
+`|| isOwnOpEcho(this, msg)`; helpers `sameOpJson()` (safe deep JSON
+equality) + `isOwnOpEcho()` (requires a live unacked `inflightOp`, matching
+`msg.v === this.version`, and content equality) route the dup echo into the
+existing ack path (clears inflight, callbacks, `delayedFlush()`), with an
+always-on debug warn when the rescue fires.
+
+**VERIFIED (2026-08-28, deployed image `bib-editor` = `e05d63b1…`):**
+- RED baseline (pre-fix build): repo regression test FAILED exactly as
+  predicted — entry duplicated (2 rows), 2× `ack … outdated version`, 2×
+  `[inflightOpTimeout] Sending`, op left un-acked.
+- GREEN (fixed build): **11/11 checks PASS (twice)** — one entry, new author
+  present, 0 outdated-ack discards, 0 resends across the 5s watchdog
+  window, final `pollSavedStatus: no inflight or pending ops` (saved), no
+  Out-of-sync modal.
+- Collab sanity (two sessions): B ran the reviewer sequence while A held
+  the file — A sees exactly the single updated entry; B's console clean.
+- GATES: eslint 0 warn (scoped; vendor file eslint-ignored by design),
+  bib-editor vitest 424/424, `make all` clean, container cycled healthy
+  (image-ID match, /tmp 1777, port 4000), rescue string present in the
+  served bundle, live-verified on the FQDN (testjoe).
+- Regression artifact now in the repo:
+  `services/web/modules/bib-editor/test/e2e/` (cdp.mjs driver +
+  out-of-sync-repro.mjs + README) — env-only credentials, exit 0 on pass.
+- Server dedup was never at fault (mongo content = 1 entry after every
+  repro run); the fix is entirely in the vendored sharejs client. Residual
+  (out of scope, low): a genuine two-user identical-op race could in theory
+  be classified own — content-identical, invisible no-op.
 
 ---
 
