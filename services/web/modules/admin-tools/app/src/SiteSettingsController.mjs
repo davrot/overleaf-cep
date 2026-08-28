@@ -44,7 +44,7 @@ export default {
     res.render(
       Path.resolve(__dirname, '../views/manage-site-react'),
       {
-        title: 'Manage Site',
+        title: 'Manage Extensions',
         userSettings,
       }
     )

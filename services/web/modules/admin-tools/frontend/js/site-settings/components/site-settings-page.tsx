@@ -13,6 +13,9 @@
  *
  * API: GET  /admin/site-settings
  *      PUT  /admin/site-settings/<section>   (per-section, validated)
+ *
+ * Page chrome: the /admin/user DS-nav layout (user decision 2026-08-28) —
+ * same navbar, wrapper, title and content structure as the user-list page.
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -23,6 +26,14 @@ import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
 import { getJSON, putJSON } from '@/infrastructure/fetch-json'
+import getMeta from '@/utils/meta'
+import DefaultNavbar from '@/shared/components/navbar/default-navbar'
+import Footer from '@/shared/components/footer/footer'
+import CookieBanner from '@/shared/components/cookie-banner'
+import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
+import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
+import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
+import useThemedPage from '@/shared/hooks/use-themed-page'
 
 type TemplateCategory = {
   key: string
@@ -97,6 +108,10 @@ function useSectionSave(section: Section) {
 
 export default function SiteSettingsPage() {
   const { t } = useTranslation()
+  useThemedPage()
+  const navbarProps = getMeta('ol-navbar')
+  const footerProps = getMeta('ol-footer')
+  const activeOverallTheme = useActiveOverallTheme()
   const [settings, setSettings] = useState<SiteSettings | null>(null)
   const [active, setActive] = useState<Section>('templates')
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -115,30 +130,44 @@ export default function SiteSettingsPage() {
     }
   }, [])
 
-  if (loadError) {
-    return (
-      <div className="manage-site container" style={{ padding: '2rem 10%' }}>
-        <h1>{t('manageSite')}</h1>
-        <Notification type="error" content={loadError} />
-      </div>
-    )
-  }
-
-  if (!settings) {
-    return (
-      <div className="manage-site container" style={{ padding: '2rem 10%' }}>
-        <h1>{t('manageSite')}</h1>
-        <p>{t('loading')}</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="manage-site container" style={{ padding: '2rem 10%' }}>
-      <h1>{t('manageSite')}</h1>
-      <p style={{ color: 'var(--text-secondary, #666)' }}>{t('adminSiteIntro')}</p>
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+    <div className="user-ds-nav-page website-redesign red-nav-bar-for-admins manage-extensions-page">
+      <DefaultNavbar
+        {...(navbarProps || {})}
+        overleafLogo={activeOverallTheme === 'dark' ? overleafLogoDark : overleafLogo}
+        showCloseIcon
+      />
+      <div className="user-list-wrapper">
+        <div className="user-ds-nav-content-and-messages">
+          <div className="user-ds-nav-content">
+            <div className="user-ds-nav-main">
+              <main aria-labelledby="main-content">
+                <div className="user-list-header-row">
+                  <h1
+                    id="main-content"
+                    tabIndex={-1}
+                    className="user-list-title text-truncate d-none d-md-block"
+                  >
+                    {t('manageExtensions')}
+                  </h1>
+                </div>
+                {loadError ? (
+                  <Notification type="error" content={loadError} />
+                ) : !settings ? (
+                  <p>{t('loading')}</p>
+                ) : (
+                  <>
+                    <p className="manage-extensions-intro">
+                      {t('adminSiteIntro')}
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        marginBottom: '16px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
         {SECTIONS.map(s => (
           <OLButton
             key={s.id}
@@ -160,9 +189,18 @@ export default function SiteSettingsPage() {
             }
           />
         )}
-        {active === 'zotero' && <ZoteroTab initial={settings.zotero} />}
-        {active === 'externalUrl' && <ExternalUrlTab initial={settings.externalUrl} />}
-        {active === 'signup' && <SignupTab initial={settings.signup} />}
+                      {active === 'zotero' && <ZoteroTab initial={settings.zotero} />}
+                      {active === 'externalUrl' && <ExternalUrlTab initial={settings.externalUrl} />}
+                      {active === 'signup' && <SignupTab initial={settings.signup} />}
+                    </div>
+                  </>
+                )}
+              </main>
+            </div>
+            <Footer {...(footerProps || {})} />
+          </div>
+          <CookieBanner />
+        </div>
       </div>
     </div>
   )

@@ -312,3 +312,36 @@ $dropdown-item-min-height: 36px;
     }
   }
 }
+
+// "Manage" sub-dropdown flyout (account menu; user design 2026-08-28).
+// Reuses the .dropdown-menu base style; only positioning is added.
+.manage-submenu-item {
+  position: relative;
+
+  .manage-submenu-toggle {
+    width: 100%;
+    text-align: left;
+    border: 0;
+    padding: 0.5rem 1rem;
+    font: inherit;
+    color: var(--dropdown-text-color);
+    background: transparent;
+    cursor: pointer;
+
+    &:hover,
+    &:focus {
+      background: var(--dropdown-background-hover);
+      color: var(--dropdown-text-hover);
+    }
+  }
+
+  .manage-submenu-menu {
+    position: absolute;
+    right: 100%;
+    left: auto;
+    top: -1px;
+    min-width: 15rem;
+    margin: 0 0.5rem 0 0;
+    z-index: 1000;
+  }
+}

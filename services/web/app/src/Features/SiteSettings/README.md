@@ -5,7 +5,7 @@ Admin-managed, per-site settings backed by MongoDB
 Introduced 2026-08-28 to de-bootgate the admin-facing switches
 (template gallery, Zotero connector, external URL linked files, sign-up
 page) so they can be toggled at runtime from the
-**Manage Site** admin page (`/admin/site`).
+**Manage Extensions** admin page (`/admin/site`, chrome identical to `/admin/user`).
 
 ## Design (see `BIB_ORCID_TEMPLATES_PLAN.md`, decision 3.0)
 

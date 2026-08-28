@@ -30,9 +30,9 @@ upstream; the CE+ integration points are:
   namespaced `--ds-nav-*` custom properties on `body`; they are only
   consumed by the admin-tools page subtree, left as-is (low risk).
 
-## Manage Site (SiteSettings admin console, 2026-08-28)
+## Manage Extensions (SiteSettings admin console, 2026-08-28)
 
-New admin-only page `/admin/site` (Manage Site) + API, backed by the
+New admin-only page `/admin/site` ("Manage Extensions") + API, backed by the
 **core `SiteSettings` feature**
 (`app/src/Features/SiteSettings/` — see its README):
 
@@ -56,13 +56,15 @@ New admin-only page `/admin/site` (Manage Site) + API, backed by the
     secret — note the shared cipher with GitHub Sync),
     **External URLs** (on/off, blocked CIDR list, allowed-resources
     regex), **Sign Up** (on/off, allowed email domains).
-- Nav (user design, 2026-08-28): the site-management links live in the
-  **Account dropdown, grouped under a “Manage” section label** (Manage
-  Site → `/admin/site`, Manage Users → `/admin/user`, Manage Projects →
-  `/admin/project`) and a **Projects** entry (→ `/project`) sits above
-  Library. A nested react-bootstrap `<Dropdown>` inside the menu's
-  `Dropdown.Menu` was tried first and is broken (the parent menu's
-  root-close handler swallows the inner toggle) — the flat
-  label-plus-items pattern is the proven one in this menu. The header
+- Nav (user design, 2026-08-28, round 3): a **working “Manage”
+  sub-dropdown** (state-driven flyout opening to the *left*; a nested
+  react-bootstrap `<Dropdown>` inside the menu is swallowed by the
+  parent's root-close handling — broken, user-reported) in the Account
+  dropdown: **Manage Site** → `/admin` (the existing System Admin Panel,
+  historical name), **Manage Extensions** → `/admin/site`, **Manage
+  Users** → `/admin/user`, **Manage Projects** → `/admin/project`. A
+  **Projects** entry (→ `/project`) sits above Library. The header
   navbar no longer carries the "Admin" management block
-  (`admin-menu.tsx` / `default-navbar.tsx` updated accordingly).
+  (`admin-menu.tsx` / `default-navbar.tsx` updated accordingly). Flyout
+  style: `frontend/stylesheets/components/dropdown-menu.scss`
+  (`.manage-submenu-*`).

@@ -3492,7 +3492,7 @@
   "Year": "Year",
   "e.g. Jane Smith": "e.g. Jane Smith",
   "e.g. 0000-0002-1825-0097": "e.g. 0000-0002-1825-0097",
-  "manageSite": "Manage Site",
+  "manageExtensions": "Manage Extensions",
   "saveChanges": "Save changes",
   "templatesCount": "Templates",
   "adminSiteIntro": "Configure site-wide settings. Stored values take precedence over environment defaults.",

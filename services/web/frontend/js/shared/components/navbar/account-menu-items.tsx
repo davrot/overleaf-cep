@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Dropdown } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
@@ -6,8 +7,78 @@ import DropdownListItem from '@/shared/components/dropdown/dropdown-list-item'
 import NavDropdownDivider from './nav-dropdown-divider'
 import NavDropdownLinkItem from './nav-dropdown-link-item'
 import { useDsNavStyle } from '@/features/project-list/components/use-is-ds-nav'
-import { SignOut } from '@phosphor-icons/react'
+import { CaretLeft, SignOut } from '@phosphor-icons/react'
 import ThemeToggle from '@/features/project-list/components/sidebar/theme-toggle'
+
+/**
+ * "Manage" sub-dropdown (user design 2026-08-28): a folder that flies out
+ * to the left (the account menu sits at the right edge) containing the
+ * site-management links. Implemented as a state-driven flyout because a
+ * react-bootstrap <Dropdown> nested inside this Dropdown.Menu is swallowed
+ * by the parent's root-close handling (broken, user-reported).
+ *
+ * Naming: the historical Admin Panel (/admin) keeps the name "Manage Site";
+ * the site-settings console (/admin/site) is "Manage Extensions".
+ */
+function ManageSubmenu({ canManageProjects }: { canManageProjects: boolean }) {
+  const ref = useRef<HTMLLIElement | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  const items = [
+    { href: '/admin', label: 'Manage Site' },
+    { href: '/admin/site', label: 'Manage Extensions' },
+    { href: '/admin/user', label: 'Manage Users' },
+  ]
+  if (canManageProjects) items.push({ href: '/admin/project', label: 'Manage Projects' })
+
+  return (
+    <li
+      ref={ref}
+      role="none"
+      className="manage-submenu-item"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="dropdown-item manage-submenu-toggle d-flex align-items-center justify-content-between"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span>Manage</span>
+        <CaretLeft size={14} weight="bold" opacity={open ? 1 : 0.6} />
+      </button>
+      {open ? (
+        <ul role="menu" className="dropdown-menu manage-submenu-menu show">
+          {items.map(item => (
+            <li key={item.href} role="none">
+              <a href={item.href} role="menuitem" className="dropdown-item">
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  )
+}
 
 /**
  * Nav-extra links (SaaS layout: Library, Templates — see
@@ -79,30 +150,7 @@ export function AccountMenuItems({
         <>
           <NavDropdownDivider />
           {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup) ? (
-            <>
-              {/* Site-management links grouped under a "Manage" label
-                  (user feedback 2026-08-28). Kept as flat items — a nested
-                  <Dropdown> inside the react-bootstrap Dropdown.Menu is
-                  swallowed by the menu's root-close handler. */}
-              <Dropdown.Item as="li" disabled role="menuitem" className="small text-secondary">
-                Manage
-              </Dropdown.Item>
-              {nav.canDisplayAdminMenu ? (
-                <NavDropdownLinkItem href="/admin/site">
-                  Manage Site
-                </NavDropdownLinkItem>
-              ) : null}
-              {nav.canDisplayAdminMenu ? (
-                <NavDropdownLinkItem href="/admin/user">
-                  Manage Users
-                </NavDropdownLinkItem>
-              ) : null}
-              {nav.canDisplayProjectUrlLookup ? (
-                <NavDropdownLinkItem href="/admin/project">
-                  Manage Projects
-                </NavDropdownLinkItem>
-              ) : null}
-            </>
+            <ManageSubmenu canManageProjects={Boolean(nav.canDisplayProjectUrlLookup)} />
           ) : null}
           {nav.canDisplayAdminRedirect && nav.adminUrl ? (
             <NavDropdownLinkItem href={nav.adminUrl}>

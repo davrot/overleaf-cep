@@ -1,10 +1,43 @@
 # Plan: ORCID picker · bib-editor fixes · templates
 
 Branch: `bib-editor` (origin `davrot/overleaf-cep`) — checkout `/root/junk_bib/overleaf-cep`
-Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 DONE → P3 (admin console) in final verification** (2026-08-28). User feedback round 1 captured (§4.5: READMEs done, `__count__` i18n fix, nav restructure, blank-page fix; **P4 Zotero picker = NEW PHASE**).
+Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 ✅ → P1 ✅ → P2 ✅ → P3 ✅ (admin console; deployed+verified, committed b61b63e72b, round-3 feedback applied: rename /admin/site → "Manage Extensions" + /admin/user chrome, working "Manage" sub-dropdown with Manage Site→/admin / Manage Extensions→/admin/site / Users / Projects)** (2026-08-28). User feedback round 1 captured (§4.5: READMEs, `__count__` i18n fix, nav restructure, blank-page fix; **P4 Zotero picker = NEXT PHASE**).
 
 ### Progress log (verified)
-- **P0 DONE (2026-08-28)** — stray helper removed on both surfaces;
+
+### 2026-08-28 (later) — P3 verified, committed, and round-3 feedback applied
+- **P3 live verification (final):** 26/27 checks PASS on the FQDN (admin
+  console page + 4 tabs; category rename/persist round-trip; gallery
+  OFF→404 / ON→200; Sign Up ON/OFF persistence; Zotero OFF→403 with
+  status endpoint open; External URL 422 validation ×2 + valid persist;
+  Edit modal opens name/description; **non-admin blocked** — page →
+  `/restricted?from=/admin/site` (core admin guard) + 12/12 unit tests).
+  The single "FAIL" was harness session-stickiness (test browser kept a
+  prior login) — not a product gap.
+- **Committed + pushed:** `b61b63e72b` (36 files, +2171/−125; credential
+  scan clean).
+- **User round-3 feedback (applied this pass):**
+  1. `/admin/site` renamed **"Manage Extensions"** (i18n
+     `manageExtensions`, page title, controller title);
+  2. its page chrome now **identical to `/admin/user`** (DS-nav:
+     `user-ds-nav-page` + `red-nav-bar-for-admins` + `DefaultNavbar` +
+     `user-list-wrapper` + `user-list-title`; `suppressNavbar = true`
+     in the pug, React renders the navbar);
+  3. **working "Manage" sub-dropdown** in the Account menu (left flyout,
+     hover/click, Esc/outside close) with: **Manage Site → `/admin`**
+     (the existing System Admin Panel, historical name per user),
+     **Manage Extensions → `/admin/site`**, **Manage Users →
+     `/admin/user`**, **Manage Projects → `/admin/project`** — the
+     earlier flat label (and before that, a nested react-bootstrap
+     `<Dropdown>`, broken by the parent's root-close) is gone;
+  4. `/register → SSO` nginx 301 removed from
+     `/data_1/docker/compose_cep/nginx/nginx.conf`; nginx cycled;
+     local login flow verified (`/register → /login`);
+  5. docs updated (admin-tools README, SiteSettings README, this plan).
+- **Next: P4 — Zotero picker** (ORCID-picker clone; source = linked
+  Zotero via the zotero module; gated by Manage Site → Zotero).
+
+
   mapping now a tested pure `helperKeyForField` (`utils/bib-form-helper.ts`,
   4 unit tests); key dropped from `en.json` + `extracted-translations.json`.
   Gates: eslint 0 warn, vitest 424/424, image `bib-editor-5c6dacf…` built
