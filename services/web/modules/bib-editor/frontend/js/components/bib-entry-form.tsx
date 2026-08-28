@@ -50,6 +50,7 @@ import {
   offeredOptionalFields,
 } from '../utils/overleaf-type-map.ts'
 import { validateEntry } from '../utils/bib-validate'
+import { helperKeyForField } from '../utils/bib-form-helper'
 import type { BibEntry } from '../utils/bib-types'
 
 type Props = {
@@ -335,19 +336,13 @@ export default function BibEntryForm({
     }
   }
 
-  // Capture helper lines per row (C2 §1.2)
+  // Per-row helper line (C2 §1.2). The mapping is a tested pure function
+  // (utils/bib-form-helper.ts). Author/Editor intentionally have NO helper:
+  // the `Separate multiple names with "and"` line was user-reported as a
+  // stray string and removed (plan §2.4, 2026-08-28).
   const rowHelper = (fieldName: string): string | null => {
-    if (fieldName === 'author' || fieldName === 'editor') {
-      return t('Separate multiple names with "and"')
-    }
-    if (fieldName === 'pages') return t('Page range')
-    if (fieldName === 'doi') {
-      return t('The identifier only, not the full URL, e.g. 10.1000/xyz123')
-    }
-    if (fieldName === 'eprint') {
-      return t('The preprint archive identifier, e.g. math/0307200v3')
-    }
-    return null
+    const key = helperKeyForField(fieldName)
+    return key ? t(key) : null
   }
 
   // Focus D3: on opening an entry, focus the first empty required field,
