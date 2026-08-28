@@ -48,9 +48,11 @@ import BibManualModal from './bib-manual-modal'
 import BibEntryPreview from './bib-entry-preview'
 import BibImportModal from './bib-import-modal'
 import BibImportFromLibrary from './bib-import-from-library'
+import OrcidPickerModal from '../../../../orcid-picker/frontend/js/components/orcid-picker-modal'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
+import { normaliseOrcidEntryKeys, splitImportText } from '../utils/bib-import'
 import { downloadBibFilename, bulkDeleteIds, nextEntry, prevEntry } from '../utils/preview-model.ts'
 import '../../stylesheets/bib-editor-panel.css'
 import '../../stylesheets/bib-saas.css'
@@ -94,6 +96,8 @@ function BibEditorPanel() {
   const [importOpen, setImportOpen] = useState(false)
   // C9: "Import from Library" (LIBRARY_PLAN.md — the one deliberate deviation)
   const [libraryImportOpen, setLibraryImportOpen] = useState(false)
+  // P2: "Import from ORCID.org" (Add dropdown) — the orcid-picker modal.
+  const [orcidOpen, setOrcidOpen] = useState(false)
   // Item 3: "Enter manually" opens the Add-reference modal (SaaS parity).
   const [manualShow, setManualShow] = useState(false)
   const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
@@ -418,6 +422,26 @@ function BibEditorPanel() {
     setLibraryImportOpen(false)
   }, [importMany])
 
+  // P2: Import from ORCID (BIB_ORCID_TEMPLATES_PLAN.md §2.3) — the modal
+  // already fetched the BibTeX of the selected works; write it through
+  // the same guarded append path as the paste import (new keys only —
+  // conflicts surface with the usual banner; the modal closes itself on
+  // full success and stays open with per-work errors otherwise).
+  const handleOrcidInserted = useCallback(
+    (bibtexText: string) => {
+      const entries = normaliseOrcidEntryKeys(
+        splitImportText(bibtexText)
+          .filter(i => i.kind === 'bibtex')
+          .map(i => (i as { entry: BibEntry }).entry)
+      )
+      if (entries.length > 0) {
+        importMany({ entries, expectedSource: sourceMirror.current })
+      }
+      setOrcidOpen(false)
+    },
+    [importMany]
+  )
+
   // Download (OQ-6: whole file). The browser saves the current document
   // text; no range export.
   const handleDownload = useCallback(() => {
@@ -556,6 +580,7 @@ function BibEditorPanel() {
               onAddPaste={() => setImportOpen(true)}
               onAddManual={() => setManualShow(true)}
               onAddFromLibrary={() => setLibraryImportOpen(true)}
+              onAddFromOrcid={() => setOrcidOpen(true)}
             />
             {selection?.kind === 'existing' && previewEntry ? (
               <BibEntryPreview
@@ -628,6 +653,13 @@ function BibEditorPanel() {
         existingIds={entries.map(e => e.id)}
         onImport={handleLibraryImport}
         onHidden={() => setLibraryImportOpen(false)}
+      />
+
+      {/* P2: Import from ORCID (Add dropdown "Import from ORCID.org") */}
+      <OrcidPickerModal
+        show={orcidOpen}
+        handleHide={() => setOrcidOpen(false)}
+        onInsert={handleOrcidInserted}
       />
     </div>
   )

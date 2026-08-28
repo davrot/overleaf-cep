@@ -84,6 +84,8 @@ type Props = {
   bulkDeleteLabel?: string
   /** C9 (project side): functional Add-menu "Import from Library" */
   onAddFromLibrary?: () => void
+  /** ORCID import (P2) — shown in the Add menu when the host wires it. */
+  onAddFromOrcid?: () => void
 }
 
 export default function BibEntryList({
@@ -107,6 +109,7 @@ export default function BibEntryList({
   onBulkRestore,
   bulkDeleteLabel,
   onAddFromLibrary,
+  onAddFromOrcid,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -184,6 +187,16 @@ export default function BibEntryList({
               <DropdownItem onClick={onAddManual}>
                 {t('Enter manually')}
               </DropdownItem>
+              {/* P2 — "Import from ORCID.org" (BIB_ORCID_TEMPLATES_PLAN.md):
+                  wired by both hosts (project panel + library top bar). */}
+              {onAddFromOrcid ? (
+                <DropdownItem
+                  description={t('Search ORCID by name or iD')}
+                  onClick={onAddFromOrcid}
+                >
+                  {t('Import from ORCID.org')}
+                </DropdownItem>
+              ) : null}
               {/* C9 — "Import from Library" (LIBRARY_PLAN.md): enabled when
                   the host wires it (project panel); the disabled stub is
                   the pre-L behavior fallback. */}

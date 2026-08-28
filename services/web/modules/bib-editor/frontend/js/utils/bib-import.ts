@@ -16,7 +16,7 @@
  *      guarded, all-or-nothing append).
  */
 import type { BibEntry } from './bib-types'
-import { parseBibFile } from './bib-parser.ts'
+import { generateCitationKey, parseBibFile } from './bib-parser.ts'
 import { humanizeCitationHeading } from './overleaf-type-map.ts'
 
 /** One pasted "item", in paste order. */
@@ -243,4 +243,48 @@ export function importableRows(rows: BibImportRow[]): BibEntry[] {
 /** True when the preview has at least one resolvable row. */
 export function hasImportableRows(rows: BibImportRow[]): boolean {
   return rows.some(r => r.status === 'ok' || r.status === 'doi-ok')
+}
+
+// ---------------------------------------------------------------------------
+// ORCID import key normalisation (P2, BIB_ORCID_TEMPLATES_PLAN.md §2.3)
+// ---------------------------------------------------------------------------
+
+/** Library REST key charset (mirrors app/src/BibTypes.mjs). */
+export const VALID_CITATION_KEY = /^[A-Za-z0-9._-]+$/
+export const MAX_KEY_LENGTH = 128
+
+function isValidKey(key: string): boolean {
+  return key.length > 0 && key.length <= MAX_KEY_LENGTH && VALID_CITATION_KEY.test(key)
+}
+
+/**
+ * ORCID-embedded BibTeX sometimes carries machine-style keys that are not
+ * legal citation keys (e.g. `https://doi.org/10.17613/...` — the library
+ * REST layer rejects those with a 400). Normalise a batch of imported
+ * entries: keep legal keys as-is, regenerate illegal ones from the
+ * entry's own author/year/title (generateCitationKey always yields a key
+ * in the legal charset), and de-duplicate within the batch. Pure and
+ * side-effect free; returns new objects for changed entries only.
+ */
+export function normaliseOrcidEntryKeys(
+  entries: BibEntry[]
+): BibEntry[] {
+  const seen = new Set<string>()
+  return entries.map(entry => {
+    let key = (entry.id || '').trim()
+    if (!isValidKey(key)) {
+      key = generateCitationKey(entry.fields || {})
+    }
+    if (!isValidKey(key)) {
+      key = 'orcid'
+    }
+    let final = key
+    let n = 2
+    while (seen.has(final)) {
+      final = `${key}${n}`
+      n += 1
+    }
+    seen.add(final)
+    return final === entry.id ? entry : { ...entry, id: final }
+  })
 }

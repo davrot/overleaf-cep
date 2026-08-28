@@ -1250,6 +1250,7 @@ module.exports = {
     'git-bridge',
     'github-sync',
     'zotero',
+    'orcid-picker', // Import-from-ORCID picker (P2, BIB_ORCID_TEMPLATES_PLAN.md)
     'bib-editor',
   ],
   viewIncludes: {},

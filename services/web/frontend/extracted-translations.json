@@ -2794,5 +2794,7 @@
   "one_ref_deleted": "__count__ reference permanently deleted",
   "many_ref_deleted": "__count__ references permanently deleted",
   "one_ref_restored": "__count__ reference restored",
-  "many_ref_restored": "__count__ references restored"
+  "many_ref_restored": "__count__ references restored",
+  "Import from ORCID.org": "",
+  "Search ORCID by name or iD": ""
 }

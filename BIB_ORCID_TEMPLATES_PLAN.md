@@ -1,7 +1,7 @@
 # Plan: ORCID picker · bib-editor fixes · templates
 
 Branch: `bib-editor` (origin `davrot/overleaf-cep`) — checkout `/root/junk_bib/overleaf-cep`
-Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 (ORCID port) next** (2026-08-28).
+Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 DONE → P1 DONE → P2 DONE → P3 (admin console) next** (2026-08-28).
 
 ### Progress log (verified)
 - **P0 DONE (2026-08-28)** — stray helper removed on both surfaces;
@@ -22,7 +22,9 @@ Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip
     incl. bib-editor strings + `Page range` helper). Do NOT regenerate until the
     scanner config/transform is fixed + the 24 re-added (list obtainable via a
     key-diff of the scanner output vs HEAD file).
-- **P1 IN PROGRESS** (2026-08-28) — deployed build now = current tree + P0.
+- **P1 DONE (2026-08-28)** — deployed build now = current tree + P0.
+  (initial repro-harness notes below; final state: see “P1 ROOT CAUSE …
+  FIXED + VERIFIED” section + commit `367716de94`.)
   Repro harness: CDP driver `/tmp/oly-e2e/cdp.mjs`; open entry = click
   `.bibtex-entry-card-clickable` (role=button, id `bibtex-entry-card-<key>#0`);
   list = `.bibtex-entry-list-body [data-index]`; panel = `bib-editor-panel` /
@@ -43,6 +45,26 @@ Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip
   `[inflightOpTimeout] Sending` ×N, `aborted`, `Received an ack for an op with
   an outdated version.` ×3, `pollSavedStatus: assuming not saved` forever (op
   never acked) → reviewer's 'Out of sync' on next interaction; reload → 1 entry.
+- **P2 DONE (2026-08-28)** — ORCID picker ported from `../old-doi-orcid-picker`
+  @ e3c75ff into `modules/orcid-picker/` (router + hardened service + modal) and
+  wired into BOTH Add menus (project bib panel + library top bar) as
+  “Import from ORCID.org”. Service hardening vs old: hop-by-hop SSRF
+  (`redirect:'manual'` loop + strengthened `isPrivateAddress` incl. IPv4-mapped
+  IPv6, ULA, CGNAT, link-local), 5-hop cap, 10 s timeout, 2 MB cap, DOI key
+  sanity filter. Modal: i18n (28 new en.json keys + 2 extracted-translations
+  keys), OLFormCheckbox, import worker pool (4) with live progress, local ORCID
+  format validation. Import adapters normalise citation keys (`normaliseOrcidEntryKeys`
+  + tests — ORCID-embedded BibTeX can carry illegal URL-style keys; the library
+  REST rejects those, the all-or-nothing project import rejects any batch with a
+  taken key — both verified as the correct product semantics). Verified live:
+  project 1→3 rows (works #1+#2), name-search flow, invalid-iD local error,
+  library +1 row, 0 significant console errors, UI=mongo agreement; test data
+  cleaned (bad URL key → `haak2025`, probe author → George D. Greenwade).
+  Gates: orcid unit 9/9, bib-editor 429/429, scoped eslint 0 (autoFocus +
+  floating-promise rules fixed), build (2 webpack path-depth errors caught:
+  `../../` → `../../../../` cross-module import), image `2a1eabb2…` (routes
+  302-not-404, strings in bundle), cycled healthy. Remaining for P2 scope:
+  none (templates zip/PDF publish = separate P3-adjacent items tracked below).
 
 ### P1 ROOT CAUSE (code-verified; FIXED + VERIFIED 2026-08-28)
 

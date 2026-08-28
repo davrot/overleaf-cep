@@ -168,6 +168,27 @@ class Browser extends EventTarget {
     }
     return 'real-typed:' + String(text).length
   }
+
+  /** Replace the full selection (after select-all) with `text` using the
+   *  CDP `Input.insertText` — one shot, generates a proper beforeinput. */
+  async insertText(targetId, text) {
+    const sid = await this.attach(targetId)
+    await this.send('Input.insertText', { text: String(text) }, sid)
+    return 'inserted:' + String(text).length
+  }
+
+  /** Ctrl-A keyboard select-all on the focused element. */
+  async selectAll(targetId) {
+    const sid = await this.attach(targetId)
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'a', code: 'KeyA', text: 'a', modifiers: 2,
+    }, sid)
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2,
+    }, sid)
+    return 'select-all'
+  }
+
   async type(targetId, cssSelector, value) {
     return this.evalIn(targetId, `(() => {
       const el = document.querySelector(${JSON.stringify(cssSelector)})

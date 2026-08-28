@@ -45,9 +45,11 @@ import {
 import BibEntryList from '../components/bib-entry-list'
 import BibEntryPreview from '../components/bib-entry-preview'
 import BibImportModal from '../components/bib-import-modal'
+import OrcidPickerModal from '../../../../orcid-picker/frontend/js/components/orcid-picker-modal'
 import LibraryManualModal from './library-manual-modal'
 import * as api from './library-api'
 import { useLibrary } from './library-context'
+import { normaliseOrcidEntryKeys, splitImportText } from '../utils/bib-import'
 
 type Report = {
   entry: { type: string; id: string; fields: Record<string, string> }
@@ -62,6 +64,8 @@ export default function LibraryPage() {
   const [importShow, setImportShow] = useState(false)
   const [uploadText, setUploadText] = useState('')
   const [manualShow, setManualShow] = useState(false)
+  // P2: "Import from ORCID.org" (top-bar Add dropdown — orcid-picker modal).
+  const [orcidOpen, setOrcidOpen] = useState(false)
   const [confirmPermanent, setConfirmPermanent] = useState<string[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   // Last form report from the open preview (flush-on-leave, OQ-7).
@@ -102,6 +106,35 @@ export default function LibraryPage() {
   )
   const handleAddImported = useCallback(
     (entries: { type: string; id: string; fields: Record<string, string> }[]) => {
+      void lib
+        .addEntries(
+          entries.map(e => ({
+            key: e.id,
+            type: e.type,
+            fields: Object.entries(e.fields).map(([name, value]) => ({
+              name,
+              value,
+            })),
+          }))
+        )
+        .then(() => setImportShow(false))
+    },
+    [lib]
+  )
+  // P2: ORCID import — the modal already fetched the BibTeX of the
+  // selected works; create them through the same library REST path as
+  // the paste import (new-only mode: duplicate keys fail and are
+  // reported by the modal's host, i.e. here: the modal stays open on
+  // import failure and closes on success).
+  const handleOrcidInserted = useCallback(
+    (bibtexText: string) => {
+      const entries = normaliseOrcidEntryKeys(
+        splitImportText(bibtexText)
+          .filter(i => i.kind === 'bibtex')
+          .map(i => (i as { entry: { type: string; id: string; fields: Record<string, string> } }).entry)
+      )
+      setOrcidOpen(false)
+      if (entries.length === 0) return
       void lib
         .addEntries(
           entries.map(e => ({
@@ -287,6 +320,13 @@ export default function LibraryPage() {
                   </DropdownItem>
                   <DropdownItem onClick={() => setManualShow(true)}>
                     {t('Enter manually')}
+                  </DropdownItem>
+                  {/* P2 — "Import from ORCID.org" (BIB_ORCID_TEMPLATES_PLAN.md) */}
+                  <DropdownItem
+                    description={t('Search ORCID by name or iD')}
+                    onClick={() => setOrcidOpen(true)}
+                  >
+                    {t('Import from ORCID.org')}
                   </DropdownItem>
                 </DropdownMenu>
               </Dropdown>
@@ -491,6 +531,13 @@ export default function LibraryPage() {
         existingKeys={loadedKeys}
         onSaved={handleManualSaved}
         onHide={() => setManualShow(false)}
+      />
+
+      {/* P2: Import from ORCID (top-bar Add dropdown) */}
+      <OrcidPickerModal
+        show={orcidOpen}
+        handleHide={() => setOrcidOpen(false)}
+        onInsert={handleOrcidInserted}
       />
 
       {/* Permanent-delete confirmation (SaaS wording). */}
