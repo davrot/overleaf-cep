@@ -4,3 +4,9 @@
 # user defined files
 .env
 docker-compose.override.yml
+
+# Dependencies (npm workspaces: hoisted to root + per-workspace)
+node_modules/
+
+# Local dev tool state (pi agent)
+.pi/
