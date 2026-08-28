@@ -179,10 +179,16 @@ function boolFromEnv(value) {
 }
 
 function seedTemplateCategories(env, stored) {
+  // Union (user round 4, 2026-08-28): the table must list ALL categories
+  // the template extension supports — the 12 manual defaults, whatever
+  // OVERLEAF_TEMPLATE_CATEGORIES adds, custom stored keys (merged in by
+  // getSection), and 'all'. Env still wins for per-key name/description.
   const keysRaw = env.OVERLEAF_TEMPLATE_CATEGORIES
-  const keys = keysRaw
-    ? (keysRaw + ' all').split(/\s+/).filter(Boolean)
-    : [...DEFAULT_TEMPLATE_CATEGORIES.map(c => c.key), 'all']
+  const envKeys = keysRaw ? keysRaw.split(/\s+/).filter(Boolean) : []
+  const keys = []
+  const push = (k) => { if (k && !keys.includes(k)) keys.push(k) }
+  for (const key of [...DEFAULT_TEMPLATE_CATEGORIES.map(c => c.key), ...envKeys]) push(key)
+  push('all')
 
   return keys.map((key) => {
     const envKeyBase = key.toUpperCase().replace(/-/g, '_')

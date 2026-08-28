@@ -1,5 +1,14 @@
+/* global before, after */
 import { expect } from 'chai'
-import {
+
+// Hermetic unit tests (added 2026-08-28): point the manager at a dedicated
+// database so the LIVE site_settings document (stored-wins semantics)
+// cannot leak into the env-seed tests. This env MUST be set before the
+// manager's mongodb import is evaluated → dynamic import (ESM static
+// imports are hoisted and would run first).
+process.env.MONGO_URL = 'mongodb://127.0.0.1:27017/site-settings-unit'
+
+const {
   DEFAULT_TEMPLATE_CATEGORIES,
   validateTemplatesSection,
   validateZoteroSection,
@@ -8,11 +17,23 @@ import {
   SECTION_VALIDATORS,
   maskSecrets,
   getSection,
-} from '../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
-import {
+} = await import('../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
+const {
   encryptText,
   decryptText,
-} from '../../../app/src/Features/SiteSettings/SecretCipher.mjs'
+} = await import('../../../app/src/Features/SiteSettings/SecretCipher.mjs')
+const { default: mongodb } = await import('mongodb-legacy')
+const { MongoClient } = mongodb
+
+const unitDb = new MongoClient(process.env.MONGO_URL).db()
+
+before(async () => {
+  await unitDb.collection('site_settings').deleteMany({})
+})
+
+after(async () => {
+  try { await unitDb.dropDatabase() } catch { /* best effort */ }
+})
 
 describe('SiteSettings', () => {
   describe('DEFAULT_TEMPLATE_CATEGORIES', () => {
@@ -21,7 +42,7 @@ describe('SiteSettings', () => {
       expect(cats).to.have.length(12)
       expect(
         cats.map(c => c.key)
-      ).to.members([
+      ).to.have.members([
         'academic-journal',
         'book',
         'presentation',
@@ -188,12 +209,22 @@ describe('SiteSettings', () => {
       setEnv()
       const section = await getSection('templates')
       const keys = section.categories.map(c => c.key)
-      // env categories (thesis) + implicit 'all'; other manual keys are
-      // NOT seeded while OVERLEAF_TEMPLATE_CATEGORIES is set
-      expect(keys).to.members(['thesis', 'all'])
+      // Union (user round 4): manual defaults ∪ env categories ∪ 'all' —
+      // the admin table shows every supported category, not just the env
+      // list; env per-key name/description still win.
+      expect(keys).to.have.members([
+        'academic-journal', 'book', 'presentation', 'poster', 'cv', 'homework',
+        'bibliography', 'calendar', 'formal-letter', 'report', 'thesis',
+        'newsletter', 'all',
+      ])
       const thesis = section.categories.find(c => c.key === 'thesis')
       expect(thesis.name).to.equal('Theses (env)')
       expect(thesis.description).to.equal('thesis description (env)')
+      section.categories.forEach((c) => {
+        if (c.key !== 'thesis' && c.key !== 'all') {
+          expect([c.name, c.description]).to.not.deep.equal([undefined, undefined])
+        }
+      })
       expect(section.enabled).to.equal(true)
       capture()
 

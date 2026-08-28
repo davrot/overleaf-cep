@@ -1,9 +1,57 @@
 # Plan: ORCID picker · bib-editor fixes · templates
 
 Branch: `bib-editor` (origin `davrot/overleaf-cep`) — checkout `/root/junk_bib/overleaf-cep`
-Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 ✅ → P1 ✅ → P2 ✅ → P3 ✅ (admin console; deployed+verified, committed b61b63e72b, round-3 feedback applied: rename /admin/site → "Manage Extensions" + /admin/user chrome, working "Manage" sub-dropdown with Manage Site→/admin / Manage Extensions→/admin/site / Users / Projects)** (2026-08-28). User feedback round 1 captured (§4.5: READMEs, `__count__` i18n fix, nav restructure, blank-page fix; **P4 Zotero picker = NEXT PHASE**).
+Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip + pdf-optional, 2.3 ORCID semantics, 2.4 stray string confirmed, 3a publish fields, 3c encrypted secrets, 3d SSRF implementation). Executing: **P0 ✅ → P1 ✅ → P2 ✅ → P3 ✅ (admin console; deployed+verified, committed b61b63e72b, round-3 feedback applied: rename /admin/site → "Manage Extensions" + /admin/user chrome, working "Manage" sub-dropdown with Manage Site→/admin / Manage Extensions→/admin/site / Users / Projects, **+ round-4/5 feedback applied: inline Manage accordion (chevron ">"), /admin/site left sidebar, all-categories template table, stacked textarea labels, Save-changes 400 FIX (double-stringified body), /register renders for logged-in admins, env seeds removed from compose.yaml → fully settings-driven)** (2026-08-28). User feedback round 1 captured (§4.5: READMEs, `__count__` i18n fix, nav restructure, blank-page fix; **P4 Zotero picker = NEXT PHASE**).
 
 ### Progress log (verified)
+
+### 2026-08-28 (evening) — user round-4 + round-5 feedback applied (items 1–7)
+**Round 4 (menu + sidebar):**
+- Manage menu: replaced the broken react-bootstrap nested flyout with an
+  **inline accordion** (`ManageMenu` in account-menu-items.tsx): `CaretRight` (">")
+  that rotates 90° when open (`.manage-menu-caret.is-open`), items render as
+  inline `a.manage-menu-link` (no popper/portal → cannot be clipped or
+  swallowed by the parent root-close). Verified live: 4 links, correct
+  naming/URLs (Manage Site→/admin, Manage Extensions→/admin/site,
+  Users→/admin/user, Projects→/admin/project), chevron class toggles.
+- /admin/site: added the `/admin/user`-style **left sidebar**
+  (`.user-list-sidebar-wrapper-react` + section `ul.user-list-filters`
+  buttons for Templates/Zotero/External URLs/Sign Up +
+  `.ds-nav-sidebar-lower` account & CE+ block); h1 = active section label;
+  top button row removed. Verified live.
+
+**Round 5 (items 3–7):**
+- (3) Templates table now lists **all** supported categories: seed = 12
+  manual defaults ∪ env categories ∪ 'all'; `getSection` already merged
+  stored ∪ seed per key (stored wins per key). Result: 13 rows incl.
+  Books/CV/Poster/Newsletter/Bibliographies/… — verified live.
+- (4) Textarea labels sit **above** the field (`d-block mb-2` on the two
+  textarea `OLFormLabel`s; geometry-verified stacked: label bottom 248 <
+  textarea top 256).
+- (5) **"Save changes" 400 fixed — root cause:** the page double-stringified
+  the JSON body (`putJSON(..., { body: JSON.stringify(body) })` while
+  fetchJSON stringifies again) → body-parser
+  `SyntaxError: ""{"enable"... is not valid JSON` → 400. Now passes the
+  object. Verified: all four tabs save via REAL DOM clicks → "✓ Saved".
+- (6) /register: removed the logged-in redirect in
+  `RegistrationPageController.registrationPage` (was `req.user →` redirect
+  `/` → /project — the user's exact symptom); POST still refuses to create
+  an account under an active session. Verified: logged-in admin → 200
+  sign-up page. (Anonymous /register on this site goes through the
+  standard login wall — `!allowPublicAccess` + SSO deploy; unchanged.)
+- (7) compose.yaml: removed OVERLEAF_TEMPLATE_GALLERY, OVERLEAF_TEMPLATE_CATEGORIES,
+  TEMPLATE_*_NAME/DESCRIPTION (×3 pairs), ZOTERO_CLIENT_KEY/SECRET after
+  migrating the Zotero secret into the stored `site_settings` doc
+  (encrypted at rest). Server force-recreated; verified with NO env: templates
+  13 cats + names, zotero enabled + secretSet, signup on, externalUrl kept,
+  /register 200, /templates 200.
+- Unit tests: made hermetic — tests now use a dedicated Mongo db
+  (`MONGO_URL` → `site-settings-unit`, MONGO_URL is the supported override
+  in config/settings.defaults.js) so the LIVE stored settings can no longer
+  leak into env-seed assertions (that leak had started failing 3 tests);
+  fixed `to.have.members` chai assert + stray spread; 12/12 green.
+- **Open (P4, planned):** Zotero picker (same UX as ORCID picker, source =
+  user's linked Zotero via modules/zotero API).
 
 ### 2026-08-28 (later) — P3 verified, committed, and round-3 feedback applied
 - **P3 live verification (final):** 26/27 checks PASS on the FQDN (admin

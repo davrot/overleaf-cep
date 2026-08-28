@@ -25,8 +25,12 @@ import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
+import { Dropdown } from 'react-bootstrap'
+import { User as UserIcon } from '@phosphor-icons/react'
+import { AccountMenuItems } from '@/shared/components/navbar/account-menu-items'
 import { getJSON, putJSON } from '@/infrastructure/fetch-json'
 import getMeta from '@/utils/meta'
+import type { NavbarSessionUser } from '@/shared/components/types/navbar'
 import DefaultNavbar from '@/shared/components/navbar/default-navbar'
 import Footer from '@/shared/components/footer/footer'
 import CookieBanner from '@/shared/components/cookie-banner'
@@ -82,9 +86,10 @@ function useSectionSave(section: Section) {
     setError(null)
     setSaved(false)
     try {
+      // NOTE: pass the OBJECT — fetchJSON stringifies once
+      // (double-stringifying here produced a 400 body-parser error).
       await putJSON(`/admin/site-settings/${section}`, {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
+        body,
       })
       setSaved(true)
       return true
@@ -104,6 +109,77 @@ function useSectionSave(section: Section) {
   )
 
   return { saving, error, saved, save, flash }
+}
+
+
+/**
+ * Left sidebar for /admin/site — same shell as the /admin/user sidebar
+ * (user decision 2026-08-28): section list on top, account/help + CE+
+ * name at the bottom (mirrors user-list sidebar-ds-nav.tsx).
+ */
+function ManageSidebar({
+  active,
+  onSelect,
+}: {
+  active: Section
+  onSelect: (s: Section) => void
+}) {
+  const { t } = useTranslation()
+  const sessionUser = (getMeta('ol-navbar') ?? {}) as {
+    sessionUser?: NavbarSessionUser
+  }
+  return (
+    <div className="user-list-sidebar-wrapper-react d-none d-md-flex manage-extensions-sidebar">
+      <nav className="flex-grow flex-shrink" aria-label={t('manageExtensions')}>
+        <div className="user-list-sidebar-scroll">
+          <ul className="list-unstyled user-list-filters">
+            <li className="dropdown-header">{t('manageExtensions')}</li>
+            {SECTIONS.map(sec => (
+              <li key={sec.id} className={active === sec.id ? 'active' : ''}>
+                <button type="button" onClick={() => onSelect(sec.id)}>
+                  {t(sec.labelKey)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+      <div className="ds-nav-sidebar-lower">
+        <nav
+          className="d-flex flex-row gap-3 mb-2"
+          aria-label="account help"
+        >
+          {sessionUser?.sessionUser ? (
+            <Dropdown className="ds-nav-icon-dropdown" role="menu">
+              <Dropdown.Toggle role="menuitem" aria-label={t('Account')}>
+                <div>
+                  <UserIcon size={24} />
+                </div>
+              </Dropdown.Toggle>
+              <Dropdown.Menu
+                as="ul"
+                role="menu"
+                align="end"
+                popperConfig={{
+                  modifiers: [{ name: 'offset', options: { offset: [-50, 5] } }],
+                }}
+              >
+                <AccountMenuItems
+                  sessionUser={sessionUser.sessionUser}
+                  showSubscriptionLink={false}
+                  showThemeToggle={true}
+                  // keep the "Manage" accordion stable inside this menu
+                />
+              </Dropdown.Menu>
+            </Dropdown>
+          ) : null}
+        </nav>
+        <div className="ds-nav-ds-name" translate="no">
+          <span>CE+</span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function SiteSettingsPage() {
@@ -138,6 +214,7 @@ export default function SiteSettingsPage() {
         showCloseIcon
       />
       <div className="user-list-wrapper">
+        <ManageSidebar active={active} onSelect={setActive} />
         <div className="user-ds-nav-content-and-messages">
           <div className="user-ds-nav-content">
             <div className="user-ds-nav-main">
@@ -148,7 +225,7 @@ export default function SiteSettingsPage() {
                     tabIndex={-1}
                     className="user-list-title text-truncate d-none d-md-block"
                   >
-                    {t('manageExtensions')}
+                    {t(SECTIONS.find(sec => sec.id === active)!.labelKey)}
                   </h1>
                 </div>
                 {loadError ? (
@@ -160,25 +237,6 @@ export default function SiteSettingsPage() {
                     <p className="manage-extensions-intro">
                       {t('adminSiteIntro')}
                     </p>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '8px',
-                        marginBottom: '16px',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-        {SECTIONS.map(s => (
-          <OLButton
-            key={s.id}
-            variant={active === s.id ? 'primary' : 'secondary'}
-            onClick={() => setActive(s.id)}
-          >
-            {t(s.labelKey)}
-          </OLButton>
-        ))}
-      </div>
-
       <div style={{ maxWidth: '900px' }}>
         {active === 'templates' && (
           <TemplatesTab
@@ -340,7 +398,7 @@ function TemplatesTab({
               />
             </OLFormGroup>
             <OLFormGroup>
-              <OLFormLabel htmlFor={`tpl-desc-${editKey}`}>{translate('description')}</OLFormLabel>
+              <OLFormLabel htmlFor={`tpl-desc-${editKey}`} className="d-block mb-2">{translate('description')}</OLFormLabel>
               <textarea
                 id={`tpl-desc-${editKey}`}
                 className="ol-form-control"
@@ -448,7 +506,7 @@ function ExternalUrlTab({ initial }: { initial: SiteSettings['externalUrl'] }) {
         />
       </OLFormGroup>
       <OLFormGroup>
-        <OLFormLabel htmlFor="ext-net">{t('adminSite.blockedNetworks')}</OLFormLabel>
+        <OLFormLabel htmlFor="ext-net" className="d-block mb-2">{t('adminSite.blockedNetworks')}</OLFormLabel>
         <textarea
           id="ext-net"
           className="ol-form-control"

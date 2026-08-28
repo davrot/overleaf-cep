@@ -1,14 +1,12 @@
-import Path from 'path'
-import logger from '@overleaf/logger'
+import Path from 'node:path'
 import registerNewUserAndSendActivationEmail from './UserRegistrationHandler.mjs'
 import EmailHelper from '../../../../app/src/Features/Helpers/EmailHelper.mjs'
 import Settings from '@overleaf/settings'
 
 async function registrationPage(req, res, next) {
-  // Check if the user is already logged in
-  if (req.user != null) {
-    return res.redirect(`/`)
-  }
+  // NOTE (user round 4, 2026-08-28): admins inspect /register while logged
+  // in; the page is now viewable for logged-in sessions too (the POST
+  // still refuses to create an account under an active session, below).
 
   const sharedProjectData = req.session.sharedProjectData || {}
 
@@ -44,6 +42,12 @@ async function registrationPage(req, res, next) {
 }
 
 async function registerNewUser(req, res, next) {
+  // A logged-in session must not be able to create a new account via the
+  // registration form (it would take over the session): send the user back.
+  if (req.user != null) {
+    return res.redirect(`/`)
+  }
+
   const { email, first_name, last_name } = req.body
 
   if (

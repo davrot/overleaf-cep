@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Dropdown } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
@@ -7,76 +7,55 @@ import DropdownListItem from '@/shared/components/dropdown/dropdown-list-item'
 import NavDropdownDivider from './nav-dropdown-divider'
 import NavDropdownLinkItem from './nav-dropdown-link-item'
 import { useDsNavStyle } from '@/features/project-list/components/use-is-ds-nav'
-import { CaretLeft, SignOut } from '@phosphor-icons/react'
+import { CaretRight, SignOut } from '@phosphor-icons/react'
 import ThemeToggle from '@/features/project-list/components/sidebar/theme-toggle'
 
 /**
- * "Manage" sub-dropdown (user design 2026-08-28): a folder that flies out
- * to the left (the account menu sits at the right edge) containing the
- * site-management links. Implemented as a state-driven flyout because a
- * react-bootstrap <Dropdown> nested inside this Dropdown.Menu is swallowed
- * by the parent's root-close handling (broken, user-reported).
+ * "Manage" sub-folder (user design 2026-08-28, round 4): an INLINE
+ * accordion — click "Manage" and the four site-management links unfold
+ * directly below it (the flyout version did not unfold in the reported
+ * browser sessions; inline cannot be clipped/positioning-sensitive).
+ * Chevron: ">" (CaretRight), rotates down when open.
  *
- * Naming: the historical Admin Panel (/admin) keeps the name "Manage Site";
- * the site-settings console (/admin/site) is "Manage Extensions".
+ * Naming (user round 3): the historical Admin Panel (/admin) keeps the
+ * name "Manage Site"; the settings console (/admin/site) is
+ * "Manage Extensions".
  */
-function ManageSubmenu({ canManageProjects }: { canManageProjects: boolean }) {
-  const ref = useRef<HTMLLIElement | null>(null)
+function ManageMenu({ canManageProjects }: { canManageProjects: boolean }) {
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [])
-
   const items = [
     { href: '/admin', label: 'Manage Site' },
     { href: '/admin/site', label: 'Manage Extensions' },
     { href: '/admin/user', label: 'Manage Users' },
   ]
   if (canManageProjects) items.push({ href: '/admin/project', label: 'Manage Projects' })
-
   return (
-    <li
-      ref={ref}
-      role="none"
-      className="manage-submenu-item"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        className="dropdown-item manage-submenu-toggle d-flex align-items-center justify-content-between"
-        aria-haspopup="true"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-      >
-        <span>Manage</span>
-        <CaretLeft size={14} weight="bold" opacity={open ? 1 : 0.6} />
-      </button>
-      {open ? (
-        <ul role="menu" className="dropdown-menu manage-submenu-menu show">
-          {items.map(item => (
-            <li key={item.href} role="none">
-              <a href={item.href} role="menuitem" className="dropdown-item">
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </li>
+    <>
+      <li role="none">
+        <button
+          type="button"
+          role="menuitem"
+          className="dropdown-item manage-submenu-toggle d-flex align-items-center justify-content-between"
+          aria-haspopup="true"
+          aria-expanded={open}
+          onClick={() => setOpen(o => !o)}
+        >
+          <span>Manage</span>
+          <CaretRight
+            size={14}
+            weight="bold"
+            className={`manage-menu-caret ${open ? 'is-open' : ''}`}
+          />
+        </button>
+      </li>
+      {open ? items.map(item => (
+        <li key={item.href} role="none">
+          <a href={item.href} role="menuitem" className="dropdown-item manage-menu-link">
+            {item.label}
+          </a>
+        </li>
+      )) : null}
+    </>
   )
 }
 
@@ -150,7 +129,7 @@ export function AccountMenuItems({
         <>
           <NavDropdownDivider />
           {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup) ? (
-            <ManageSubmenu canManageProjects={Boolean(nav.canDisplayProjectUrlLookup)} />
+            <ManageMenu canManageProjects={Boolean(nav.canDisplayProjectUrlLookup)} />
           ) : null}
           {nav.canDisplayAdminRedirect && nav.adminUrl ? (
             <NavDropdownLinkItem href={nav.adminUrl}>
