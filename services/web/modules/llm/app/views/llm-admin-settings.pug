@@ -11,6 +11,9 @@ block append meta
     meta(name='ol-llmApiUrl' data-type='string' content=llmApiUrl)
     meta(name='ol-hasLlmApiKey' data-type='string' content=hasLlmApiKey ? 'true' : 'false')
     meta(name='ol-allowedModels' data-type='string' content=(allowedModels || []).join(','))
+    meta(name='ol-llmDisabledByAdmin' data-type='string' content=llmDisabledByAdmin ? 'true' : 'false')
+    meta(name='ol-languageToolUrl' data-type='string' content=languageToolUrl)
+    meta(name='ol-languageToolDisabledByAdmin' data-type='string' content=languageToolDisabledByAdmin ? 'true' : 'false')
 
 block content
     main#main-content.content.content-alt

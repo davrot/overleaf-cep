@@ -2,6 +2,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
 import LLMSettingsSection from './llm-settings-section'
+import GrammarSettingsSection from '../../../../languagetool/frontend/js/grammar-settings-section'
 import OLRow from '@/shared/components/ol/ol-row'
 import OLCol from '@/shared/components/ol/ol-col'
 import OLPageContentCard from '@/shared/components/ol/ol-page-content-card'
@@ -28,6 +29,7 @@ export default function LLMSettingsPage() {
                                 <div>
                                     <LLMSettingsSection initialSettings={user.llmSettings} />
                                 </div>
+                                <GrammarSettingsSection />
                             </OLPageContentCard>
                         </UserProvider>
                     ) : null}

@@ -39,6 +39,15 @@ export default {
             AuthorizationMiddleware.ensureUserCanReadProject,
             LLMChatController.completion
         )
+
+        // Grammar checking endpoint (project-scoped): LLM grammar check on
+        // plain-text spans extracted from the source by the editor extension.
+        webRouter.post(
+            '/project/:Project_id/llm/grammar',
+            AuthorizationMiddleware.ensureUserCanReadProject,
+            LLMChatController.grammar
+        )
+        logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/grammar')
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/completion')
 
         // User LLM settings (only if allowed)
@@ -62,6 +71,21 @@ export default {
             LLMSettingsController.checkLLMConnection
         )
         logger.debug({}, '[LLM] Route registered: POST /user/llm-settings/check')
+
+        // Grammar checking (LLM + LanguageTool) — per-user preferences.
+        webRouter.get(
+            '/user/llm-settings/grammar',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.getGrammarSettings
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm-settings/grammar')
+
+        webRouter.post(
+            '/user/llm-settings/grammar',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.saveGrammarSettings
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-settings/grammar')
 
         webRouter.post(
             '/user/llm-settings',

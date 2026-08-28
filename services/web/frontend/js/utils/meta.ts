@@ -84,6 +84,7 @@ export interface Meta {
   'ol-algolia': AlgoliaConfig | undefined
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
   'ol-allowedExperiments': string[]
+  'ol-allowedModels': string
   'ol-anonymous': boolean
   'ol-baseAssetPath': string
   'ol-brandVariation': Record<string, any>
@@ -136,6 +137,12 @@ export interface Meta {
   'ol-gitBridgeEnabled': boolean
   'ol-gitBridgePublicBaseUrl': string
   'ol-github': { enabled: boolean; error: boolean }
+  'ol-grammarSettings': {
+    llmAdminEnabled: boolean
+    llmServerConfigured: boolean
+    llmAvailableForUser: boolean
+    ltAvailable: boolean
+  }
   'ol-groupAuditLogs': []
   'ol-groupDomains': []
   'ol-groupId': string
@@ -155,6 +162,7 @@ export interface Meta {
   'ol-hasAiAssistViaWritefull': boolean
   'ol-hasGroupSSOFeature': boolean
   'ol-hasIndividualPaidSubscription': boolean
+  'ol-hasLlmApiKey': string
   'ol-hasManagedUsersFeature': boolean
   'ol-hasModifyGroupManagerAccess': boolean
   'ol-hasPassword': boolean
@@ -194,10 +202,14 @@ export interface Meta {
   'ol-joinedGroupName': string
   'ol-labs': boolean
   'ol-labsExperiments': ActiveExperiment[] | undefined
+  'ol-languageToolDisabledByAdmin': string
+  'ol-languageToolUrl': string
   'ol-languages': SpellCheckLanguage[]
   'ol-learnedWords': string[]
   'ol-legacyEditorThemes': { name: string; dark: boolean }[]
   'ol-licenseQuantity'?: number
+  'ol-llmApiUrl': string
+  'ol-llmDisabledByAdmin': string
   'ol-loadingText': string
   'ol-localIndividualPlans': LocalIndividualPlans
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
@@ -318,6 +330,7 @@ export interface Meta {
   'ol-suggestedLanguage': SuggestedLanguage | undefined
   'ol-survey': Survey | undefined
   'ol-symbolPaletteAvailable': boolean
+  'ol-systemPrompt': string
   'ol-tags': Tag[]
   'ol-teamInvites': TeamInvite[]
   'ol-thirdPartyIds': ThirdPartyIds

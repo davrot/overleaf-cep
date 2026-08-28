@@ -52,4 +52,9 @@ export type ExposedSettings = {
   templatesEnabled?: boolean
   linkedInInsightsPartnerId?: string
   llmAllowUserSettings?: boolean
+  llmEnabled?: boolean
+  llmAdminEnabled?: boolean
+  llmServerConfigured?: boolean
+  llmAvailableForUser?: boolean
+  languageToolAvailable?: boolean
 }

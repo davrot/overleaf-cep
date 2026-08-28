@@ -1004,6 +1004,10 @@ module.exports = {
         __dirname,
         '../modules/llm/frontend/js/extensions/llm-inline-completion'
       ),
+      Path.resolve(
+        __dirname,
+        '../modules/languagetool/frontend/js/grammar-extension'
+      ),
     ],
     sourceEditorComponents: [
       Path.resolve(
@@ -1131,6 +1135,7 @@ module.exports = {
     'template-gallery',
     'git-bridge',
     'llm',
+    'languagetool',
   ],
   viewIncludes: {},
 

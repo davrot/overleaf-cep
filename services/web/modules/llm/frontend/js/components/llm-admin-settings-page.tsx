@@ -124,6 +124,22 @@ export default function LLMAdminSettingsPage() {
             .map(m => m.trim())
             .filter(Boolean)
     )
+    const [llmDisabledByAdmin, setLlmDisabledByAdmin] = useState<boolean>(
+        getMeta('ol-llmDisabledByAdmin') === 'true'
+    )
+
+    const [languageToolUrl, setLanguageToolUrl] = useState<string>(
+        (getMeta('ol-languageToolUrl') as string) || ''
+    )
+    const [languageToolDisabledByAdmin, setLanguageToolDisabledByAdmin] =
+        useState<boolean>(
+            getMeta('ol-languageToolDisabledByAdmin') === 'true'
+        )
+    const [ltCheckStatus, setLtCheckStatus] = useState<
+        'idle' | 'checking' | 'success' | 'error'
+    >('idle')
+    const [ltCheckMessage, setLtCheckMessage] = useState<string>('')
+
     const [availableModels, setAvailableModels] = useState<string[]>([])
     const [scanStatus, setScanStatus] = useState<string | null>(null)
     const [testStatus, setTestStatus] = useState<string | null>(null)
@@ -147,6 +163,35 @@ export default function LLMAdminSettingsPage() {
 
     const canConnect = !!llmApiUrl && (!!llmApiKey || hasStoredKey)
 
+    // ── LanguageTool connection check (admin probe endpoint) ─────────
+    const testLanguageToolConnection = async (urlToCheck?: string) => {
+        const url = urlToCheck ?? languageToolUrl
+        if (!url) {
+            setLtCheckStatus('error')
+            setLtCheckMessage('No LanguageTool URL configured')
+            return
+        }
+        setLtCheckStatus('checking')
+        setLtCheckMessage('')
+        try {
+            const resp = await postJSON('/admin/languagetool/check', {
+                body: { url },
+            })
+            if (resp.success) {
+                setLtCheckStatus('success')
+                setLtCheckMessage(
+                    `LanguageTool reachable (${resp.languageCount} languages)`
+                )
+            } else {
+                setLtCheckStatus('error')
+                setLtCheckMessage(resp.error || 'LanguageTool not reachable')
+            }
+        } catch (err: any) {
+            setLtCheckStatus('error')
+            setLtCheckMessage(err?.data?.error || 'Connection attempt failed')
+        }
+    }
+
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault()
         runAsync(
@@ -156,6 +201,9 @@ export default function LLMAdminSettingsPage() {
                     llmApiUrl,
                     llmApiKey,
                     allowedModels,
+                    llmDisabledByAdmin,
+                    languageToolUrl,
+                    languageToolDisabledByAdmin,
                 },
             })
         ).catch(() => { })
@@ -473,6 +521,79 @@ export default function LLMAdminSettingsPage() {
                                         <MaterialIcon type="restart_alt" className="me-1" style={{ fontSize: '1rem' }} />
                                         {t('reset_to_default', 'Reset to default')}
                                     </OLButton>
+                                </div>
+                            </div>
+
+                            {/* ── Section 4: Services (availability force-off) ── */}
+                            <div style={sectionStyle}>
+                                <div style={sectionHeaderStyle}>
+                                    <span style={stepNumberStyle}>4</span>
+                                    <MaterialIcon type="shield" />
+                                    {t('services_availability', 'Services (availability)')}
+                                </div>
+                                <p style={sectionDescStyle}>
+                                    {t(
+                                        'services_availability_desc',
+                                        'Force LLM or LanguageTool off for every user, even when configured. LanguageTool needs a server URL (env fallback: LANGUAGE_TOOL_URL / LANGUAGE_TOOL_HOST+PORT).'
+                                    )}
+                                </p>
+
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={llmDisabledByAdmin}
+                                        onChange={e => setLlmDisabledByAdmin(e.target.checked)}
+                                    />
+                                    {t('llm_disabled_by_admin', 'Disable LLM for all users (force off)')}
+                                </label>
+
+                                <OLFormGroup
+                                    controlId="language-tool-url"
+                                    style={{ marginBottom: '0.5rem' }}
+                                >
+                                    <OLFormLabel>
+                                        {t('languagetool_url', 'LanguageTool server URL')}
+                                    </OLFormLabel>
+                                    <OLFormControl
+                                        type="url"
+                                        value={languageToolUrl}
+                                        onChange={e => setLanguageToolUrl(e.target.value)}
+                                        placeholder="http://languagetool:8010"
+                                    />
+                                </OLFormGroup>
+
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={languageToolDisabledByAdmin}
+                                        onChange={e => setLanguageToolDisabledByAdmin(e.target.checked)}
+                                    />
+                                    {t('languagetool_disabled_by_admin', 'Disable LanguageTool for all users (force off)')}
+                                </label>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <OLButton
+                                        variant="secondary"
+                                        size="sm"
+                                        type="button"
+                                        onClick={() => testLanguageToolConnection()}
+                                        disabled={ltCheckStatus === 'checking'}
+                                        isLoading={ltCheckStatus === 'checking'}
+                                    >
+                                        {t('language_tool_check', 'Check LanguageTool connection')}
+                                    </OLButton>
+                                    {ltCheckStatus === 'success' && (
+                                        <span style={statusBadgeStyle('success')}>
+                                            <MaterialIcon type="check_circle" style={{ fontSize: '1rem' }} />
+                                            {ltCheckMessage}
+                                        </span>
+                                    )}
+                                    {ltCheckStatus === 'error' && (
+                                        <span style={statusBadgeStyle('error')}>
+                                            <MaterialIcon type="error" style={{ fontSize: '1rem' }} />
+                                            {ltCheckMessage}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 

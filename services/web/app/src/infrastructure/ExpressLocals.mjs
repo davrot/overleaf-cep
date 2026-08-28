@@ -15,6 +15,7 @@ import AdminAuthorizationHelper from '../Features/Helpers/AdminAuthorizationHelp
 import { addOptionalCleanupHandlerAfterDrainingConnections } from './GracefulShutdown.mjs'
 import { sanitizeSessionUserForFrontEnd } from './FrontEndUser.mjs'
 import { expressify } from '@overleaf/promise-utils'
+import { readAdminSettings } from '../../../modules/languagetool/app/src/adminConfig.mjs'
 
 const {
   canRedirectToAdminDomain,
@@ -267,6 +268,39 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
     next()
   })
 
+  /**
+   * Grammar-checking availability flags are computed once per request from
+   * env + the admin settings file (readAdminSettings; cheap JSON read) so
+   * admin changes apply without a server restart.
+   */
+  webRouter.use(
+    expressify(async function (req, res, next) {
+      const adminSettings = await readAdminSettings()
+
+      const llmAdminEnabled = adminSettings.llmDisabledByAdmin !== true
+      const ltAvailable =
+        adminSettings.languageToolDisabledByAdmin !== true &&
+        !!(
+          adminSettings.languageToolUrl ||
+          process.env.LANGUAGE_TOOL_URL ||
+          process.env.LANGUAGE_TOOL_HOST ||
+          process.env.LANGUAGE_TOOL_PORT
+        )
+      const llmServerConfigured =
+        !!(adminSettings.llmApiUrl && adminSettings.llmApiKey) ||
+        !!(process.env.LLM_API_URL && process.env.LLM_API_KEY)
+
+      res.locals.grammarSettings = {
+        llmAdminEnabled,
+        llmServerConfigured,
+        llmAvailableForUser: llmAdminEnabled && llmServerConfigured,
+        ltAvailable,
+      }
+
+      next()
+    })
+  )
+
   webRouter.use(function (req, res, next) {
     res.locals.getLoggedInUserId = () =>
       SessionManager.getLoggedInUserId(req.session)
@@ -419,6 +453,22 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
       linkedInInsightsPartnerId: Settings.analytics?.linkedIn?.partnerId,
       llmAllowUserSettings: Settings.llm?.allowUserSettings ?? false,
       llmEnabled: Settings.llm?.enabled ?? false,
+      // Grammar-checking availability (LLM feature + LanguageTool). Computed
+      // per request by the grammar-settings middleware above from the env
+      // config and the admin settings file (so admin changes apply without
+      // a server restart). See docs/llm-languagetool-integration-plan.md.
+      llmAdminEnabled: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmAdminEnabled
+        : Settings.llmAdminEnabled !== false,
+      llmServerConfigured: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmServerConfigured
+        : !!(process.env.LLM_API_URL && process.env.LLM_API_KEY),
+      llmAvailableForUser: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmAvailableForUser
+        : !!(process.env.LLM_API_URL && process.env.LLM_API_KEY),
+      languageToolAvailable: res.locals.grammarSettings
+        ? res.locals.grammarSettings.ltAvailable
+        : false,
     }
     next()
   })

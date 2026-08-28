@@ -5,10 +5,72 @@ import { fileURLToPath } from 'url'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
+import { readAdminSettings } from './LLMAdminController.mjs'
 
 const llmSettingsPugPath = fileURLToPath(
     new URL('../../app/views/llm-settings.pug', import.meta.url)
 )
+
+const GRAMMAR_MODES = ['default', 'lt', 'llm', 'lt+llm']
+
+/**
+ * Compute the available (admin-enabled, service-reachable) flags that the
+ * frontend uses to render the grammar mode UI. Also used to degrade a
+ * saved mode that is no longer available (admin force-off, missing URL).
+ */
+async function grammarAvailability(userId) {
+    const admin = await readAdminSettings()
+    const llmAdminEnabled = admin.llmDisabledByAdmin !== true
+    const ltAvailable =
+        admin.languageToolDisabledByAdmin !== true &&
+        !!(
+            admin.languageToolUrl ||
+            process.env.LANGUAGE_TOOL_URL ||
+            process.env.LANGUAGE_TOOL_HOST ||
+            process.env.LANGUAGE_TOOL_PORT
+        )
+
+    let personalComplete = false
+    if (userId) {
+        const u = await User.findById(
+            userId,
+            'useOwnLLMSettings llmApiKey llmModelName llmApiUrl'
+        )
+        personalComplete = !!(
+            u && u.useOwnLLMSettings && u.llmApiKey && u.llmModelName && u.llmApiUrl
+        )
+    }
+
+    const llmServerConfigured =
+        !!(admin.llmApiUrl && admin.llmApiKey) ||
+        !!(process.env.LLM_API_URL && process.env.LLM_API_KEY)
+
+    const llmAvailableForUser = llmAdminEnabled && (personalComplete || llmServerConfigured)
+
+    return {
+        llmAdminEnabled,
+        ltAvailable,
+        llmServerConfigured,
+        llmAvailableForUser,
+        llmPersonalComplete: personalComplete,
+    }
+}
+
+// Validate a stored mode against availability and degrade to the next
+// best feasible mode (never silently picks a more expensive mode).
+function degradeGrammarMode(mode, available) {
+    if (!available) return 'default'
+    if (!GRAMMAR_MODES.includes(mode)) return 'default'
+    if (mode === 'lt+llm') {
+        if (available.ltAvailable && available.llmAvailableForUser) return 'lt+llm'
+        if (available.ltAvailable) return 'lt'
+        if (available.llmAvailableForUser) return 'llm'
+        return 'default'
+    }
+    if (mode === 'lt') return available.ltAvailable ? 'lt' : 'default'
+    if (mode === 'llm') return available.llmAvailableForUser ? 'llm' : 'default'
+    return 'default'
+}
 
 async function llmSettingsPage(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
@@ -19,17 +81,23 @@ async function llmSettingsPage(req, res) {
     try {
         user = await User.findById(
             userId,
-            'useOwnLLMSettings llmModelName llmApiUrl llmApiKey'
+            'useOwnLLMSettings llmModelName llmApiUrl llmApiKey grammar'
         )
     } catch (err) {
         logger.warn({ userId, err }, '[LLM] Error loading user for settings page')
     }
 
+    const grammarAvail = await grammarAvailability(userId)
     const llmSettings = {
         useOwnSettings: user?.useOwnLLMSettings || false,
         modelName: user?.llmModelName || '',
         apiUrl: user?.llmApiUrl || '',
         hasApiKey: !!(user?.llmApiKey),
+        grammar: user?.grammar || {
+            mode: 'default',
+            llmModel: '',
+            language: 'auto',
+        },
     }
 
     logger.debug(
@@ -37,7 +105,10 @@ async function llmSettingsPage(req, res) {
         '[LLM] llmSettingsPage: user settings loaded'
     )
 
-    res.render(llmSettingsPugPath, { user: { llmSettings } })
+    res.render(llmSettingsPugPath, {
+        user: { llmSettings },
+        grammarAvail,
+    })
 }
 
 async function checkLLMConnection(req, res) {
@@ -205,8 +276,137 @@ async function saveLLMSettings(req, res) {
     }
 }
 
+/**
+ * GET /user/llm-settings/grammar
+ * Returns the user's stored grammar preferences + effective availability +
+ * the list of LLM models the user can pick for grammar checks (server-admin
+ * models + the user's personal model when configured).
+ */
+async function getGrammarSettings(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+
+    let user = {}
+    try {
+        user = await User.findById(
+            userId,
+            'grammar useOwnLLMSettings llmApiKey llmModelName llmApiUrl'
+        )
+    } catch (err) {
+        logger.warn({ userId, err }, '[LLM] Error loading grammar settings')
+    }
+
+    const available = await grammarAvailability(userId)
+    const stored = user?.grammar || {
+        mode: 'default',
+        llmModel: '',
+        language: 'auto',
+    }
+    const effectiveMode = degradeGrammarMode(
+        stored.mode || 'default',
+        available
+    )
+
+    // Available models for LLM grammar checks: server-admin models (when the
+    // server LLM is configured) + the user's personal model id (prefixed
+    // 'personal-') when a complete personal LLM setup exists.
+    const admin = await readAdminSettings()
+    const models = []
+    if (available.llmAdminEnabled && available.llmServerConfigured) {
+        const ids = Array.isArray(admin.allowedModels) && admin.allowedModels.length
+            ? admin.allowedModels
+            : (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME || '')
+                  .split(',')
+                  .map(m => m.trim())
+                  .filter(Boolean)
+        for (const id of ids) {
+            if (id) models.push({ id, name: id, isPersonal: false })
+        }
+    }
+    if (available.llmAdminEnabled && available.llmPersonalComplete) {
+        models.push({
+            id: `personal-${user.llmModelName}`,
+            name: `🔒 ${user.llmModelName} (personal)`,
+            isPersonal: true,
+        })
+    }
+
+    res.json({
+        mode: stored.mode || 'default',
+        effectiveMode,
+        llmModel: stored.llmModel || '',
+        language: stored.language || 'auto',
+        availability: available,
+        models,
+    })
+}
+
+/**
+ * POST /user/llm-settings/grammar
+ * Persists grammar mode / model / language. The backend validates the mode
+ * against availability and degrades (never rejects), so a stale mode on a
+ * different deployment falls back gracefully.
+ */
+async function saveGrammarSettings(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { mode, llmModel, language } = req.body || {}
+
+    if (mode !== undefined && !GRAMMAR_MODES.includes(mode)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid grammar mode',
+        })
+    }
+
+    const available = await grammarAvailability(userId)
+
+    let user = {}
+    try {
+        user = await User.findById(userId, 'grammar')
+    } catch (err) {
+        logger.warn({ userId, err }, '[LLM] Error loading grammar settings')
+    }
+
+    const stored = user?.grammar || { mode: 'default', llmModel: '', language: 'auto' }
+    const nextMode = mode || stored.mode || 'default'
+    const effectiveMode = degradeGrammarMode(nextMode, available)
+
+    const grammar = {
+        mode: nextMode,
+        llmModel:
+            typeof llmModel === 'string'
+                ? llmModel
+                : stored.llmModel || '',
+        language:
+            typeof language === 'string' && language
+                ? language
+                : stored.language || 'auto',
+    }
+
+    try {
+        await User.updateOne({ _id: userId }, { $set: { grammar } })
+    } catch (error) {
+        logger.error({ userId, err: error }, '[LLM] Error saving grammar settings')
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to save grammar settings',
+        })
+    }
+
+    res.json({
+        success: true,
+        mode: grammar.mode,
+        effectiveMode,
+        degraded: effectiveMode !== grammar.mode,
+        availability: available,
+    })
+}
+
 export default {
     llmSettingsPage: expressify(llmSettingsPage),
     checkLLMConnection: expressify(checkLLMConnection),
     saveLLMSettings: expressify(saveLLMSettings),
+    getGrammarSettings: expressify(getGrammarSettings),
+    saveGrammarSettings: expressify(saveGrammarSettings),
 }
+
+export { GRAMMAR_MODES, degradeGrammarMode }

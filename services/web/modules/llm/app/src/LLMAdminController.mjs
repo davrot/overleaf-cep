@@ -1,6 +1,6 @@
 import logger from '@overleaf/logger'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import { expressify } from '@overleaf/promise-utils'
 
 // Persist admin LLM settings in the same volume used by Overleaf data
@@ -28,6 +28,14 @@ async function writeAdminSettings(data) {
     }
 }
 
+// Exported so other modules (languagetool) and the frontend-facing endpoints
+// can share the same admin config file (single source of truth).
+export {
+    ADMIN_SETTINGS_PATH,
+    readAdminSettings,
+    writeAdminSettings,
+}
+
 async function adminSettingsPage(req, res) {
     const settings = await readAdminSettings()
     const pugPath = new URL('../../app/views/llm-admin-settings.pug', import.meta.url).pathname
@@ -36,6 +44,9 @@ async function adminSettingsPage(req, res) {
         llmApiUrl: settings.llmApiUrl || '',
         hasLlmApiKey: !!settings.llmApiKey,
         allowedModels: settings.allowedModels || [],
+        llmDisabledByAdmin: settings.llmDisabledByAdmin === true,
+        languageToolUrl: settings.languageToolUrl || '',
+        languageToolDisabledByAdmin: settings.languageToolDisabledByAdmin === true,
     })
 }
 
@@ -46,11 +57,22 @@ async function getAdminSettings(req, res) {
         llmApiUrl: settings.llmApiUrl || '',
         hasLlmApiKey: !!settings.llmApiKey,
         allowedModels: settings.allowedModels || [],
+        llmDisabledByAdmin: settings.llmDisabledByAdmin === true,
+        languageToolUrl: settings.languageToolUrl || '',
+        languageToolDisabledByAdmin: settings.languageToolDisabledByAdmin === true,
     })
 }
 
 async function saveAdminSettings(req, res) {
-    const { systemPrompt, llmApiUrl, llmApiKey, allowedModels } = req.body
+    const {
+        systemPrompt,
+        llmApiUrl,
+        llmApiKey,
+        allowedModels,
+        llmDisabledByAdmin,
+        languageToolUrl,
+        languageToolDisabledByAdmin,
+    } = req.body
 
     if (typeof systemPrompt !== 'string') {
         return res.status(400).json({ error: 'systemPrompt must be a string' })
@@ -68,6 +90,9 @@ async function saveAdminSettings(req, res) {
     if (allowedModels && !Array.isArray(allowedModels)) {
         return res.status(400).json({ error: 'allowedModels must be an array' })
     }
+    if (languageToolUrl && typeof languageToolUrl !== 'string') {
+        return res.status(400).json({ error: 'languageToolUrl must be a string' })
+    }
 
     const existing = await readAdminSettings()
     const updatedSettings = {
@@ -75,6 +100,12 @@ async function saveAdminSettings(req, res) {
         systemPrompt,
         llmApiUrl: typeof llmApiUrl === 'string' ? llmApiUrl : (existing.llmApiUrl || ''),
         allowedModels: Array.isArray(allowedModels) ? allowedModels : existing.allowedModels || [],
+        llmDisabledByAdmin: llmDisabledByAdmin === true,
+        languageToolUrl:
+            typeof languageToolUrl === 'string'
+                ? languageToolUrl
+                : (existing.languageToolUrl || ''),
+        languageToolDisabledByAdmin: languageToolDisabledByAdmin === true,
     }
 
     if (typeof llmApiKey === 'string' && llmApiKey.trim().length > 0) {
@@ -87,6 +118,9 @@ async function saveAdminSettings(req, res) {
         llmApiUrl: !!updatedSettings.llmApiUrl,
         hasLlmApiKey: !!updatedSettings.llmApiKey,
         allowedModels: updatedSettings.allowedModels?.length || 0,
+        llmDisabledByAdmin: updatedSettings.llmDisabledByAdmin,
+        hasLanguageToolUrl: !!updatedSettings.languageToolUrl,
+        languageToolDisabledByAdmin: updatedSettings.languageToolDisabledByAdmin,
     }, '[LLM] Admin settings updated')
 
     res.json({ success: true })

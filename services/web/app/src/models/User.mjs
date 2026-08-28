@@ -236,6 +236,16 @@ export const UserSchema = new Schema(
     llmApiKey: { type: String, default: '' },
     llmModelName: { type: String, default: '' },
     llmApiUrl: { type: String, default: '' },
+    // Grammar module: per-user grammar-checking preferences (LLM + LanguageTool)
+    grammar: {
+      // 'default' | 'lt' | 'llm' | 'lt+llm'
+      mode: { type: String, default: 'default' },
+      // Model id for LLM grammar checks (may be 'personal-<model>' for a
+      // personal LLM key)
+      llmModel: { type: String, default: '' },
+      // LanguageTool language code ('auto' or an LT language such as 'en-GB')
+      language: { type: String, default: 'auto' },
+    },
   },
   { minimize: false }
 )
