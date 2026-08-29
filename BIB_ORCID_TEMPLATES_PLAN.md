@@ -60,6 +60,37 @@ sub-item list under the switcher (first click expands, second navigates).
 (13), duplicate-name (5), url-policy (7) + bib-editor (incl. i18n) + LinkedFiles —
 433/433 ✓. Build + live verification follow.
 
+### 2026-08-29 — fixes from live verification + final deploy; **33/33 live checks PASS**
+- `672c3d12be` — 3d fix: `assertUrlAllowed` was ignoring the boolean from
+  `matchesResourceRegex` (allowlist never rejected anything). Now enforces.
+- `652c24ce13` — crash-loop fix: `RegistrationPageController` had a TS type
+  annotation in a `.mjs` runtime module (SyntaxError on boot).
+- `fc95490f2f` — two verification failures fixed correctly:
+  - **Duplicate endpoint 404**: file-tree entities in this CE build are stored
+    **inline on `project.rootFolder`** (the `folders` collection is empty), so
+    `duplicateEntity` now walks `project.rootFolder` instead of
+    `Folder.findById` (helper `_findEntityInProject`).
+  - **SSRF guard 403s surfaced as 500**: added `UrlPolicyDeniedError`
+    (LinkedFilesErrors, thrown by `UrlPolicy.assertUrlAllowed` for allowlist
+    mismatch + blocked CIDR), rethrown as-is by `UrlAgent` (not wrapped into a
+    422 `UrlFetchFailedError`), and mapped to **HTTP 403** in
+    `LinkedFilesController.handleError` (previously fell to the global 500).
+  - url-policy tests now pin the error class + `info.status=403` (11 tests).
+- Deploy: image `bib-editor` @ `fc95490f2f`, container cycled healthy.
+- **LIVE VERIFICATION (2026-08-29, FQDN, CDP headless, fresh profile):
+  33/33 PASS** across: admin console (5 tabs incl. Publishable column +
+  bundles UI + Sign Up fields, Save ok) · /register enabled/disabled/
+  custom-redirect/POST-403 · 13 categories (Theses managed) · file-tree
+  Duplicate (menu below Rename; server 200 `main_copy.tex`; copy visible) ·
+  Zotero picker (409 not-linked + menu item + modal + Link action) · bundle
+  round-trip (create → 409 conflict → override v2 → listed → download zip with
+  template.json/source.zip/output.pdf → content match → delete 200) · SSRF
+  guard (loopback 403, non-allowlisted host 403) · category modal textarea
+  width == name width.
+- Unit tests: 473/473 (url-policy 11, duplicate-name 5, site-settings 13,
+  LinkedFiles, bib-editor, orcid-picker). Lint clean. All 5 commits pushed to
+  `origin/bib-editor` (`d21990b559` → `fc95490f2f`).
+
 ### 2026-08-28 (evening) — user round-4 + round-5 feedback applied (items 1–7)
 **Round 4 (menu + sidebar):**
 - Manage menu: replaced the broken react-bootstrap nested flyout with an
