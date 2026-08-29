@@ -433,84 +433,64 @@ function BibEntryCard({
         />
       </div>
       <div className="bibtex-entry-card-content">
-        <div className="bibtex-entry-card-header">
+        {/* R7 (2026-08-29): reviewer-matched arrangement — the citation
+            key on its own row first, then title, then author, then year
+            (both card layouts; 'Updated' line stays full-layout only). */}
+        <div className="bibtex-entry-card-key-row">
           <span className="bibtex-entry-card-key">
             <Highlighted text={entry.id} search={search} />
           </span>
-          {fullLayout ? (
-            <>
-              <div className="bibtex-entry-card-details">
-                <div className="bibtex-entry-card-title">
-                  <span>
-                    <Highlighted text={title} search={search} />
-                  </span>
-                </div>
-                <div className="bibtex-entry-card-meta">
-                  {authorDisplay && (
-                    <div className="bibtex-entry-card-author">
-                      <span>
-                        <Highlighted text={authorDisplay} search={search} />
-                      </span>
-                    </div>
-                  )}
-                  {year && (
-                    <div className="bibtex-entry-card-year">
-                      <span>
-                        <Highlighted text={year} search={search} />
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {updatedDate && (
-                <div className="bibtex-entry-card-updated-at">
-                  {t('Updated __date__', { date: updatedDate })}
-                </div>
-              )}
-            </>
-          ) : (
-            <span className="bibtex-entry-card-details">
-              {authorDisplay && (
-                <span className="bibtex-entry-card-author">
-                  <Highlighted text={authorDisplay} search={search} />
-                </span>
-              )}
-              {title && (
-                <span className="bibtex-entry-card-title">
-                  <Highlighted text={title} search={search} />
-                </span>
-              )}
-              {year && (
-                <span className="bibtex-entry-card-year">
-                  <Highlighted text={year} search={search} />
-                </span>
-              )}
+          {duplicate && (
+            <span
+              className="bibtex-entry-duplicate-icon"
+              role="img"
+              aria-label={t('bibtex_duplicates_keys')}
+              title={t('bibtex_duplicates_keys')}
+            >
+              <span className="material-symbols" aria-hidden="true">
+                warning
+              </span>
+            </span>
+          )}
+          {hasErrors && (
+            <span className="bibtex-entry-error-icon" role="img" aria-label={t('Entry has errors')}>
+              <span className="material-symbols" aria-hidden="true">
+                error
+              </span>
             </span>
           )}
         </div>
+        {title && (
+          <div className="bibtex-entry-card-title">
+            <span>
+              <Highlighted text={title} search={search} />
+            </span>
+          </div>
+        )}
+        {authorDisplay && (
+          <div className="bibtex-entry-card-author">
+            <span>
+              <Highlighted text={authorDisplay} search={search} />
+            </span>
+          </div>
+        )}
+        {year && (
+          <div className="bibtex-entry-card-year">
+            <span>
+              <Highlighted text={year} search={search} />
+            </span>
+          </div>
+        )}
+        {fullLayout && updatedDate && (
+          <div className="bibtex-entry-card-updated-at">
+            {t('Updated __date__', { date: updatedDate })}
+          </div>
+        )}
       </div>
-      {duplicate && (
-        <span
-          className="bibtex-entry-duplicate-icon"
-          role="img"
-          aria-label={t('bibtex_duplicates_keys')}
-          title={t('bibtex_duplicates_keys')}
-        >
-          <span className="material-symbols" aria-hidden="true">
-            warning
-          </span>
-        </span>
-      )}
-      {hasErrors && (
-        <span className="bibtex-entry-error-icon" role="img" aria-label={t('Entry has errors')}>
-          <span className="material-symbols" aria-hidden="true">
-            error
-          </span>
-        </span>
-      )}
     </div>
   )
 }
+
 
 /**
  * D15 (search scope) — wrap case-insensitive matches in `<mark>` (the

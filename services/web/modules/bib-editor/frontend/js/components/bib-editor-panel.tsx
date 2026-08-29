@@ -122,6 +122,8 @@ function BibEditorPanel() {
   const sourceMirror = useRef(source)
   const entriesMirror = useRef<ParsedBibEntry[]>(entries)
   const openDocNameMirror = useRef(openDocName)
+  const flushMirror = useRef<() => void>(() => {})
+  const scrollToMirror = useRef<(p: number) => void>(() => {})
   useEffect(() => { selectionMirror.current = selection }, [selection])
   useEffect(() => { sourceMirror.current = source }, [source])
   useEffect(() => { entriesMirror.current = entries }, [entries])
@@ -197,16 +199,58 @@ function BibEditorPanel() {
     })
   }, [writeEntry])
 
+  /**
+   * R7 (2026-08-29, item 4): the panel is UNMOUNTED when the user
+   * switches to Code (the parent renders it conditionally on
+   * `showVisual`), so the `showVisual` watcher below often never sees the
+   * false value — React unmounts the panel in the same commit and effects
+   * with the new context value never run. Perform the flush + reveal on
+   * UNMOUNT (cleanup runs exactly then); it is idempotent with the
+   * watchers (no-op writes skip, scrolling twice is harmless).
+   */
+  const unmountedLeave = useRef(false)
+  const leaveVisual = useCallback(() => {
+    if (unmountedLeave.current) return
+    unmountedLeave.current = true
+    const sel = selectionMirror.current
+    const wasNew = sel?.kind === 'new'
+    flushMirror.current()
+    if (wasNew) {
+      // Appended 'new' entry: the end of the flushed document is it.
+      scrollToMirror.current(Number.MAX_SAFE_INTEGER)
+      return
+    }
+    if (sel?.kind === 'existing') {
+      const entry = entriesMirror.current.find(e => e.id === sel.entryId)
+      if (entry) scrollToMirror.current(entry.sourceStart)
+    }
+  }, [])
+  useEffect(() => {
+    flushMirror.current = flushCurrentForm
+    scrollToMirror.current = scrollTo
+  })
+  useEffect(() => {
+    return () => { leaveVisual() }
+  }, [leaveVisual])
+
   // ── R2 leave watchers: flush whenever we stop being shown ─────────────
 
   // 1. showVisual: true → false (Code toggle): flush + reveal the entry in
   //    Code (same behavior as the old code-switch capture, now side-
-  //    effect-free).
+  //    effect-free). R7 (2026-08-29): the entry lands at the TOP of the
+  //    editor with the cursor on it — including freshly created ('new')
+  //    entries (they append at the end, so scroll to the end of doc).
   const prevShowVisual = useRef(showVisual)
   useEffect(() => {
     if (prevShowVisual.current && !showVisual) {
       const sel = selectionMirror.current
+      const wasNew = sel?.kind === 'new'
       flushCurrentForm()
+      if (wasNew) {
+        // Appended entry: the end of the (flushed) document is it.
+        scrollTo(Number.MAX_SAFE_INTEGER)
+        return
+      }
       if (sel?.kind === 'existing') {
         const entry = entriesMirror.current.find(e => e.id === sel.entryId)
         if (entry) {

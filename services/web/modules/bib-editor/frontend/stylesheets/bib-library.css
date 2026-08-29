@@ -633,7 +633,7 @@
 
 .library-page-main .bibtex-entry-card-row {
   top: 0;
-  height: 47px;
+  height: 80px;
   box-sizing: border-box;
 }
 
@@ -651,11 +651,17 @@
   color: var(--bib-panel-color);
   cursor: pointer;
   transition: background-color 0.15s ease;
+
+  /* R7 (2026-08-29): stacked key / title / author / year layout */
+  align-items: flex-start;
+  height: auto;
+  min-height: 80px;
+  padding: 0.45rem 0.7rem;
 }
 
 .library-page-main .bibtex-entry-card-compact {
-  min-height: 0;
-  padding: 0;
+  min-height: 80px;
+  padding: 0.45rem 0.7rem;
 }
 
 .library-page-main .bibtex-entry-card:hover {
@@ -733,6 +739,18 @@
 .library-page-main .bibtex-entry-card-author { flex: 0 1 auto; }
 .library-page-main .bibtex-entry-card-title { flex: 1 1 auto; }
 .library-page-main .bibtex-entry-card-year { flex: 0 0 auto; }
+
+/* R7 (2026-08-29): key row on top of the card */
+.library-page-main .bibtex-entry-card-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.library-page-main .bibtex-entry-card-title {
+  min-width: 0;
+  font-weight: 600;
+}
 
 /* D15 (search scope): per-row match highlight (capture
    `.bibtex-entry-card-key mark{padding:0}` / `.bibtex-entry-card-details

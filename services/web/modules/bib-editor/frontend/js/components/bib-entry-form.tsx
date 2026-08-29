@@ -511,7 +511,7 @@ export default function BibEntryForm({
           <Dropdown>
             <DropdownToggle
               id="bib-type-dropdown"
-              className="form-control text-start d-flex justify-content-between align-items-center w-100 entry-type-selector-btn"
+              className="form-control text-start d-flex justify-content-between align-items-center w-100 entry-type-selector-btn no-default-caret"
               aria-label={t('Choose entry type')}
             >
               <span>{selectedType?.label || 'Select'}</span>

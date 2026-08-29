@@ -8,18 +8,38 @@ import { UserSettingsProvider } from '@/shared/context/user-settings-context'
 import DefaultNavbar from '@/shared/components/navbar/default-navbar'
 import Footer from '@/shared/components/footer/footer'
 import CookieBanner from '@/shared/components/cookie-banner'
+import SystemMessages from '@/shared/components/system-messages'
+import { DsNavPageSwitcher } from '@/shared/components/sidebar/ds-nav-page-switcher'
+import { SidebarLowerSection } from '@/shared/components/sidebar/sidebar-lower-section'
+import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
+import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
+import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 import getMeta from '@/utils/meta'
 import TemplateBundles from '../features/template-bundles/template-bundles'
 
 function TemplateAdminChrome() {
   const { t } = useTranslation()
   useThemedPage()
+  const activeOverallTheme = useActiveOverallTheme()
   const navbarProps = getMeta('ol-navbar') || {}
   const footerProps = getMeta('ol-footer') || {}
   return (
     <div className="project-ds-nav-page website-redesign">
-      <DefaultNavbar {...navbarProps} />
+      <SystemMessages />
+      <DefaultNavbar
+        {...navbarProps}
+        overleafLogo={activeOverallTheme === 'dark' ? overleafLogoDark : overleafLogo}
+      />
       <div className="project-list-wrapper">
+        {/* R8 (2026-08-29): same left page-switcher nav as /templates */}
+        <div className="project-list-sidebar-wrapper-react d-none d-md-flex">
+          <DsNavPageSwitcher activePage="templates" showLogo={false} />
+          <hr className="ds-nav-page-switcher-divider" />
+          <nav className="flex-grow flex-shrink" aria-hidden="true" />
+          <div className="ds-nav-sidebar-lower">
+            <SidebarLowerSection showThemeToggle />
+          </div>
+        </div>
         <div className="project-ds-nav-content-and-messages">
           <div className="project-ds-nav-content">
             <div className="project-ds-nav-main">

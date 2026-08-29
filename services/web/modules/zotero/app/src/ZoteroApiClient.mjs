@@ -180,16 +180,17 @@ async function getItemsForPicker(userId, scope, collectionKey, limit, start) {
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500)
   const safeStart = Math.max(parseInt(start, 10) || 0, 0)
   try {
-    const { body: items, response } = await fetchJsonWithResponse(
+    const { json: items, response } = await fetchJsonWithResponse(
       `${ZOTERO_API_URL}${itemsPath}?limit=${safeLimit}&start=${safeStart}&sort=dateAdded&direction=desc`,
       {
         headers: buildHeaders(credentials.apiKey),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       }
     )
-    const total = parseInt(response.headers.get('Total-Results') || String(items.length), 10)
+    const total = parseInt(response.headers.get('Total-Results') || String(Array.isArray(items) ? items.length : 0), 10)
+    const list = Array.isArray(items) ? items : []
     return {
-      items: items.map(item => {
+      items: list.map(item => {
         const creators = (item.data?.creators || [])
           .map(c => {
             if (item.data?.itemType === 'book' || item.data?.itemType === 'bookSection') {

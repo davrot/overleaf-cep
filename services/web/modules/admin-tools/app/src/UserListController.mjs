@@ -1,7 +1,7 @@
 import Path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import _ from 'lodash'
-import crypto from 'crypto'
+import crypto from 'node:crypto'
 import Settings from '@overleaf/settings'
 import Metrics from '@overleaf/metrics'
 import logger from '@overleaf/logger'
@@ -409,7 +409,7 @@ async function deleteUser(req, res, next) {
       skipEmail: !sendEmail,
     })
   } catch (err) {
-    logger.warn({ deleterUser, userId }, err.message)
+    logger.warn({ deleterUserId, userId }, err.message)
     if (toUserId) {
       try { // failed to delete user, try to transfer all projects back
         await OwnershipTransferHandler.promises.transferAllProjectsToUser({
@@ -440,7 +440,7 @@ async function purgeDeletedUser(req, res, next) {
   try {
     await UserDeleter.promises.expireDeletedUser(userId)
   } catch (err) {
-    logger.warn({ restorerId, userId }, err.message)
+    logger.warn({ deleterUserId, userId }, err.message)
     const message = 'Something went wrong. The user is already deleted?'
     return HttpErrorHandler.unprocessableEntity(req, res, message)
   }
@@ -612,15 +612,14 @@ async function templateAdmins(req, res) {
     { 'flags.canManageTemplates': true },
     { _id: 1, email: 1, first_name: 1, last_name: 1 }
   ).lean().exec()
-  res.json(
-    users.map(u => ({
-      id: String(u._id),
-      email: u.email,
-      firstName: u.first_name || '',
-      lastName: u.last_name || '',
-      isAdmin: Boolean(u.isAdmin),
-    }))
-  )
+  const rows = users.map(u => ({
+    id: String(u._id),
+    email: u.email,
+    firstName: u.first_name || '',
+    lastName: u.last_name || '',
+    isAdmin: Boolean(u.isAdmin),
+  }))
+  res.json({ users: rows })
 }
 
 async function _getActivationLink(userId) {

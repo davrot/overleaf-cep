@@ -8,6 +8,7 @@
   --bib-panel-color: var(--content-primary-dark);
   --bib-panel-secondary-color: var(--content-secondary-dark);
   --bib-panel-border: var(--border-divider-dark);
+  --bib-panel-divider: var(--neutral-60);
   --bib-panel-card-hover-border: #ffffff;
   --bib-panel-card-hover-bg: var(--bg-dark-secondary);
   /* C7: reference capture spec (dark) */
@@ -25,6 +26,7 @@
   --bib-panel-color: var(--content-primary);
   --bib-panel-secondary-color: var(--content-secondary);
   --bib-panel-border: var(--border-divider);
+  --bib-panel-divider: var(--neutral-40);
   --bib-panel-card-hover-border: var(--neutral-80);
   --bib-panel-card-hover-bg: var(--bg-light-secondary);
   /* C7: reference capture spec (light) */
@@ -524,7 +526,8 @@
   overflow: hidden;
   background: var(--bib-panel-bg);
   color: var(--bib-panel-color);
-  border-left: 1px solid var(--bib-panel-border);
+  /* R7 (2026-08-29): visible divider between list and preview panels */
+  border-left: 1px solid var(--bib-panel-divider, var(--bib-panel-border));
   box-sizing: border-box;
   position: absolute; /* out of the flex flow; anchored to the panel */
   top: 0;
@@ -690,9 +693,13 @@
 }
 
 .bib-editor-panel .bibtex-entry-card {
-  min-height: 47px;
+  min-height: 80px;
   cursor: pointer;
   transition: background-color 0.15s ease;
+
+  /* R7 (2026-08-29): stacked key / title / author / year layout */
+  align-items: flex-start;
+  padding: 0.45rem 0.7rem;
 }
 
 .bib-editor-panel .bibtex-entry-card:focus-visible {
@@ -708,6 +715,30 @@
 
 .bib-editor-panel .bibtex-entry-card-checkbox input {
   accent-color: var(--blue-50);
+}
+
+/* R7 (2026-08-29): key row on top of the card */
+.bib-editor-panel .bibtex-entry-card-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.bib-editor-panel .bibtex-entry-card-title {
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bib-editor-panel .bibtex-entry-card-author,
+.bib-editor-panel .bibtex-entry-card-year {
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--bib-panel-secondary-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* D15 (search scope): per-row match highlight (capture

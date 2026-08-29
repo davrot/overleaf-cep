@@ -275,12 +275,14 @@ export default function SiteSettingsPage() {
  */
 function TemplateAdminsTable() {
   const { t } = useTranslation()
-  const [users, setUsers] = useState<{ id: string; name: string; email: string }[] | null>(null)
+  const [users, setUsers] = useState<
+    { id: string; email: string; firstName?: string; lastName?: string }[] | null
+  >(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const refresh = () => {
-    getJSON<{ users: { id: string; name: string; email: string }[] }>(
+    getJSON<{ users: { id: string; email: string; firstName?: string; lastName?: string }[] }>(
       '/admin/site/template-admins'
     )
       .then(d => setUsers(d.users || []))
@@ -322,9 +324,11 @@ function TemplateAdminsTable() {
             </tr>
           </thead>
           <tbody>
-            {(users || []).map(u => (
+            {(users || []).map(u => {
+              const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+              return (
               <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
-                <td style={{ padding: '6px 8px' }}>{u.name}</td>
+                <td style={{ padding: '6px 8px' }}>{fullName}</td>
                 <td style={{ padding: '6px 8px' }}>
                   <a href={`/admin/user/${u.id}`}>{u.email}</a>
                 </td>
@@ -334,7 +338,8 @@ function TemplateAdminsTable() {
                   </OLButton>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       )}

@@ -514,6 +514,9 @@ class BibEditorPlugin {
 
   /**
    * Scroll-to requests from the React panel (focus an entry in Code mode).
+   * R7 (2026-08-29): the entry goes to the TOP of the editor (user
+   * request — the old centered scroll felt like 'not there' for long
+   * files), with the cursor on it.
    */
   private setupScrollListener() {
     this.scrollHandler = (ev: Event) => {
@@ -531,7 +534,7 @@ class BibEditorPlugin {
       )
       this.view.dispatch({
         selection: { anchor: pos },
-        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+        effects: EditorView.scrollIntoView(pos, { y: 'start' }),
       })
       this.view.focus()
     }

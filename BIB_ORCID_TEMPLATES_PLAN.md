@@ -173,6 +173,54 @@ multi-issue report (name length + mainFile + bad PDF), publishable
   LinkedFiles, bib-editor, orcid-picker). Lint clean. All 5 commits pushed to
   `origin/bib-editor` (`d21990b559` → `fc95490f2f`).
 
+### 2026-08-29 (night) — R7 (7 items) + R8 (3 items) feedback rounds
+**R7 (user 2026-08-29):**
+1. **Zotero picker items 500** — `ZoteroApiClient.getItemsForPicker` destructured
+   `fetchJsonWithResponse` as `{ body }`, but that helper returns `{ json }`
+   (string helpers return `{ body }`) → items silently `undefined` → later
+   `.map` crashed (500). Fixed to `{ json: items }` + non-array guard.
+2. **Divider between /project + /library bib panels** — preview panel border
+   raised to `--bib-panel-divider` (neutral-60 dark / neutral-40 light).
+3. **Entry-type double arrow** — `DropdownToggle` got `no-default-caret`
+   (keeps the single custom `keyboard_arrow_down`).
+4. **Visual→Code: entry at top with cursor** — root cause: the panel is
+   UNMOUNTED on the code switch, so the `showVisual` watcher effect never ran
+   (effects don't run for removed children). Flush + reveal moved to the
+   unmount cleanup (idempotent with watchers; 'new' entries scroll to doc end).
+7. **Entry card arrangement** — key row first (with dup/error icons), then
+   title, author, year (both card layouts; reviewer reference match).
+5. **/templates/manage `useSplitTestContext`** — already fixed
+   (`SplitTestProvider`) in the R6 follow-up; re-verified.
+6. **Update-account modal + Template gallery admins table** — see R8.2 (the
+   real symptom was the empty name cells).
+8. **User settings missing the Zotero connector** — the widget gate
+   (`ExposedSettings.zoteroEnabled`) only saw env `Settings.zotero` (unset in
+   this deployment). Now also seeded from stored site_settings at module boot
+   (`modules/zotero/index.mjs`) + fallback to `enabledLinkedFileTypes` in
+   `ExpressLocals`. Link/unlink (API key + OAuth) visible again at
+   `/user/settings`.
+
+**R8 (user 2026-08-29):**
+1. **Picker "Browse items" empty (no error)** — same `{ body }` vs `{ json }`
+   bug as R7.1 (the 500 had only shown before the half-applied fix); with the
+   fix, `/user/zotero/picker/items` returns real items (30 in My Library, 32 in
+   the group `graduiertenkolleg_...`) and the modal lists them; BibTeX
+   selection export unchanged.
+2. **Template gallery admins: names missing** — API returned
+   `firstName`/`lastName` but the table rendered `u.name` (always empty).
+   Component now renders `firstName + lastName` (both users visible with
+   names). Revoke round-trip verified through the live Revoke button.
+3. **/templates/manage left "nav bar"** — added the same ds-nav page
+   switcher chrome as /templates (Library / Projects / Templates active +
+   lower section with theme toggle + account).
+
+**Verification:** lint 0 (all touched files), 481/481 unit tests (twice),
+build `server-ce make all` → cycled `overleafserver` → live DOM checks all
+PASS (picker items user+group, divider 1px, single caret, card order
+key→title→author→year, visual→code selection at entry, admins names, manage
+nav, /user/settings widget, /templates/manage render). Smoke template-bundle
+test templates (3 × "Bundle Smoke *") deleted from Mongo.
+
 ### 2026-08-28 (evening) — user round-4 + round-5 feedback applied (items 1–7)
 **Round 4 (menu + sidebar):**
 - Manage menu: replaced the broken react-bootstrap nested flyout with an

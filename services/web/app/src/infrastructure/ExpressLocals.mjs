@@ -432,7 +432,11 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
       cioSiteId: Settings.analytics?.cio?.siteId,
       linkedInInsightsPartnerId: Settings.analytics?.linkedIn?.partnerId,
       githubSyncEnabled: !!Settings.githubSync?.clientID && !!Settings.githubSync?.clientSecret,
-      zoteroEnabled: !!Settings.zotero?.clientKey && !!Settings.zotero?.clientSecret,
+      zoteroEnabled: Boolean(
+        !!Settings.zotero?.clientKey && !!Settings.zotero?.clientSecret
+      ) ||
+        (Array.isArray(Settings.enabledLinkedFileTypes) &&
+          Settings.enabledLinkedFileTypes.includes('zotero')),
       enablePandocConversions: Settings.enablePandocConversions,
       mixpanelLabsToken:
         Settings.labs?.enable && Settings.analytics?.mixpanel?.labsToken,
