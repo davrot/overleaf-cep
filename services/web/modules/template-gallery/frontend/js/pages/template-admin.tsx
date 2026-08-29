@@ -3,6 +3,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import useThemedPage from '@/shared/hooks/use-themed-page'
+import { SplitTestProvider } from '@/shared/context/split-test-context'
 import { UserSettingsProvider } from '@/shared/context/user-settings-context'
 import DefaultNavbar from '@/shared/components/navbar/default-navbar'
 import Footer from '@/shared/components/footer/footer'
@@ -44,18 +45,14 @@ function TemplateAdminChrome() {
 }
 
 function TemplateAdminPage() {
-  const { isReady, error } = useWaitForI18n()
-  if (!isReady) {
-    const el = document.getElementById('template-admin-root')
-    if (el && !el.innerHTML) {
-      el.innerHTML = '<div class="tap-debug">i18n not ready. error: ' + (error ? error.message : 'no-error-yet') + '</div>'
-    }
-    return null
-  }
+  const { isReady } = useWaitForI18n()
+  if (!isReady) return null
   return (
-    <UserSettingsProvider>
-      <TemplateAdminChrome />
-    </UserSettingsProvider>
+    <SplitTestProvider>
+      <UserSettingsProvider>
+        <TemplateAdminChrome />
+      </UserSettingsProvider>
+    </SplitTestProvider>
   )
 }
 
