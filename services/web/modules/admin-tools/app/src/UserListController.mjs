@@ -103,7 +103,7 @@ async function manageUsersPage(req, res, next) {
 }
 
 async function registerNewUser(req, res, next) {
-  const { email, isExternal, isAdmin } = req.body
+  const { email, isExternal, isAdmin, canManageTemplates } = req.body
   if (email == null || email === '') {
     return HttpErrorHandler.unprocessableEntity(req, res, 'Email address is empty')
   }
@@ -138,7 +138,13 @@ async function registerNewUser(req, res, next) {
       .reverse()
       .join('')
     const update = {
-      $set: { isAdmin, emails: [{ email, reversedHostname, confirmedAt: Date.now() }] },
+      $set: {
+        isAdmin,
+        emails: [{ email, reversedHostname, confirmedAt: Date.now() }],
+        ...(canManageTemplates
+          ? { 'flags.canManageTemplates': true }
+          : {}),
+      },
     }
     if (isExternal) {
       update.$unset = { hashedPassword: "" }
@@ -227,6 +233,7 @@ async function _getUsers(
     signUpDate: 1,
     loginCount: 1,
     isAdmin: 1,
+    flags: 1,
     hashedPassword: 1,
     samlIdentifiers: 1,
     thirdPartyIdentifiers: 1,
@@ -323,6 +330,7 @@ function _formatUserInfo(user, maxDate) {
     firstName: user.first_name,
     lastName: user.last_name,
     isAdmin: user.isAdmin,
+    canManageTemplates: Boolean(user.flags?.canManageTemplates),
     loginCount: user.loginCount,
     signUpDate: user.signUpDate,
     lastActive: user.lastActive,
@@ -551,11 +559,22 @@ async function updateUser(req, res, next) {
 
   for (let [key, value] of Object.entries(updatesInput)) {
     if (key === 'email') continue
+    // R6 (2026-08-29): template gallery admin flag — stored as
+    // flags.canManageTemplates (see the special-case below), not as a top
+    // level field. Skip it in the generic loop.
+    if (key === 'canManageTemplates') continue
 
     const newValue = typeof value === 'string' ? value.trim() : value
     if (newValue === user[key]) continue
 
     update[key] = newValue
+  }
+
+  if ('canManageTemplates' in updatesInput) {
+    update.flags = {
+      ...(user.flags ? user.flags.toObject ? user.flags.toObject() : { ...user.flags } : {}),
+      canManageTemplates: Boolean(updatesInput.canManageTemplates),
+    }
   }
 
   Object.assign(user, update)
@@ -584,6 +603,24 @@ async function updateUser(req, res, next) {
   }
 
   return res.json(update)
+}
+
+// R6 item 7 (2026-08-29): site-admin console → Templates tab table of the
+// users who carry the template gallery admin flag.
+async function templateAdmins(req, res) {
+  const users = await User.find(
+    { 'flags.canManageTemplates': true },
+    { _id: 1, email: 1, first_name: 1, last_name: 1 }
+  ).lean().exec()
+  res.json(
+    users.map(u => ({
+      id: String(u._id),
+      email: u.email,
+      firstName: u.first_name || '',
+      lastName: u.last_name || '',
+      isAdmin: Boolean(u.isAdmin),
+    }))
+  )
 }
 
 async function _getActivationLink(userId) {
@@ -622,4 +659,5 @@ export default {
   restoreDeletedUser: expressify(restoreDeletedUser),
   purgeDeletedUser: expressify(purgeDeletedUser),
   updateUser: expressify(updateUser),
+  templateAdmins: expressify(templateAdmins),
 }

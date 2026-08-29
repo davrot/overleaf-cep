@@ -7,9 +7,22 @@ import ZoteroApiClient from './ZoteroApiClient.mjs'
 import ZoteroOAuth from './ZoteroOAuth.mjs'
 import TokenManager from './TokenManager.mjs'
 
+function _callbackUrlFrom(req) {
+  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim()
+  const host = req.get('host') || ''
+  return `${proto}://${host}/user/zotero/oauth/callback`
+}
+
 async function oauth(req, res) {
   try {
-    const requestToken = await ZoteroOAuth.getRequestToken()
+    // R6 (2026-08-29): credentials come from site_settings (P3c) — the
+    // old code read Settings.zotero, which is undefined in this deployment
+    // (no ZOTERO_* env), so the OAuth start always 400'd.
+    const credentials = await ZoteroOAuth.getCredentials()
+    const requestToken = await ZoteroOAuth.getRequestToken({
+      credentials,
+      callbackURL: _callbackUrlFrom(req),
+    })
     const isPopup = req.query.popup === '1'
 
     req.session.zoteroOAuth = {
@@ -26,6 +39,10 @@ async function oauth(req, res) {
     const info = OError.getFullInfo(err)
     logger.error({ info }, "Failed to start Zotero authorization")
 
+    if (err?.status === 500) {
+      res.status(503).json({ message: 'Failed to start Zotero authorization (credentials not configured)' })
+      return
+    }
     HttpErrorHandler.badRequest(req, res, 'Failed to start Zotero authorization')
     return
   }
@@ -48,10 +65,12 @@ async function oauthCallback(req, res) {
   }
 
   try {
+    const credentials = await ZoteroOAuth.getCredentials()
     const { accessToken, zoteroUserId } = await ZoteroOAuth.exchangeRequestTokenForAccessToken(
       oauthToken,
       saved.tokenSecret,
       oauthVerifier,
+      credentials,
     )
     await TokenManager.storeCredentials(userId, accessToken, zoteroUserId)
 

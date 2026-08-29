@@ -55,3 +55,26 @@ export function readZipEntries(buf) {
     })
   })
 }
+
+/**
+ * R6 item 5 (2026-08-29): list ALL entry names of a zip without reading
+ * contents. (readZipEntries only extracts the three bundle entries, so
+ * it cannot be used to inspect the inner source.zip.)
+ */
+export function listZipEntryNames(buf) {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buf, { lazyEntries: true, strictSLA: false }, (err, zipFile) => {
+      if (err) {
+        return reject(new OError('Invalid zip archive', { status: 400 }))
+      }
+      const names = []
+      zipFile.on('error', (e) => reject(new OError('Zip read error', { status: 400 })))
+      zipFile.on('entry', (entry) => {
+        names.push(entry.fileName)
+        zipFile.readEntry()
+      })
+      zipFile.on('end', () => resolve(names))
+      zipFile.readEntry()
+    })
+  })
+}

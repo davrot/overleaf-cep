@@ -224,6 +224,9 @@ function envSeeds(env, coreSettings, stored) {
         boolFromEnv(env.OVERLEAF_TEMPLATE_GALLERY) ??
         coreSettings?.templates?.enabled === true,
       categories: seedTemplateCategories(env, stored),
+      // R6 (2026-08-29): "All users are template gallery admins" (site
+      // setting, admin console). Stored true overrides this false seed.
+      allUsersCanManageTemplates: false,
     },
     zotero: {
       enabled:

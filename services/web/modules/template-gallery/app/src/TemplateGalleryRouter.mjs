@@ -45,9 +45,19 @@ export default {
     // Export: management access (admin, or the owning non-admin manager).
     // Import: same as create — site admin / configured template manager;
     // per-category publishable still enforced in the manager for the rest.
+    // R6 (2026-08-29): admin-facing endpoints must work even while the
+    // public gallery is switched OFF (ensureGalleryEnabled 404s them —
+    // that's what broke the admin console's bundle card).
+    webRouter.get(
+      '/api/templates/admin-list',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiter),
+      TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
+      TemplateGalleryController.getAdminTemplateListJSON
+    )
+
     webRouter.get(
       '/template/:template_id/bundle',
-      ensureGalleryEnabled,
       AuthenticationController.requireLogin(),
       RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
       TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
@@ -55,11 +65,34 @@ export default {
     )
     webRouter.post(
       '/template/bundle/import',
-      ensureGalleryEnabled,
       AuthenticationController.requireLogin(),
       RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
       TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
       TemplateGalleryController.importTemplateBundle
+    )
+
+    // R6 item 5 (2026-08-29): import a bundle from a URL (SSRF-guarded by
+    // the External URLs site policy) — same access rules as file import
+    // (admin / template gallery admin). No ensureGalleryEnabled: restoring
+    // templates must work while the public gallery is switched off.
+    webRouter.post(
+      '/template/bundle/import-url',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
+      TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
+      TemplateGalleryController.importTemplateBundleFromUrl
+    )
+
+    // R6 item 5/9 (2026-08-29): manage page for template gallery admins
+    // (list + download + import from file/url) — beyond the site-admin
+    // console, for users holding the scoped role only. Works while the
+    // public gallery is off (it is still gated by management access).
+    webRouter.get(
+      '/templates/manage',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiter),
+      TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
+      TemplateGalleryController.templateAdminPage
     )
 
     webRouter.post(

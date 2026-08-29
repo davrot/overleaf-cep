@@ -60,6 +60,88 @@ sub-item list under the switcher (first click expands, second navigates).
 (13), duplicate-name (5), url-policy (7) + bib-editor (incl. i18n) + LinkedFiles —
 433/433 ✓. Build + live verification follow.
 
+### 2026-08-29 (evening) — R5 bug fixes + R6 feedback round (10 items)
+**R5 (done this session):**
+- Binary (jpg) "Duplicate of binary files" 500 → `duplicateFile` now exposed in
+  `ProjectEntityUpdateHandler.promises`; `duplicateEntity` file branch builds a
+  fresh `new File({name, hash, linkedFileData})` and calls it (no re-upload;
+  same filestore blob, new entity `_id`).
+- "I don't see the template save function" → "Download bundle" button added to
+  the template detail page (owner/admin block) beside Edit/Delete.
+
+**R6 (10 items, user 2026-08-29):**
+1. **Preview 500 without compiled PDF** — `fetchTemplatePreview` now returns a
+   neutral document-style SVG placeholder (`image/svg+xml`) when the filestore
+   asset is missing and `isImage`; non-image failures → 404 (not opaque 500).
+2.+4. **`/templates` header compact** — `gallery-header-all.tsx` rewritten:
+   only the `LaTeX Templates` title (eyebrow/summary removed; no top spacer);
+   the **self-referential** "Template Gallery" back link on `/templates` itself
+   removed (`gallery-search-sort-header.tsx` renders a spacer instead).
+3. **`.previous-page-link` dark-mode invisible** — now theme-aware
+   (`var(--ds-color-text-primary)` + `[data-theme='default']` override to
+   `var(--neutral-10)` in `components/link.scss`).
+5.+9. **Import templates from file OR external URL for template admins** —
+   - `POST /template/bundle/import-url` — SSRF-guarded: `UrlPolicy` allowed-
+     resources regex + blocked CIDR networks, each redirect hop re-checked
+     (`UrlAgent.fetchWithPolicyRedirects`), 9 MB download cap, empty-body check.
+   - **Rich pre-validation** (all issues collected BEFORE anything is added,
+     422 + `{ issues: [...] }`): not-a-zip, missing template.json/source.zip,
+     invalid/non-object JSON, missing/oversize name, missing/unknown/disabled
+     category (lists known keys), non-privileged publishable=false, mainFile
+     absent from the inner source.zip (real entry listing via new
+     `_bundleZip.listZipEntryNames` — the 3-name `readZipEntries` can't be
+     used for the inner zip), bad PDF magic, size caps. UI renders the list
+     item-by-item ("fix the following and try again").
+   - Category stored canonically as `/templates/<key>` (matches gallery
+     queries) — imported templates now appear in their category pages.
+   - **`/templates/manage`** page (login + management access; works WHILE the
+     public gallery is disabled) with the shared bundles UI: list (new admin
+     endpoint `GET /api/templates/admin-list` — NOT gated by
+     `ensureGalleryEnabled`; the old `/api/templates` 404'd when the gallery
+     was off, which broke the admin console bundle card), per-template
+     Download bundle, Import from file, Import from URL + rich feedback.
+   - Admin console (`/admin/site` → Templates): local 3b `TemplateBundles`
+     replaced by the shared component (same surface, + URL import, + issues
+     list).
+6. **Edit-template Category select** — `settings-template-category.tsx` now
+   fetches `GET /api/template/categories` (real site categories) instead of
+   the env-seeded `ol-ExposedSettings.templateLinks` (only "All templates").
+7. **Admin console → Templates: users table** — new
+   `GET /admin/site/template-admins` (site admin) + `TemplateAdminsTable`
+   (name/email + per-user Revoke shortcut).
+8. **`/admin/user` Create + Update account modals** — "Template gallery
+   admin" checkbox → `flags.canManageTemplates` on the user (new
+   `UserSchema.flags.canManageTemplates`); `registerNewUser`/`updateUser`
+   accept `canManageTemplates`; `_formatUserInfo` returns it.
+10. **`/admin/site` → Templates: "All users are template gallery admins"** —
+   new `SiteSettings.templates.allUsersCanManageTemplates` (stored wins over
+   env seed `false`); admin console checkbox.
+
+**Role design (5/9/10):** template gallery admin = distinct scoped role
+(`flags.canManageTemplates` per user, OR `allUsersCanManageTemplates` site
+setting, OR legacy `Settings.templates.user_id`, OR site admin). Centralized
+in new `TemplateAuthorizationHelper.hasTemplateAdminAccess(user, userId)`;
+`TemplateAuthorizationMiddleware`, `importTemplateBundle*`,
+`canUserOverrideTemplate`, and both `userIsTemplatesManager` metas now use
+it. Template admins can manage templates (create/edit/download/import)
+WITHOUT full site-admin powers.
+
+**Zotero OAuth start fixed** (P4 leftover): `Settings.zotero` is undefined in
+this deployment (no `ZOTERO_*` env) so `getRequestToken()` threw
+`TypeError → 400`. `ZoteroOAuth.getCredentials()` now resolves site_settings
+`zotero` section (clientSecret decrypted by the manager) with env fallback
+and a clear 503 when unconfigured; `oauth_callback` derived from the request
+origin. `ZoteroController.oauth` passes credentials + callbackURL.
+
+**Testing:** new `modules/template-gallery/test/unit/src/bundle-validation.test.mjs`
+(8 tests) covers: missing entries, bad JSON, valid accepted,
+`/templates/<key>` normalization, unknown category + known-key hint,
+multi-issue report (name length + mainFile + bad PDF), publishable
+(non-privileged) vs privileged bypass, 422 error shape.
+
+**Validation:** eslint `--max-warnings 0` on all touched TS/TSX ✓ · vitest
+481/481 (twice, combined run) ✓ · `node --check` on every touched .mjs ✓.
+
 ### 2026-08-29 — fixes from live verification + final deploy; **33/33 live checks PASS**
 - `672c3d12be` — 3d fix: `assertUrlAllowed` was ignoring the boolean from
   `matchesResourceRegex` (allowlist never rejected anything). Now enforces.

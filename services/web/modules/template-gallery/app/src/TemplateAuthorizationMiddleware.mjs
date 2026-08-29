@@ -1,7 +1,6 @@
 import Settings from '@overleaf/settings'
 import { getSection } from '../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
-import AdminAuthorizationHelper from '../../../../app/src/Features/Helpers/AdminAuthorizationHelper.mjs'
-const { hasAdminAccess } = AdminAuthorizationHelper
+import TemplateAuthorizationHelper from './TemplateAuthorizationHelper.mjs'
 import HttpErrorHandler from '../../../../app/src/Features/Errors/HttpErrorHandler.mjs'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import { Template } from './models/Template.mjs'
@@ -10,9 +9,11 @@ async function ensureTemplateManagementAccess(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
   const userId = SessionManager.getLoggedInUserId(req.session)
 
-  const isPrivileged =
-    hasAdminAccess(user) ||
-    Settings.templates?.user_id === userId
+  // R6 (2026-08-29): template gallery admin role — site admin, or the
+  // scoped `flags.canManageTemplates` flag, or the site setting
+  // "all users are template gallery admins", or the legacy
+  // OVERLEAF_TEMPLATES_USER_ID.
+  const isPrivileged = await TemplateAuthorizationHelper.hasTemplateAdminAccess(user, userId)
 
   if (isPrivileged) return next()
 

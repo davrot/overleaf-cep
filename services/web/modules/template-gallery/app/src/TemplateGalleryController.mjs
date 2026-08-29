@@ -4,13 +4,13 @@ import logger from '@overleaf/logger'
 import ErrorController from '../../../../app/src/Features/Errors/ErrorController.mjs'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
-import AdminAuthorizationHelper from '../../../../app/src/Features/Helpers/AdminAuthorizationHelper.mjs'
-const { hasAdminAccess } = AdminAuthorizationHelper
+import TemplateAuthorizationHelper from './TemplateAuthorizationHelper.mjs'
 import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
 import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
 import TemplateGalleryManager from'./TemplateGalleryManager.mjs'
 import { getUserName } from './TemplateGalleryHelper.mjs'
 import { TemplateNameConflictError, RecompileRequiredError } from './TemplateErrors.mjs'
+import { BundleValidationIssuesError, validateTemplateBundle } from './TemplateGalleryManager.mjs'
 import Settings from '@overleaf/settings'
 
 const __dirname = Path.dirname(fileURLToPath(import.meta.url))
@@ -128,6 +128,7 @@ async function templatesCategoryPage(req, res, next) {
   try {
     let { category } = req.params
     const result = await TemplateGalleryManager.getTemplatesPageData(category)
+    const userId = SessionManager.getLoggedInUserId(req.session)
 
     let title
     if (result.categoryName) {
@@ -136,9 +137,16 @@ async function templatesCategoryPage(req, res, next) {
       category = null
       title = t('templates_page_title')
     }
+    // R6 (2026-08-29): the template-gallery admin box (import from file /
+    // url) is shown to users with the template gallery admin role.
+    const userIsTemplatesManager = await TemplateAuthorizationHelper.hasTemplateAdminAccess(
+      SessionManager.getSessionUser(req.session),
+      userId
+    )
     res.render(Path.resolve(__dirname, '../views/template_gallery/template-gallery'), {
       title,
       category,
+      userIsTemplatesManager,
       ...await themeLocals(req, res),
     })
   } catch (error) {
@@ -155,7 +163,7 @@ async function templateDetailsPage(req, res, next) {
       title: `${t('template')}: ${template.name}`,
       template: JSON.stringify(template),
       languages: Settings.languages,
-      userIsTemplatesManager: Boolean(Settings.templates?.user_id && Settings.templates.user_id === userId),
+      userIsTemplatesManager: await TemplateAuthorizationHelper.hasTemplateAdminAccess(SessionManager.getSessionUser(req.session), userId),
       ...await themeLocals(req, res),
     })
   } catch (error) {
@@ -176,6 +184,22 @@ async function getTemplateJSON(req, res, next) {
 async function getCategoryTemplatesJSON(req, res, next) {
   try {
     const result = await TemplateGalleryManager.getCategoryTemplates(req.query)
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+/** R6 (2026-08-29): list ALL templates for the admin console / manage
+ *  page. Deliberately NOT gated by ensureGalleryEnabled — bundle
+ *  management must work while the public gallery is switched off. */
+async function getAdminTemplateListJSON(req, res, next) {
+  try {
+    const result = await TemplateGalleryManager.getCategoryTemplates({
+      category: 'all',
+      by: 'lastUpdated',
+      order: 'desc',
+    })
     res.json(result)
   } catch (error) {
     next(error)
@@ -217,7 +241,9 @@ async function downloadTemplateBundle(req, res) {
 
 /** 3b: POST /template/bundle/import — import a template bundle
  *  (base64 zip in body.data; body.override replaces an existing template
- *  with the same name). */
+ *  with the same name).
+ *  R6 item 5: validation failures come back as 422 + { issues: [...] } so
+ *  the UI can show a complete, fixable checklist. */
 async function importTemplateBundle(req, res) {
   const t = req.i18n.translate
   const userId = SessionManager.getLoggedInUserId(req.session)
@@ -227,8 +253,7 @@ async function importTemplateBundle(req, res) {
     if (typeof data !== 'string' || data.length === 0) {
       return res.status(400).json({ message: t('bundle_data_missing') })
     }
-    const privileged = hasAdminAccess(user) ||
-      Settings.templates?.user_id === userId
+    const privileged = await TemplateAuthorizationHelper.hasTemplateAdminAccess(user, userId)
     const result = await TemplateGalleryManager.importTemplateBundle({
       data: Buffer.from(data, 'base64'),
       userId,
@@ -248,15 +273,86 @@ async function importTemplateBundle(req, res) {
         message: t('template_with_this_title_exists_and_owned_by_x', { x: ownerName }),
       })
     }
+    if (error instanceof BundleValidationIssuesError) {
+      return res.status(422).json({
+        issues: error.issues,
+        message: t('bundle_rejected'),
+      })
+    }
     const status = error.status || 500
     logger.error({ error }, 'template bundle import failed')
     res.status(status).json({ message: error.message })
   }
 }
 
+/** R6 item 5: POST /template/bundle/import-url — import a bundle from a
+ *  URL (checked against the External URLs site policy; every redirect hop
+ *  re-checked). Same access rules as file import (admin / template admin). */
+async function importTemplateBundleFromUrl(req, res) {
+  const t = req.i18n.translate
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  const user = SessionManager.getSessionUser(req.session)
+  try {
+    const { url, override } = req.body || {}
+    if (typeof url !== 'string' || url.trim() === '') {
+      return res.status(400).json({ message: t('bundle_url_missing') })
+    }
+    const privileged = await TemplateAuthorizationHelper.hasTemplateAdminAccess(user, userId)
+    const result = await TemplateGalleryManager.importTemplateBundleFromUrl({
+      url: url.trim(),
+      userId,
+      override: !!override,
+      privileged,
+    })
+    return res.json({
+      template_id: result.templateId,
+      version: result.version,
+      created: result.created,
+    })
+  } catch (error) {
+    if (error instanceof TemplateNameConflictError) {
+      const ownerName = error.info?.ownerId === userId ? t('you') : error.info?.ownerId || 'unknown'
+      return res.status(409).json({
+        canOverride: true,
+        message: t('template_with_this_title_exists_and_owned_by_x', { x: ownerName }),
+      })
+    }
+    if (error instanceof BundleValidationIssuesError) {
+      return res.status(422).json({
+        issues: error.issues,
+        message: t('bundle_rejected'),
+      })
+    }
+    const status = error.status || 500
+    logger.error({ error, url: req.body?.url }, 'template bundle import-from-url failed')
+    res.status(status).json({ message: error.message })
+  }
+}
+
+/** R6 items 5/9: GET /templates/manage — the manage page for template
+ *  gallery admins (list + download + import from file/url). */
+async function templateAdminPage(req, res, next) {
+  const t = req.i18n.translate
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  try {
+    const userIsTemplatesManager = await TemplateAuthorizationHelper.hasTemplateAdminAccess(
+      SessionManager.getSessionUser(req.session),
+      userId
+    )
+    res.render(Path.resolve(__dirname, '../views/template_gallery/template-admin'), {
+      title: t('Manage template gallery'),
+      userIsTemplatesManager,
+      ...await themeLocals(req, res),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export default {
   createTemplateFromProject,
   getCategoriesJSON,
+  getAdminTemplateListJSON,
   editTemplate,
   deleteTemplate,
   getTemplatePreview,
@@ -266,4 +362,6 @@ export default {
   getCategoryTemplatesJSON,
   downloadTemplateBundle,
   importTemplateBundle,
+  importTemplateBundleFromUrl,
+  templateAdminPage,
 }

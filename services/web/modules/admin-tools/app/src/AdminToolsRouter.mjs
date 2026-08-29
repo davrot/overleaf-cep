@@ -98,5 +98,11 @@ export default {
       AuthorizationMiddleware.ensureUserIsSiteAdmin,
       SiteSettingsController.updateSiteSettings
     )
+    // R6 item 7 (2026-08-29): list the users holding the template gallery
+    // admin flag (Manage Site → Templates table).
+    webRouter.get('/admin/site/template-admins',
+      AuthorizationMiddleware.ensureUserIsSiteAdmin,
+      UserListController.templateAdmins
+    )
   },
 }

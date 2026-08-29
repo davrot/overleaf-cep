@@ -17,7 +17,7 @@
  * Page chrome: the /admin/user DS-nav layout (user decision 2026-08-28) —
  * same navbar, wrapper, title and content structure as the user-list page.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLFormGroup from '@/shared/components/ol/ol-form-group'
@@ -26,6 +26,8 @@ import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
 import { Dropdown } from 'react-bootstrap'
+import TemplateBundles from '../../../../template-gallery/frontend/js/features/template-bundles/template-bundles'
+
 import { User as UserIcon } from '@phosphor-icons/react'
 import { AccountMenuItems } from '@/shared/components/navbar/account-menu-items'
 import { getJSON, putJSON, postJSON } from '@/infrastructure/fetch-json'
@@ -52,6 +54,7 @@ type SiteSettings = {
     enabled: boolean
     categories: TemplateCategory[]
     counts?: Record<string, number | null>
+    allUsersCanManageTemplates?: boolean
   }
   zotero: {
     enabled: boolean
@@ -264,41 +267,24 @@ export default function SiteSettingsPage() {
   )
 }
 
-// ---------------------------------------------------------------------------
 
 /**
- * 3b (2026-08-28): template bundle save/import.
- * Bundle = zip with template.json + source.zip + output.pdf:
- *   - "Download bundle"     GET /template/:id/bundle
- *   - "Import bundle"       POST /template/bundle/import { data: base64, override }
- * Conflicts (same template name) prompt for an override re-import.
+ * R6 item 7 (2026-08-29): table of the users with the template gallery
+ * admin flag (assigned on /admin/user → Create/Update account), plus a
+ * per-user "Revoke" shortcut.
  */
-function bufToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
-  let binary = ''
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return window.btoa(binary)
-}
-
-function TemplateBundles() {
+function TemplateAdminsTable() {
   const { t } = useTranslation()
-  const [templates, setTemplates] = useState<
-    { id: string; name: string; version: string; category: string }[] | null
-  >(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [users, setUsers] = useState<{ id: string; name: string; email: string }[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const refresh = () => {
-    void getJSON<{ totalSize: number; templates: { id: string; name: string; version: string; category: string }[] }>(
-      '/api/templates?category=all&by=lastUpdated&order=desc'
+    getJSON<{ users: { id: string; name: string; email: string }[] }>(
+      '/admin/site/template-admins'
     )
-      .then(d => setTemplates(d.templates || []))
-      .catch(err => setLoadError(err?.data?.message || t('Could not load the template list')))
+      .then(d => setUsers(d.users || []))
+      .catch(err => setError(err?.data?.message || t('Could not load the template admin list')))
   }
 
   useEffect(() => {
@@ -306,104 +292,51 @@ function TemplateBundles() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const doImport = (b64: string, override: boolean) => {
-    setBusy(true)
-    setStatus(null)
-    return postJSON('/template/bundle/import', { body: { data: b64, override } })
-      .then(data => {
-        const msg = data.created
-          ? t('Bundle imported: template created', { name: data.name || '' })
-          : t('Bundle imported: template replaced (v__version__)', { version: data.version })
-        setStatus({ kind: 'ok', text: typeof msg === 'string' ? msg : msg })
-        refresh()
-      })
-      .catch(err => {
-        if (err?.response?.status === 409 && err?.data?.canOverride) {
-          // eslint-disable-next-line no-alert
-          const yes = window.confirm(
-            `${err.data.message}\n\n${t('Import over the existing template?')}`
-          )
-          if (yes) return doImport(b64, true)
-          setStatus({ kind: 'error', text: err.data.message || t('Import failed') })
-        } else {
-          setStatus({
-            kind: 'error',
-            text: err?.data?.message || err?.message || t('Import failed'),
-          })
-        }
-      })
-      .finally(() => setBusy(false))
-  }
-
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
-      setStatus({ kind: 'error', text: t('Bundle too large (max ~9 MB)') })
-      return
-    }
-    void file
-      .arrayBuffer()
-      .then(buf => doImport(bufToBase64(buf), false))
-      .catch(err => setStatus({ kind: 'error', text: String(err?.message || err) }))
+  const revoke = (u: { id: string; email: string }) => {
+    setBusyId(u.id)
+    void postJSON(`/admin/user/${u.id}/update`, { body: { canManageTemplates: false } })
+      .then(refresh)
+      .catch(err => setError(err?.data?.message || t('Could not revoke the template admin role')))
+      .finally(() => setBusyId(null))
   }
 
   return (
     <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '16px' }}>
-      <h3 style={{ marginTop: 0 }}>{t('Template bundles')}</h3>
+      <h3 style={{ marginTop: 0 }}>{t('Template gallery admins')}</h3>
       <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
-        {t(
-          'A bundle is a zip of template.json + source.zip + output.pdf. Download one to save/backup a template, or import one to restore/re-publish it (same name = replace, unless you confirm an override).'
-        )}
+        {t('Template gallery admins can manage templates (create, edit in place, download/import bundles) without full site admin powers. Assign the role on the user page (Create / Update account).')}
       </p>
-      {loadError && (
-        <Notification type="error" content={loadError} isDismissible onDismiss={() => setLoadError(null)} />
+      {error && (
+        <Notification type="error" content={error} isDismissible onDismiss={() => setError(null)} />
       )}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('name')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('category')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('version')}</th>
-            <th style={{ padding: '6px 8px' }} />
-          </tr>
-        </thead>
-        <tbody>
-          {(templates || []).map(tp => (
-            <tr key={tp.id} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
-              <td style={{ padding: '6px 8px' }}>
-                <a href={`/template/${tp.id}`}>{tp.name}</a>
-              </td>
-              <td style={{ padding: '6px 8px', fontSize: '13px' }}>{(tp.category || '').replace('/templates/', '')}</td>
-              <td style={{ padding: '6px 8px', fontSize: '13px' }}>{tp.version}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                <OLButton variant="ghost" size="sm" as="a" href={`/template/${tp.id}/bundle`}>
-                  {t('Download bundle')}
-                </OLButton>
-              </td>
+      {users === null && !error && null}
+      {(users || []).length === 0 ? (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary, #666)' }}>{t('No users have the template gallery admin role yet.')}</p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('name')}</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('email')}</th>
+              <th style={{ padding: '6px 8px' }} />
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <OLButton variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
-          {t('Import bundle…')}
-        </OLButton>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/zip,.zip"
-          style={{ display: 'none' }}
-          onChange={onFile}
-          data-testid="bundle-import-file"
-        />
-        {busy && <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('Importing…')}</span>}
-      </div>
-      {status && (
-        <div style={{ marginTop: '8px' }}>
-          <Notification type={status.kind === 'ok' ? 'success' : 'warning'} content={status.text} isDismissible onDismiss={() => setStatus(null)} />
-        </div>
+          </thead>
+          <tbody>
+            {(users || []).map(u => (
+              <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
+                <td style={{ padding: '6px 8px' }}>{u.name}</td>
+                <td style={{ padding: '6px 8px' }}>
+                  <a href={`/admin/user/${u.id}`}>{u.email}</a>
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                  <OLButton variant="secondary" size="sm" disabled={busyId === u.id} onClick={() => revoke(u)}>
+                    {t('Revoke')}
+                  </OLButton>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )
@@ -419,6 +352,7 @@ function TemplatesTab({
   const { t: translate } = useTranslation()
   const [enabled, setEnabled] = useState(initial.enabled)
   const [categories, setCategories] = useState<TemplateCategory[]>(initial.categories)
+  const [allUsersAdmin, setAllUsersAdmin] = useState(Boolean(initial.allUsersCanManageTemplates))
   const [editKey, setEditKey] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<{ name: string; description: string }>({
     name: '',
@@ -443,6 +377,17 @@ function TemplatesTab({
       </OLFormGroup>
       <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
         {translate('adminSite.templatesGalleryHelper')}
+      </p>
+
+      <OLFormGroup>
+        <OLFormCheckbox
+          checked={allUsersAdmin}
+          onChange={(e) => setAllUsersAdmin((e.target as HTMLInputElement).checked)}
+          label={translate('adminSite.allUsersTemplateAdmins')}
+        />
+      </OLFormGroup>
+      <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
+        {translate('adminSite.allUsersTemplateAdminsHelper')}
       </p>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
@@ -509,6 +454,7 @@ function TemplatesTab({
       </table>
 
       <TemplateBundles />
+      <TemplateAdminsTable />
 
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '16px' }}>
         <OLButton
@@ -517,8 +463,8 @@ function TemplatesTab({
           isLoading={saving}
           loadingLabel={translate("loading")}
           onClick={() => {
-            void save({ enabled, categories }).then(ok => {
-              if (ok) onApplied({ enabled, categories })
+            void save({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin }).then(ok => {
+              if (ok) onApplied({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin })
             })
           }}
         >
