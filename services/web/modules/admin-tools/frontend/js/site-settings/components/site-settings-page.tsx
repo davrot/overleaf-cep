@@ -26,7 +26,7 @@ import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
 import { Dropdown } from 'react-bootstrap'
-import TemplateBundles from '../../../../template-gallery/frontend/js/features/template-bundles/template-bundles'
+import TemplateBundles from '../../../../../template-gallery/frontend/js/features/template-bundles/template-bundles'
 
 import { User as UserIcon } from '@phosphor-icons/react'
 import { AccountMenuItems } from '@/shared/components/navbar/account-menu-items'
