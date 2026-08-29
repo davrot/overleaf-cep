@@ -26,7 +26,9 @@ export async function ensureRegistrationEnabled(req, res, next) {
     if (req.method === 'POST') {
       return res.status(403).send('Registration is disabled on this site')
     }
-    return res.status(404).send('Not Found')
+    // New 1: admins choose where /register sends visitors when the sign-up
+    // page is off (empty → default /login).
+    return res.redirect(section.disabledRedirectUrl || '/login')
   }
   return next()
 }

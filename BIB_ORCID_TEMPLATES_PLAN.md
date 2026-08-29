@@ -5,6 +5,61 @@ Status: FINAL v4 (2026-08-28) — all open decisions agreed by the user (2.2 zip
 
 ### Progress log (verified)
 
+### 2026-08-28 (night) — P4 Zotero picker + P3 extras (3a/3b/3d/3e) + New 1–4 implemented
+**P4 — Import from Zotero (user's linked Zotero, same UX as the ORCID picker):**
+- Server (`modules/zotero`): `ZoteroApiClient` picker methods (libraries = main library +
+  groups; collections; items newest-first; combined BibTeX for selected keys, capped at
+  200 keys — one Zotero request). `ZoteroController` 4 handlers; `ZoteroRouter` GET
+  `/user/zotero/picker/{libraries,collections,items,bibtex}` (login + `ensureZoteroEnabled`;
+  unlinked → 409 `zotero_not_linked`).
+- Frontend: `zotero-picker-modal.tsx` (library + optional collection → Browse → item
+  table with select-all → Import selected). Wired into the Add menus of both hosts
+  (`bib-entry-list.tsx` `onAddFromZotero` prop; `bib-editor-panel.tsx` + `library-page.tsx`
+  state + modal; insert reuses the existing guarded BibTeX import path).
+
+**3a — per-category publishable:** Templates table gains a Publishable checkbox per
+category; `TemplateAuthorizationMiddleware` create-branch: explicit per-category
+`publishable` (stored, admin-managed) overrides the legacy
+`OVERLEAF_NON_ADMIN_CAN_PUBLISH_TEMPLATES` (true → allowed, false → 403); bundle import
+enforces it too (non-privileged importers).
+
+**3b — template bundle save/import:** bundle = `template.json` + `source.zip` + optional
+`output.pdf`. `GET /template/:id/bundle` (management access) assembles from the
+filestore (`/template/{id}/v/{n}/zip|pdf`) via archiver; `POST /template/bundle/import`
+(base64 zip; name conflict → 409 + optional override → version bump) reads via yauzl,
+re-uploads assets, 3a category check. Admin UI: Manage Extensions → Templates →
+"Template bundles" (list + Download bundle + Import bundle… with conflict confirm).
+
+**3d — external-URL SSRF guard:** `UrlPolicy.mjs` (pure `ipToBigInt`/`ipInCidr`/regex
+match, fails closed on a broken admin regex) + `getSection('externalUrl')` policy
+applied in `UrlAgent.createLinkedFile` before fetch AND on every manual-redirect hop
+(≤5) — `fetchWithPolicyRedirects` (node-fetch `redirect:'manual'`). Unit-tested.
+
+**3e + New 1 — Sign Up section:** registration on/off (admin console), allowed email
+domains (enforced per-request in `RegistrationPageController`; stored ∪ env seed), and
+NEW `signup.disabledRedirectUrl` — when signup is disabled, GET `/register` 302-redirects
+to it (default `/login`), POST stays 403.
+
+**New 2 — Duplicate in the file tree (all file types):** `EditorHttpController.duplicateEntity`
++ route `POST /project/:Project_id/:entity_type/:entity_id/duplicate`: text files
+(defaultTextExtensions → doc/docstore) copy via `EditorController.addDoc`; binaries
+(`fileRef`) copy the filestore blob via `ProjectEntityUpdateHandler.duplicateFile`
+(`createdBlob:false`, no re-upload) + `reciveNewFile` socket emit. Name chain
+`a.b → a_copy.b → a_copy(1).b` (pure `generateDuplicateName`, unit-tested). Frontend:
+`canDuplicate`/`duplicateSelected` in `file-tree-actionable.tsx`, `syncDuplicate` in
+`sync-mutation.ts`, "Duplicate" menu item directly below Rename.
+
+**New 3 — Templates switcher sub-items:** `GET /api/template/categories` (enabled
+admin-managed categories) → `ds-nav-page-switcher.tsx` renders an expandable Templates
+sub-item list under the switcher (first click expands, second navigates).
+
+**New 4 — category Edit modal:** description textarea width = name input width
+(`w-100` + inline `width:100%`).
+
+**Validation:** eslint `--max-warnings 0` on every touched file ✓; vitest: site-settings
+(13), duplicate-name (5), url-policy (7) + bib-editor (incl. i18n) + LinkedFiles —
+433/433 ✓. Build + live verification follow.
+
 ### 2026-08-28 (evening) — user round-4 + round-5 feedback applied (items 1–7)
 **Round 4 (menu + sidebar):**
 - Manage menu: replaced the broken react-bootstrap nested flyout with an

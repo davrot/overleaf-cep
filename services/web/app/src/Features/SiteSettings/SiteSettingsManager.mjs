@@ -257,6 +257,9 @@ function envSeeds(env, coreSettings, stored) {
       allowedEmailDomains: (env.OVERLEAF_ALLOWED_REGISTRATION_EMAIL_DOMAINS || '')
         .split(/[,\s]+/)
         .filter(Boolean),
+      // New 1: where /register sends visitors when the sign-up page is
+      // disabled; empty/'' → the default /login.
+      disabledRedirectUrl: env.OVERLEAF_REGISTRATION_DISABLED_REDIRECT || '',
     },
   }
 }
@@ -446,6 +449,9 @@ export function validateSignupSection(value) {
   const errors = []
   if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
   if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.disabledRedirectUrl !== undefined && typeof value.disabledRedirectUrl !== 'string') {
+    errors.push('disabledRedirectUrl must be a string')
+  }
   if (value.allowedEmailDomains !== undefined) {
     if (!Array.isArray(value.allowedEmailDomains)) {
       errors.push('allowedEmailDomains must be an array')

@@ -4,6 +4,8 @@ import logger from '@overleaf/logger'
 import ErrorController from '../../../../app/src/Features/Errors/ErrorController.mjs'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
+import AdminAuthorizationHelper from '../../../../app/src/Features/Helpers/AdminAuthorizationHelper.mjs'
+const { hasAdminAccess } = AdminAuthorizationHelper
 import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
 import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
 import TemplateGalleryManager from'./TemplateGalleryManager.mjs'
@@ -180,8 +182,81 @@ async function getCategoryTemplatesJSON(req, res, next) {
   }
 }
 
+/** New 3: GET /api/template/categories — enabled categories for the
+ *  navigation switcher's Templates sub-items. */
+async function getCategoriesJSON(req, res, next) {
+  try {
+    const categories = await TemplateGalleryManager.getEnabledCategories()
+    res.json(categories)
+  } catch (error) {
+    next(error)
+  }
+}
+
+/** 3b: GET /template/:template_id/bundle — download a template bundle
+ *  (template.json + source.zip + output.pdf) for save/restore. */
+async function downloadTemplateBundle(req, res) {
+  const t = req.i18n.translate
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  try {
+    const { buffer, filename, contentType } =
+      await TemplateGalleryManager.getTemplateBundle({
+        templateId: req.params.template_id,
+        userId,
+      })
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Content-Length', String(buffer.length))
+    res.end(buffer)
+  } catch (error) {
+    const status = error.status || 500
+    logger.error({ error, templateId: req.params.template_id }, 'template bundle download failed')
+    res.status(status).json({ message: status === 403 ? t('You are not allowed to do that') : error.message })
+  }
+}
+
+/** 3b: POST /template/bundle/import — import a template bundle
+ *  (base64 zip in body.data; body.override replaces an existing template
+ *  with the same name). */
+async function importTemplateBundle(req, res) {
+  const t = req.i18n.translate
+  const userId = SessionManager.getLoggedInUserId(req.session)
+  const user = SessionManager.getSessionUser(req.session)
+  try {
+    const { data, override } = req.body || {}
+    if (typeof data !== 'string' || data.length === 0) {
+      return res.status(400).json({ message: t('bundle_data_missing') })
+    }
+    const privileged = hasAdminAccess(user) ||
+      Settings.templates?.user_id === userId
+    const result = await TemplateGalleryManager.importTemplateBundle({
+      data: Buffer.from(data, 'base64'),
+      userId,
+      override: !!override,
+      privileged,
+    })
+    return res.json({
+      template_id: result.templateId,
+      version: result.version,
+      created: result.created,
+    })
+  } catch (error) {
+    if (error instanceof TemplateNameConflictError) {
+      const ownerName = error.info?.ownerId === userId ? t('you') : error.info?.ownerId || 'unknown'
+      return res.status(409).json({
+        canOverride: true,
+        message: t('template_with_this_title_exists_and_owned_by_x', { x: ownerName }),
+      })
+    }
+    const status = error.status || 500
+    logger.error({ error }, 'template bundle import failed')
+    res.status(status).json({ message: error.message })
+  }
+}
+
 export default {
   createTemplateFromProject,
+  getCategoriesJSON,
   editTemplate,
   deleteTemplate,
   getTemplatePreview,
@@ -189,4 +264,6 @@ export default {
   templateDetailsPage,
   getTemplateJSON,
   getCategoryTemplatesJSON,
+  downloadTemplateBundle,
+  importTemplateBundle,
 }

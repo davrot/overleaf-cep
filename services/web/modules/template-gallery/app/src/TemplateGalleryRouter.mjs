@@ -41,6 +41,27 @@ export default {
       TemplateGalleryController.templateDetailsPage
     )
 
+    // 3b (2026-08-28): template bundle save/import (admin console).
+    // Export: management access (admin, or the owning non-admin manager).
+    // Import: same as create — site admin / configured template manager;
+    // per-category publishable still enforced in the manager for the rest.
+    webRouter.get(
+      '/template/:template_id/bundle',
+      ensureGalleryEnabled,
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
+      TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
+      TemplateGalleryController.downloadTemplateBundle
+    )
+    webRouter.post(
+      '/template/bundle/import',
+      ensureGalleryEnabled,
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiterNewTemplate),
+      TemplateAuthorizationMiddleware.ensureTemplateManagementAccess,
+      TemplateGalleryController.importTemplateBundle
+    )
+
     webRouter.post(
       '/template/:template_id/edit',
       ensureGalleryEnabled,
@@ -71,6 +92,15 @@ export default {
       ensureGalleryEnabled,
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplateGalleryController.getTemplateJSON
+    )
+
+    // New 3 (2026-08-28): enabled categories (public read; the gallery is
+    // public by design) for the Templates sub-items in the nav switcher.
+    webRouter.get(
+      '/api/template/categories',
+      ensureGalleryEnabled,
+      RateLimiterMiddleware.rateLimit(rateLimiter),
+      TemplateGalleryController.getCategoriesJSON
     )
 
     webRouter.get(

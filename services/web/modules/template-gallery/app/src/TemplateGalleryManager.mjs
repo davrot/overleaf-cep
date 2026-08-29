@@ -17,7 +17,9 @@ import {
 import { cleanHtml }  from './CleanHtml.mjs'
 import { TemplateNameConflictError } from './TemplateErrors.mjs'
 import { fetchStreamWithResponse } from '@overleaf/fetch-utils'
+import archiver from 'archiver'
 const TIMEOUT = 30000
+const MAX_BUNDLE_ASSET_BYTES = 30 * 1024 * 1024 // per-asset cap (zip/pdf)
 
 async function editTemplate({ templateId, updates }) {
 
@@ -235,12 +237,213 @@ function _formatTemplateForPage(template) {
   }
 }
 
+/**
+ * New 3 (2026-08-28): the ENABLED template categories (admin-managed
+ * via Manage Extensions -> Templates; env seeds underneath) — used by
+ * the ds-nav page switcher (Templates sub-items).
+ */
+function getEnabledCategories() {
+  return SiteSettingsManager.getSection('templates').then(section => {
+    return (section.categories || [])
+      .filter(c => c.enabled !== false)
+      .map(c => ({ key: c.key, name: c.name || c.key }))
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* 3b (2026-08-28): template bundle save/import.
+ * Bundle = zip with template.json (metadata) + source.zip +
+ * optional output.pdf. Export assembles from the filestore; import
+ * re-uploads source.zip (+output.pdf) for a (new|bumped) Template
+ * doc. Admin console surface: Manage Extensions -> Templates.
+ */
+function _bundleAssetUrls(templateId, version) {
+  const base = `${settings.apis.filestore.url}/template/${templateId}/v/${version}`
+  return { zip: `${base}/zip`, pdf: `${base}/pdf` }
+}
+
+async function _collectStream(stream) {
+  const chunks = []
+  let total = 0
+  for await (const chunk of stream) {
+    total += chunk.length
+    if (total > MAX_BUNDLE_ASSET_BYTES) {
+      throw new OError('template asset too large', { status: 413 })
+    }
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
+function _templateToBundleMeta(template) {
+  const t = template.toJSON()
+  const { _id, __v, owner, ...meta } = t
+  return meta
+}
+
+async function getTemplateBundle({ templateId, userId }) {
+  const template = await Template.findById(templateId)
+  if (!template) {
+    throw new OError('Template not found', { status: 404, templateId })
+  }
+  const { canOverride } = await canUserOverrideTemplate(template, userId)
+  if (!canOverride) {
+    throw new OError('not allowed to download this template bundle', { status: 403 })
+  }
+  const { zip: zipUrl, pdf: pdfUrl } = _bundleAssetUrls(
+    String(template._id),
+    template.version
+  )
+  const zipReq = await fetchStreamWithResponse(zipUrl, {
+    signal: AbortSignal.timeout(TIMEOUT),
+  })
+  if (!zipReq.response.ok) {
+    throw new OError('Template source not found', { status: 404 })
+  }
+  const sourceZip = await _collectStream(zipReq.stream)
+  let outputPdf = null
+  try {
+    const pdfReq = await fetchStreamWithResponse(pdfUrl, {
+      signal: AbortSignal.timeout(TIMEOUT),
+    })
+    if (pdfReq.response.ok) outputPdf = await _collectStream(pdfReq.stream)
+  } catch (err) {
+    logger.warn({ err, templateId }, 'bundle export: no/failed output.pdf (continuing without)')
+  }
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  const chunks = []
+  archive.on('data', c => chunks.push(c))
+  const finished = new Promise((resolve, reject) => {
+    archive.on('end', resolve)
+    archive.on('error', reject)
+  })
+  archive.append(JSON.stringify(_templateToBundleMeta(template), null, 2), {
+    name: 'template.json',
+  })
+  archive.append(sourceZip, { name: 'source.zip' })
+  if (outputPdf) archive.append(outputPdf, { name: 'output.pdf' })
+  archive.finalize()
+  await finished
+  const filename = `${String(template.name || 'template').replace(/[/:*?"<>|\s]+/g, '_')}_v${template.version}.bundle.zip`
+  return {
+    buffer: Buffer.concat(chunks),
+    filename,
+    contentType: 'application/zip',
+  }
+}
+
+async function importTemplateBundle({ data, userId, override, privileged = false }) {
+  const { readZipEntries } = await import('./_bundleZip.mjs')
+  const bundle = await readZipEntries(data)
+  const metaRaw = bundle.get('template.json')
+  const sourceRaw = bundle.get('source.zip')
+  const pdfRaw = bundle.get('output.pdf')
+  if (!metaRaw || !sourceRaw) {
+    throw new OError('Bundle must contain template.json and source.zip', { status: 400 })
+  }
+  let meta
+  try {
+    meta = JSON.parse(metaRaw.toString('utf8'))
+  } catch (err) {
+    throw new OError('template.json is not valid JSON', { status: 400 })
+  }
+  const doc = {
+    name: String(meta.name || '').trim(),
+    category: String(meta.category || '').trim(),
+    descriptionMD: meta.descriptionMD || '',
+    authorMD: meta.authorMD || '',
+    license: String(meta.license || '').trim() || 'CC-BY 4.0',
+    mainFile: String(meta.mainFile || 'main.tex'),
+    compiler: String(meta.compiler || settings.defaultLatexCompiler),
+    imageName: meta.imageName || null,
+    language: meta.language || null,
+  }
+  if (!doc.name || !doc.category) {
+    throw new OError('Bundle metadata requires name and category', { status: 400 })
+  }
+  validateTemplateInput(doc)
+  await renderTemplateHtmlFields(doc)
+
+  const existing = await Template.findOne({ name: doc.name }).exec()
+
+  // 3a: per-category publishable enforcement for non-privileged importers
+  // (site admins / the configured template manager are always allowed).
+  if (!privileged) {
+    try {
+      const section = await SiteSettingsManager.getSection('templates', settings)
+      const cat = (section.categories || []).find(c => c.key === doc.category)
+      if (cat && cat.publishable === false) {
+        throw new OError('You may not publish templates in this category', { status: 403 })
+      }
+    } catch (err) {
+      if (err.status === 403) throw err
+      // settings miss: fall through (legacy policy)
+    }
+  }
+
+  if (existing) {
+    const { canOverride } = await canUserOverrideTemplate(existing, userId)
+    if (!override || !canOverride) {
+      throw new TemplateNameConflictError(String(existing.owner))
+    }
+  }
+
+  const sourceBuf = sourceRaw
+
+  let template
+  if (existing) {
+    Object.assign(existing, doc, {
+      version: (existing.version || 1) + 1,
+      lastUpdated: new Date(),
+    })
+    template = existing
+  } else {
+    template = new Template(doc)
+    template.owner = userId
+  }
+  const version = template.version
+  const { zip: zipUrl, pdf: pdfUrl } = _bundleAssetUrls(String(template._id), version)
+  const [zipRes, pdfRes] = await Promise.all([
+    fetchStreamWithResponse(zipUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: sourceBuf,
+      signal: AbortSignal.timeout(TIMEOUT),
+    }),
+    pdfRaw
+      ? fetchStreamWithResponse(pdfUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/pdf' },
+          body: pdfRaw,
+          signal: AbortSignal.timeout(TIMEOUT),
+        })
+      : Promise.resolve({ response: { status: 200, ok: true } }),
+  ])
+  if (zipRes.response.status !== 200 || pdfRes.response.status !== 200) {
+    if (!existing) {
+      await Template.deleteOne({ _id: template._id }).catch(() => {})
+    }
+    throw new OError('Failed to store template assets', { status: 502 })
+  }
+  await template.save()
+  if (existing) {
+    // fire-and-forget previous-version asset cleanup (same pattern as create)
+    void deleteTemplateAssets(template._id, version - 1, false)
+  }
+  return { templateId: String(template._id), version, created: !existing }
+}
+
+export { getEnabledCategories, getTemplateBundle, importTemplateBundle }
+
 export default {
   createTemplateFromProject,
   editTemplate,
   deleteTemplate,
+  getEnabledCategories,
   getTemplate,
   getCategoryTemplates,
   fetchTemplatePreview,
   getTemplatesPageData,
+  getTemplateBundle,
+  importTemplateBundle,
 }

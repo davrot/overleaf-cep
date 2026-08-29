@@ -1,4 +1,5 @@
 import Settings from '@overleaf/settings'
+import { getSection } from '../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
 import AdminAuthorizationHelper from '../../../../app/src/Features/Helpers/AdminAuthorizationHelper.mjs'
 const { hasAdminAccess } = AdminAuthorizationHelper
 import HttpErrorHandler from '../../../../app/src/Features/Errors/HttpErrorHandler.mjs'
@@ -18,6 +19,23 @@ async function ensureTemplateManagementAccess(req, res, next) {
   const templateId = req.params?.template_id
 
   if (!templateId) {
+    // 3a (2026-08-28): per-category publish permission from the admin
+    // console (Manage Extensions → Templates "Publishable"; stored value
+    // wins). An explicit per-category decision overrides the legacy
+    // site-wide OVERLEAF_NON_ADMIN_CAN_PUBLISH_TEMPLATES setting.
+    const category = req.body && req.body.category
+    if (category) {
+      try {
+        const section = await getSection('templates', Settings)
+        const cat = (section.categories || []).find(c => c.key === category)
+        if (cat && cat.publishable === false) {
+          return HttpErrorHandler.forbidden(req, res)
+        }
+        if (cat && cat.publishable === true) return next()
+      } catch (err) {
+        // fall through to the legacy check below
+      }
+    }
     if (Settings.templates?.nonAdminCanManage) return next()
     return HttpErrorHandler.forbidden(req, res)
   }

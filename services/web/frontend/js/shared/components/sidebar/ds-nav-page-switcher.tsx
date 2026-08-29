@@ -1,11 +1,40 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookBookmark, Folder, Link as LinkIcon } from '@phosphor-icons/react'
+import { BookBookmark, CaretDown, Folder, Link as LinkIcon } from '@phosphor-icons/react'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 import getMeta from '@/utils/meta'
+import { getJSON } from '@/infrastructure/fetch-json'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 
 type ActivePage = 'library' | 'projects' | 'templates'
+
+type TemplateCategory = { key: string; name: string }
+
+/**
+ * New 3 (2026-08-28): the Templates item carries sub-items — all
+ * ENABLED template categories (admin-managed: Manage Extensions →
+ * Templates; fetched from /api/template/categories). First click
+ * expands the sub-list; a second click navigates to /templates.
+ */
+function useTemplateCategories(enabled: boolean) {
+  const [categories, setCategories] = useState<TemplateCategory[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    void getJSON<TemplateCategory[]>('/api/template/categories')
+      .then(cats => {
+        if (alive) setCategories(cats || [])
+      })
+      .catch(() => {
+        /* the gallery may be offline/blocked — no sub-items */
+      })
+    return () => {
+      alive = false
+    }
+  }, [enabled])
+  return categories
+}
 
 export function DsNavPageSwitcher({
   activePage,
@@ -23,6 +52,10 @@ export function DsNavPageSwitcher({
   const templatesEnabled =
     getMeta('ol-ExposedSettings')?.templatesEnabled ?? false
   const activeOverallTheme = useActiveOverallTheme()
+  const categories = useTemplateCategories(
+    templatesEnabled && activePage === 'templates'
+  )
+  const [subOpen, setSubOpen] = useState(false)
 
   return (
     <>
@@ -34,8 +67,8 @@ export function DsNavPageSwitcher({
                 activeOverallTheme === 'dark' ? overleafLogoDark : overleafLogo
               }
               alt="Overleaf, A Digital Science Solution"
-              height="59"
-              width="130"
+              height={59}
+              width={130}
             />
           </a>
         </div>
@@ -80,15 +113,45 @@ export function DsNavPageSwitcher({
           </a>
         </li>
         {templatesEnabled && (
-          <li>
+          <li className="ds-nav-page-switcher-with-sub">
             <a
               href="/templates"
               className={`ds-nav-page-switcher-item${activePage === 'templates' ? ' active' : ''}`}
               aria-current={activePage === 'templates' ? 'page' : undefined}
+              aria-expanded={subOpen || undefined}
+              onClick={e => {
+                // First click: expand the category sub-items (stay put);
+                // second click: navigate to /templates.
+                if (!subOpen) {
+                  e.preventDefault()
+                  setSubOpen(true)
+                }
+              }}
             >
               <LinkIcon size={24} />
               <span>{t('templates')}</span>
+              {categories.length > 0 && (
+                <CaretDown
+                  size={14}
+                  weight="bold"
+                  className={`ds-nav-page-switcher-caret${subOpen ? ' is-open' : ''}`}
+                />
+              )}
             </a>
+            {subOpen && categories.length > 0 && (
+              <ul className="ds-nav-page-switcher-sub">
+                {categories.map(c => (
+                  <li key={c.key}>
+                    <a
+                      href={`/templates/${c.key}`}
+                      className="ds-nav-page-switcher-sub-item"
+                    >
+                      {c.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         )}
       </ul>

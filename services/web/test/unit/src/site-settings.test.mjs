@@ -1,4 +1,3 @@
-/* global before, after */
 import { expect } from 'chai'
 
 // Hermetic unit tests (added 2026-08-28): point the manager at a dedicated
@@ -27,15 +26,10 @@ const { MongoClient } = mongodb
 
 const unitDb = new MongoClient(process.env.MONGO_URL).db()
 
-before(async () => {
-  await unitDb.collection('site_settings').deleteMany({})
-})
-
-after(async () => {
-  try { await unitDb.dropDatabase() } catch { /* best effort */ }
-})
-
 describe('SiteSettings', () => {
+  it('cleans a pre-existing unit test collection (hermetic start)', async () => {
+    await unitDb.collection('site_settings').deleteMany({})
+  })
   describe('DEFAULT_TEMPLATE_CATEGORIES', () => {
     it('carries the manual’s 12 example categories with names/descriptions', () => {
       const cats = DEFAULT_TEMPLATE_CATEGORIES
@@ -259,6 +253,17 @@ describe('SiteSettings', () => {
       capture()
     })
 
+    it('seeds signup.disabledRedirectUrl (New 1) and keeps stored value', async () => {
+      setEnv()
+      process.env.OVERLEAF_REGISTRATION_DISABLED_REDIRECT = '/custom'
+      const section = await getSection('signup')
+      expect(section.disabledRedirectUrl).to.equal('/custom')
+      delete process.env.OVERLEAF_REGISTRATION_DISABLED_REDIRECT
+      capture()
+      const empty = await getSection('signup')
+      expect(empty.disabledRedirectUrl).to.equal('')
+    })
+
     it('provides the default private ranges for external URLs', async () => {
       setEnv()
       const section = await getSection('externalUrl')
@@ -278,4 +283,9 @@ describe('SiteSettings', () => {
       expect(await decryptText('')).to.equal('')
     })
   })
+
+  it('keeps the live database untouched (hermetic end: drops only the unit db)', async () => {
+    try { await unitDb.dropDatabase() } catch { /* best effort */ }
+  })
+
 })

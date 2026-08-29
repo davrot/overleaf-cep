@@ -1,4 +1,5 @@
 import Path from 'node:path'
+import { getSection } from '../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
 import registerNewUserAndSendActivationEmail from './UserRegistrationHandler.mjs'
 import EmailHelper from '../../../../app/src/Features/Helpers/EmailHelper.mjs'
 import Settings from '@overleaf/settings'
@@ -15,7 +16,12 @@ async function registrationPage(req, res, next) {
     newTemplateData.templateName = req.session.templateData.templateName
   }
 
-  const allowedDomains = Settings.allowedRegistrationEmailDomains || []
+  let allowedDomains: string[] = []
+  try {
+    allowedDomains = (await getSection('signup', Settings)).allowedEmailDomains || []
+  } catch (err) {
+    allowedDomains = Settings.allowedRegistrationEmailDomains || []
+  }
   const displayDomains = new Map()
 
   for (const domain of allowedDomains) {
@@ -62,10 +68,17 @@ async function registerNewUser(req, res, next) {
     return res.status(400).json({ message: 'Invalid email address.' })
   }
 
-  // If registration is restricted to a specific email domains,
-  // check that the email domain is allowed
+  // If registration is restricted to specific email domains, check that
+  // the email domain is allowed. 3e: the list comes from the admin-managed
+  // SiteSettings signup section (stored value, env seed underneath).
   const domain = parsedEmail.split('@').pop()
-  const allowedDomains = Settings.allowedRegistrationEmailDomains
+  let allowedDomains
+  try {
+    const section = await getSection('signup', Settings)
+    allowedDomains = section.allowedEmailDomains || []
+  } catch (err) {
+    allowedDomains = Settings.allowedRegistrationEmailDomains || []
+  }
 
   if (
     allowedDomains &&
