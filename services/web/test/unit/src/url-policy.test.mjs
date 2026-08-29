@@ -1,5 +1,5 @@
 /* global describe, it */
-import { expect } from 'chai'
+import { expect } from 'vitest'
 import UrlPolicy from '../../../app/src/Features/LinkedFiles/UrlPolicy.mjs'
 
 describe('UrlPolicy (3d — SSRF guard for external URL imports)', () => {
@@ -46,6 +46,48 @@ describe('UrlPolicy (3d — SSRF guard for external URL imports)', () => {
     })
     it('a broken admin regex fails closed', () => {
       expect(() => matchesResourceRegex('https://a.org', '([unclosed')).to.throw()
+    })
+  })
+
+  describe('assertUrlAllowed (allowlist enforcement)', () => {
+    it('rejects a url that does not match the allowlist regex (403)', () => {
+      const { assertUrlAllowed } = UrlPolicy
+      return expect(
+        assertUrlAllowed('https://evil.org/x', {
+          allowedResourcesRegex: '.*\\.uni-bremen\\.de/.*',
+          blockedNetworks: [],
+        })
+      )
+        .to.eventually.be.rejectedWith('site policy')
+    })
+    it('allows a matching url and a url under an empty allowlist', () => {
+      const { assertUrlAllowed } = UrlPolicy
+      return Promise.all([
+        expect(
+          assertUrlAllowed('https://a.uni-bremen.de/file', {
+            allowedResourcesRegex: '.*\\.uni-bremen\\.de/.*',
+            blockedNetworks: ['10.0.0.0/8'],
+          })
+        )
+          .to.eventually.be.fulfilled,
+        expect(
+          assertUrlAllowed('https://anything.org/x', {
+            allowedResourcesRegex: '',
+            blockedNetworks: ['10.0.0.0/8'],
+          })
+        )
+          .to.eventually.be.fulfilled,
+      ])
+    })
+    it('rejects ip-literal hosts inside a blocked network (403)', () => {
+      const { assertUrlAllowed } = UrlPolicy
+      return expect(
+        assertUrlAllowed('http://127.0.0.1:3000/admin', {
+          allowedResourcesRegex: '',
+          blockedNetworks: ['127.0.0.0/8'],
+        })
+      )
+        .to.eventually.be.rejectedWith('blocked')
     })
   })
 })

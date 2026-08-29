@@ -94,7 +94,14 @@ async function resolveIps(host) {
  */
 async function assertUrlAllowed(url, section) {
   const cfg = section || {}
-  matchesResourceRegex(url, cfg.allowedResourcesRegex)
+  // Allowlist filter: when set, the FULL url must match (admin UI copy:
+  // "only URLs matching this regular expression may be added").
+  if (!matchesResourceRegex(url, cfg.allowedResourcesRegex)) {
+    throw new OError(
+      'This URL is not allowed by the site policy (allowed resources regex)',
+      { status: 403, url }
+    )
+  }
 
   const blocked = Array.isArray(cfg.blockedNetworks) ? cfg.blockedNetworks : []
   if (!blocked.length) return
