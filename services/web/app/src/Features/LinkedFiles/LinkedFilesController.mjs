@@ -33,6 +33,7 @@ import * as SiteSettingsManager from '../SiteSettings/SiteSettingsManager.mjs'
 const {
   CompileFailedError,
   UrlFetchFailedError,
+  UrlPolicyDeniedError,
   InvalidUrlError,
   AccessDeniedError,
   BadEntityTypeError,
@@ -259,6 +260,9 @@ export default LinkedFilesController = {
     } else if (error instanceof OutputFileFetchFailedError) {
       res.status(404)
       plainTextResponse(res, 'Could not get output file')
+    } else if (error instanceof UrlPolicyDeniedError) {
+      res.status(403)
+      plainTextResponse(res, error.message)
     } else if (error instanceof UrlFetchFailedError) {
       res.status(422)
       if (error.cause instanceof FileTooLargeError) {

@@ -1,6 +1,7 @@
 /* global describe, it */
 import { expect } from 'vitest'
 import UrlPolicy from '../../../app/src/Features/LinkedFiles/UrlPolicy.mjs'
+import LinkedFilesErrors from '../../../app/src/Features/LinkedFiles/LinkedFilesErrors.mjs'
 
 describe('UrlPolicy (3d — SSRF guard for external URL imports)', () => {
   const { ipInCidr, matchesResourceRegex } = UrlPolicy
@@ -88,6 +89,35 @@ describe('UrlPolicy (3d — SSRF guard for external URL imports)', () => {
         })
       )
         .to.eventually.be.rejectedWith('blocked')
+    })
+    it('rejections are UrlPolicyDeniedError with info.status 403 (→ HTTP 403)', async () => {
+      const { assertUrlAllowed } = UrlPolicy
+      let err = null
+      try {
+        await assertUrlAllowed('https://evil.org/x', {
+          allowedResourcesRegex: '.*\\.uni-bremen\\.de/.*',
+          blockedNetworks: [],
+        })
+      } catch (e) {
+        err = e
+      }
+      expect(err, 'allowlist mismatch throws').to.be.instanceOf(
+        LinkedFilesErrors.UrlPolicyDeniedError
+      )
+      expect(err.info.status).to.equal(403)
+      err = null
+      try {
+        await assertUrlAllowed('http://127.0.0.1:3000/x', {
+          allowedResourcesRegex: '',
+          blockedNetworks: ['127.0.0.0/8'],
+        })
+      } catch (e) {
+        err = e
+      }
+      expect(err, 'blocked network throws').to.be.instanceOf(
+        LinkedFilesErrors.UrlPolicyDeniedError
+      )
+      expect(err.info.status).to.equal(403)
     })
   })
 })

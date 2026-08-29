@@ -1,7 +1,6 @@
 import ProjectDeleter from '../Project/ProjectDeleter.mjs'
 import EditorController from './EditorController.mjs'
 import { Project } from '../../models/Project.mjs'
-import { Folder } from '../../models/Folder.mjs'
 import DocstoreManager from '../Docstore/DocstoreManager.mjs'
 import ProjectEntityUpdateHandler from '../Project/ProjectEntityUpdateHandler.mjs'
 import EditorRealTimeController from './EditorRealTimeController.mjs'
@@ -22,28 +21,32 @@ import { z, zz, parseReq } from '../../infrastructure/Validation.mjs'
 const ProjectAccess = CollaboratorsGetter.ProjectAccess
 
 /**
- * Walk the folder tree (from the project root folder) to locate the entity
- * with the given id. Returns { folder, ref, kind: 'doc' | 'file' }|null.
+ * Walk the project's inline folder tree (project.rootFolder) to locate the
+ * entity with the given id. Entities are stored inline on the project document
+ * (this CE build does not use a separate `folders` collection), so we walk
+ * project.rootFolder directly. Returns { folder, ref, kind: 'doc' | 'file' }|null.
  */
-async function _findEntityInFolderTree(rootFolderId, targetId) {
-  const root = await Folder.findById(rootFolderId).exec()
-  if (!root) return null
-  const stack = [root]
-  while (stack.length > 0) {
-    const folder = stack.shift()
+function _findEntityInProject(project, targetId) {
+  const walk = (folder) => {
     for (const d of folder.docs || []) {
-      if (d._id.toString() === targetId) {
+      if (d._id && d._id.toString() === targetId) {
         return { folder, ref: d, kind: 'doc' }
       }
     }
     for (const f of folder.fileRefs || []) {
-      if (f._id.toString() === targetId) {
+      if (f._id && f._id.toString() === targetId) {
         return { folder, ref: f, kind: 'file' }
       }
     }
     for (const sub of folder.folders || []) {
-      stack.push(sub)
+      const found = walk(sub)
+      if (found) return found
     }
+    return null
+  }
+  for (const root of project.rootFolder || []) {
+    const found = walk(root)
+    if (found) return found
   }
   return null
 }
@@ -70,10 +73,7 @@ async function duplicateEntity(req, res, next) {
     if (!project || !rootFolderId) {
       return res.sendStatus(404)
     }
-    const found = await _findEntityInFolderTree(
-      rootFolderId.toString(),
-      entityId
-    )
+    const found = _findEntityInProject(project, entityId)
     if (!found || found.kind !== entityType) {
       return res.sendStatus(404)
     }

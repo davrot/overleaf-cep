@@ -53,6 +53,11 @@ async function createLinkedFile(
     )
     return file._id
   } catch (error) {
+    // A site-policy 403 is a deliberate rejection — surface it as-is so the
+    // client receives a 403 rather than a wrapped 422 "fetch failed".
+    if (error instanceof LinkedFilesErrors.UrlPolicyDeniedError) {
+      throw error
+    }
     if (error instanceof RequestFailedError && /too large/.test(error.body)) {
       throw new FileTooLargeError('file too large', {
         url: linkedFileData.url,

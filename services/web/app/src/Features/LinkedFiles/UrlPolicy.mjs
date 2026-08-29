@@ -2,6 +2,7 @@ import dns from 'node:dns/promises'
 import net from 'node:net'
 import logger from '@overleaf/logger'
 import { OError } from '../Errors/Errors.js'
+import LinkedFilesErrors from './LinkedFilesErrors.mjs'
 
 /**
  * 3d (2026-08-28): SSRF guard for external-URL linked files.
@@ -97,7 +98,7 @@ async function assertUrlAllowed(url, section) {
   // Allowlist filter: when set, the FULL url must match (admin UI copy:
   // "only URLs matching this regular expression may be added").
   if (!matchesResourceRegex(url, cfg.allowedResourcesRegex)) {
-    throw new OError(
+    throw new LinkedFilesErrors.UrlPolicyDeniedError(
       'This URL is not allowed by the site policy (allowed resources regex)',
       { status: 403, url }
     )
@@ -126,7 +127,7 @@ async function assertUrlAllowed(url, section) {
   for (const ip of ips) {
     for (const cidr of blocked) {
       if (ipInCidr(ip, cidr)) {
-        throw new OError(
+        throw new LinkedFilesErrors.UrlPolicyDeniedError(
           `The URL host is in a network blocked by the site policy (${cidr})`,
           { status: 403, ip, cidr }
         )
