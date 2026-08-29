@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
+import OLButton from '@/shared/components/ol/ol-button'
 import OLCol from '@/shared/components/ol/ol-col'
 import OLRow from '@/shared/components/ol/ol-row'
 import OLTooltip from '@/shared/components/ol/ol-tooltip'
@@ -97,6 +98,15 @@ function TemplateDetails() {
     {loggedInUserId && (loggedInUserId === template.owner || loggedInUserCanManageTemplates) && (
       <OLRow className="cta-links-container">
         <OLCol md={12} className="text-end">
+          {/* 3b (2026-08-29): "save" a template = download its bundle
+              (template.json + source.zip + output.pdf) for backup/restore. */}
+          <OLButton
+            as="a"
+            href={`/template/${template.id}/bundle`}
+            variant="secondary"
+          >
+            {t('Download bundle')}
+          </OLButton>
           <EditTemplateButton />
           <DeleteTemplateButton />
         </OLCol>

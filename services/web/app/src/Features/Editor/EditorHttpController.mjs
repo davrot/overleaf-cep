@@ -1,6 +1,7 @@
 import ProjectDeleter from '../Project/ProjectDeleter.mjs'
 import EditorController from './EditorController.mjs'
 import { Project } from '../../models/Project.mjs'
+import { File } from '../../models/File.mjs'
 import DocstoreManager from '../Docstore/DocstoreManager.mjs'
 import ProjectEntityUpdateHandler from '../Project/ProjectEntityUpdateHandler.mjs'
 import EditorRealTimeController from './EditorRealTimeController.mjs'
@@ -106,11 +107,13 @@ async function duplicateEntity(req, res, next) {
       return res.json(doc)
     }
 
-    const fileRef = {
+    // The filestore blob already exists under the source hash: build a fresh
+    // File doc (own _id) that shares it — no re-upload (createdBlob: false).
+    const fileRef = new File({
       name: newName,
       hash: ref.hash,
       linkedFileData: ref.linkedFileData,
-    }
+    })
     const { fileRef: created } =
       await ProjectEntityUpdateHandler.promises.duplicateFile(
         projectId,

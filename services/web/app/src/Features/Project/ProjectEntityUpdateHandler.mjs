@@ -1293,6 +1293,7 @@ const ProjectEntityUpdateHandler = {
     addDoc,
     addDocWithRanges,
     addFile,
+    duplicateFile,
     addFolder,
     convertDocToFile,
     deleteEntity,
