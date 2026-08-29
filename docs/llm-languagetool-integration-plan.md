@@ -399,26 +399,44 @@ If we want the *open source* grammar engine (no LLM cost) to be smarter:
 - **Duplicate underlines**: fixed merge rules in §5.1; visually separate
   colors make any residual duplication diagnosable.
 
-## 13. Files touched (summary)
+## 13. Files that actually landed
+
+> The plan above names tentative files (e.g. `llm-grammar-extension.ts`,
+> `settingsModalGrammarSections`, User fields `grammarMode`/`grammarLanguage`/
+> `grammarLLMModel`). The final implementation differs: a **single** combined
+> extension lives in the `languagetool` module, settings live on the LLM
+> settings page (no modal slot), and the User model holds one nested `grammar`
+> sub-object. See the actual file list below.
+
 Backend:
-- `services/web/modules/languagetool/` (new, ported: controller, router,
-  index, utils/latex-to-annotations).
-- `services/web/modules/llm/` (extended: admin settings + force-off flag,
-  new `llm-grammar` endpoint, extended user-settings persistence, new
-  system prompt constants).
-- `services/web/app/src/infrastructure/ExpressLocals.mjs` (exposed settings).
-- `services/web/config/settings.defaults.js` (module slots: new `settingsModalGrammarSections`,
-  keep `sourceEditorComponents` + add the new extension slot).
-- `services/web/app/src/models/User.mjs` (3 new fields: grammarMode,
-  grammarLanguage, grammarLLMModel).
-- `develop/docker-compose.yml` (LT service + env).
-- `docker-compose.yml` (production: optional, or env-only).
+- `services/web/modules/languagetool/` (new module): `index.mjs` (Settings +
+  module registration), `app/src/{LanguageToolController,LanguageToolRouter,
+  adminConfig}.mjs`.
+- `services/web/modules/llm/app/src/{LLMAdminController,LLMChatController,
+  LLMRouter,LLMSettingsController}.mjs` (admin grammar fields, grammar
+  endpoint, user grammar GET/POST, admin force-off flags).
+- `services/web/app/src/infrastructure/ExpressLocals.mjs` (per-request
+  `grammarSettings` locals + exposed settings block).
+- `services/web/app/src/models/User.mjs` (nested `User.grammar =
+  { mode, llmModel, language }`).
+- `services/web/app/views/project/editor/_meta.pug` (`ol-grammarSettings`
+  meta tag).
+- `services/web/config/settings.defaults.js` (`grammar-extension` in
+  `sourceEditorExtensions`, `languagetool` in `moduleImportSequence`).
+- `develop/docker-compose.yml` (LT service + env fallbacks).
 Frontend:
-- `services/web/modules/languagetool/frontend/js/` (ported extension +
-  settings section, adapted).
-- `services/web/modules/llm/frontend/js/extensions/llm-grammar-extension.ts`
-  (new).
-- `services/web/modules/llm/frontend/js/components/grammar-settings-section.tsx`
-  (new; or a `languagetool`-side `grammar-language-setting.tsx` port +
-  `llm-grammar-settings.tsx`).
-- `services/web/types/exposed-settings.ts` (types).
+- `services/web/modules/languagetool/frontend/js/grammar-extension.ts`
+  (combined LT+LLM CM6 extension; orange=LT, blue=LLM, ≥60% overlap dedup).
+- `services/web/modules/languagetool/frontend/js/grammar-settings-section.tsx`
+  (per-user settings, embedded in the LLM settings page).
+- `services/web/modules/languagetool/frontend/js/utils/{grammar-helpers,
+  latex-to-annotations}.ts`.
+- `services/web/modules/llm/frontend/js/components/{
+  llm-admin-settings-page,llm-settings-page}.tsx` (admin grammar controls +
+  grammar section mounting).
+- `services/web/types/exposed-settings.ts` (`llmAdminEnabled`,
+  `llmServerConfigured`, `languageToolAvailable`).
+- `services/web/frontend/js/utils/meta.ts` (registered meta keys).
+Tests:
+- `services/web/modules/languagetool/test/unit/grammar-helpers.test.mjs`.
+- `services/web/modules/llm/test/unit/src/LLMSettingsController.test.mjs`.

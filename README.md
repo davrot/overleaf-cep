@@ -36,6 +36,9 @@ The present "extended" version of Overleaf CE includes:
 - Import file from external URL
 - Advanced administrator tools for managing user accounts and projects
 - Git integration
+- AI Assistant: LLM-powered chat, inline completion, and grammar checking
+  (LanguageTool and/or LLM, with per-user settings and an admin control
+  page, plus an optional self-hosted LanguageTool service)
 
 > [!CAUTION]
 > Overleaf Community Edition is intended for use in environments where **all** users are trusted. Community Edition is **not** appropriate for scenarios where isolation of users is required due to Sandbox Compiles not being available. When not using Sandboxed Compiles, users have full read and write access to the `sharelatex` container resources (filesystem, network, environment variables) when running LaTeX compiles. 
@@ -51,6 +54,11 @@ If you want help installing and maintaining Overleaf in your lab or workplace, O
 
 Detailed installation instructions can be found in the [Overleaf Toolkit](https://github.com/overleaf/toolkit/).
 Configuration details and release history for the Extended Community Edition can be found on the [Extended CE Wiki Page](https://github.com/yu-i-i/overleaf-cep/wiki).
+
+The AI Assistant and grammar-checking features are **not enabled by default**; they are
+activated by environment variables (`LLM_*`, `LANGUAGE_TOOL_*`) and configured on the
+admin settings page (`Admin > LLM Settings`); see [`develop/README.md`](develop/README.md) and
+[`docs/llm-languagetool-integration-plan.md`](docs/llm-languagetool-integration-plan.md) for details.
 
 ## Overleaf Docker Image
 

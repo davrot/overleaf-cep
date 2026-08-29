@@ -46,6 +46,34 @@ bin/dev [service1] [service2] ... [serviceN]
 
 If no services are named, all services will start in development mode.
 
+## Feature configuration (env)
+
+The AI Assistant and grammar-checking features are enabled via environment
+variables (see `dev.env`) rather than on first setup. All of these are optional;
+with none set, no LLM/AI features are visible.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `LLM_ENABLED=true` | Load the LLM module (AI chat, completion, LLM grammar checks). |
+| `LLM_API_URL` | OpenAI-compatible API base URL, e.g. `http://llm-host/v1`. Default for the model id comes from `LLM_MODEL_NAME` (first entry); fallback `qwen3-32b`. |
+| `LLM_API_KEY` | API key for `LLM_API_URL`. |
+| `LLM_MODEL_NAME` | Comma-separated list of enabled model ids (offered in the model picker). |
+| `LLM_ALLOW_USER_SETTINGS=true` | Let users configure their own LLM key/model in *Settings → LLM* (enabled by default; the env var is OR-ed with `llm.allowUserSettings`). |
+| `LANGUAGE_TOOL_URL` | Full LanguageTool server URL (takes precedence over `HOST`+`PORT`). |
+| `LANGUAGE_TOOL_HOST` | LanguageTool host fallback (compose pre-sets `languagetool`, the service name in `docker-compose.yml`). |
+| `LANGUAGE_TOOL_PORT` | LanguageTool port fallback (compose pre-sets `8010`). |
+
+Uncomment `LLM_ENABLED`/`LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL_NAME` in `dev.env` to
+enable the LLM feature; the compose `languagetool` service and
+`LANGUAGE_TOOL_HOST=languagetool` / `LANGUAGE_TOOL_PORT=8010` (pre-set in
+`docker-compose.yml`) make the LanguageTool side available out of the box, so no
+extra env is required for it. When the feature is enabled, the
+**LLM Settings** page under the admin navbar holds connection details and
+force-off switches (`llmDisabledByAdmin`, `languageToolDisabledByAdmin`) that apply
+without a server restart; user grammar preferences live under *Settings → LLM.*
+Full behavior (mode matrix, effective-mode computation, per-user vs. admin
+settings) is documented in [`../docs/llm-languagetool-integration-plan.md`](../docs/llm-languagetool-integration-plan.md).
+
 ## Debugging
 
 When run in _development mode_ most services expose a debugging port to which

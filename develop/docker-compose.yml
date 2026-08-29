@@ -194,9 +194,10 @@ services:
       - languagetool
 
   # LanguageTool server (grammar check) — see the plan in
-  # docs/llm-languagetool-integration.md §7. The web backend proxies
-  # /languagetool/health and /languagetool/check to this service; the
-  # admin can also set a URL directly on the LLM admin settings page.
+  # docs/llm-languagetool-integration-plan.md §7. The web service proxies
+  # GET /languagetool/languages and POST /languagetool/check to this service;
+  # the admin can also set a URL directly on the LLM admin settings page
+  # (Admin > LLM Settings).
   languagetool:
     image: erikvl87/languagetool:latest
     container_name: languagetool
