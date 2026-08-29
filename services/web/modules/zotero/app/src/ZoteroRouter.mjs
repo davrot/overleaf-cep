@@ -37,6 +37,33 @@ export default {
       ZoteroController.oauthCallback
     )
 
+    // P4 (2026-08-28): "Import from Zotero" picker — the user's linked
+    // libraries/collections/items + combined BibTeX for a selection.
+    webRouter.get(
+      '/user/zotero/picker/libraries',
+      AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
+      ZoteroController.getPickerLibraries
+    )
+    webRouter.get(
+      '/user/zotero/picker/collections',
+      AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
+      ZoteroController.getPickerCollections
+    )
+    webRouter.get(
+      '/user/zotero/picker/items',
+      AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
+      ZoteroController.getPickerItems
+    )
+    webRouter.get(
+      '/user/zotero/picker/bibtex',
+      AuthenticationController.requireLogin(),
+      ensureZoteroEnabled,
+      ZoteroController.getPickerBibtex
+    )
+
 
 
   },

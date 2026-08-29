@@ -49,6 +49,7 @@ import BibEntryPreview from './bib-entry-preview'
 import BibImportModal from './bib-import-modal'
 import BibImportFromLibrary from './bib-import-from-library'
 import OrcidPickerModal from '../../../../orcid-picker/frontend/js/components/orcid-picker-modal'
+import ZoteroPickerModal from '../../../../zotero/frontend/js/components/zotero-picker-modal'
 import type { BibEntry } from '../utils/bib-types'
 import type { ParsedBibEntry } from '../utils/bib-parser'
 import { generateCitationKey } from '../utils/bib-parser'
@@ -98,6 +99,8 @@ function BibEditorPanel() {
   const [libraryImportOpen, setLibraryImportOpen] = useState(false)
   // P2: "Import from ORCID.org" (Add dropdown) — the orcid-picker modal.
   const [orcidOpen, setOrcidOpen] = useState(false)
+  // P4: "Import from Zotero" (Add dropdown) — the zotero-picker modal.
+  const [zoteroOpen, setZoteroOpen] = useState(false)
   // Item 3: "Enter manually" opens the Add-reference modal (SaaS parity).
   const [manualShow, setManualShow] = useState(false)
   const [bulkDeleteGuard, setBulkDeleteGuard] = useState<
@@ -581,6 +584,7 @@ function BibEditorPanel() {
               onAddManual={() => setManualShow(true)}
               onAddFromLibrary={() => setLibraryImportOpen(true)}
               onAddFromOrcid={() => setOrcidOpen(true)}
+              onAddFromZotero={() => setZoteroOpen(true)}
             />
             {selection?.kind === 'existing' && previewEntry ? (
               <BibEntryPreview
@@ -659,6 +663,12 @@ function BibEditorPanel() {
       <OrcidPickerModal
         show={orcidOpen}
         handleHide={() => setOrcidOpen(false)}
+        onInsert={handleOrcidInserted}
+      />
+      {/* P4: Import from Zotero (Add dropdown "Import from Zotero") */}
+      <ZoteroPickerModal
+        show={zoteroOpen}
+        handleHide={() => setZoteroOpen(false)}
         onInsert={handleOrcidInserted}
       />
     </div>

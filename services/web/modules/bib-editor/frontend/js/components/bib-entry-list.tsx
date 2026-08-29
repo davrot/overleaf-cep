@@ -86,6 +86,8 @@ type Props = {
   onAddFromLibrary?: () => void
   /** ORCID import (P2) — shown in the Add menu when the host wires it. */
   onAddFromOrcid?: () => void
+  /** Zotero import (P4) — shown in the Add menu when the host wires it. */
+  onAddFromZotero?: () => void
 }
 
 export default function BibEntryList({
@@ -110,6 +112,7 @@ export default function BibEntryList({
   bulkDeleteLabel,
   onAddFromLibrary,
   onAddFromOrcid,
+  onAddFromZotero,
 }: Props) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -195,6 +198,16 @@ export default function BibEntryList({
                   onClick={onAddFromOrcid}
                 >
                   {t('Import from ORCID.org')}
+                </DropdownItem>
+              ) : null}
+              {/* P4 — "Import from Zotero" (BIB_ORCID_TEMPLATES_PLAN.md): same
+                  UX as the ORCID picker, source = the user's linked Zotero. */}
+              {onAddFromZotero ? (
+                <DropdownItem
+                  description={t('Browse your Zotero libraries and import items')}
+                  onClick={onAddFromZotero}
+                >
+                  {t('Import from Zotero')}
                 </DropdownItem>
               ) : null}
               {/* C9 — "Import from Library" (LIBRARY_PLAN.md): enabled when

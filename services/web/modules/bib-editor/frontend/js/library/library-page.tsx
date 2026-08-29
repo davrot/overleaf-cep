@@ -46,6 +46,7 @@ import BibEntryList from '../components/bib-entry-list'
 import BibEntryPreview from '../components/bib-entry-preview'
 import BibImportModal from '../components/bib-import-modal'
 import OrcidPickerModal from '../../../../orcid-picker/frontend/js/components/orcid-picker-modal'
+import ZoteroPickerModal from '../../../../zotero/frontend/js/components/zotero-picker-modal'
 import LibraryManualModal from './library-manual-modal'
 import * as api from './library-api'
 import { useLibrary } from './library-context'
@@ -66,6 +67,8 @@ export default function LibraryPage() {
   const [manualShow, setManualShow] = useState(false)
   // P2: "Import from ORCID.org" (top-bar Add dropdown — orcid-picker modal).
   const [orcidOpen, setOrcidOpen] = useState(false)
+  // P4: "Import from Zotero" (top-bar Add dropdown — zotero-picker modal).
+  const [zoteroOpen, setZoteroOpen] = useState(false)
   const [confirmPermanent, setConfirmPermanent] = useState<string[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   // Last form report from the open preview (flush-on-leave, OQ-7).
@@ -328,6 +331,13 @@ export default function LibraryPage() {
                   >
                     {t('Import from ORCID.org')}
                   </DropdownItem>
+                  {/* P4 — "Import from Zotero" (user's linked Zotero) */}
+                  <DropdownItem
+                    description={t('Browse your Zotero libraries and import items')}
+                    onClick={() => setZoteroOpen(true)}
+                  >
+                    {t('Import from Zotero')}
+                  </DropdownItem>
                 </DropdownMenu>
               </Dropdown>
             </div>
@@ -537,6 +547,13 @@ export default function LibraryPage() {
       <OrcidPickerModal
         show={orcidOpen}
         handleHide={() => setOrcidOpen(false)}
+        onInsert={handleOrcidInserted}
+      />
+
+      {/* P4: Import from Zotero (top-bar Add dropdown) */}
+      <ZoteroPickerModal
+        show={zoteroOpen}
+        handleHide={() => setZoteroOpen(false)}
         onInsert={handleOrcidInserted}
       />
 
