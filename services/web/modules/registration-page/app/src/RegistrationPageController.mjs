@@ -16,7 +16,7 @@ async function registrationPage(req, res, next) {
     newTemplateData.templateName = req.session.templateData.templateName
   }
 
-  let allowedDomains: string[] = []
+  let allowedDomains = []
   try {
     allowedDomains = (await getSection('signup', Settings)).allowedEmailDomains || []
   } catch (err) {
