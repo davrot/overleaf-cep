@@ -44,8 +44,14 @@ function TemplateAdminChrome() {
 }
 
 function TemplateAdminPage() {
-  const { isReady } = useWaitForI18n()
-  if (!isReady) return null
+  const { isReady, error } = useWaitForI18n()
+  if (!isReady) {
+    const el = document.getElementById('template-admin-root')
+    if (el && !el.innerHTML) {
+      el.innerHTML = '<div class="tap-debug">i18n not ready. error: ' + (error ? error.message : 'no-error-yet') + '</div>'
+    }
+    return null
+  }
   return (
     <UserSettingsProvider>
       <TemplateAdminChrome />
