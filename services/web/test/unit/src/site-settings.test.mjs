@@ -140,6 +140,9 @@ describe('SiteSettings', () => {
       expect(Object.keys(SECTION_VALIDATORS).sort()).to.deep.equal([
         'externalUrl',
         'signup',
+        'sso-ldap',
+        'sso-oidc',
+        'sso-saml',
         'templates',
         'zotero',
       ])

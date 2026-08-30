@@ -53,6 +53,11 @@ async function getCollection() {
 /** In-section field names that hold encrypted values. */
 export const SECRET_FIELDS = {
   zotero: ['clientSecret'],
+  // SSO providers (SSO multi-provider, 2026-08-29): stored (encrypted)
+  // wins over the OVERLEAF_* env seed under the same key.
+  'sso-saml': ['idpCert', 'privateKey', 'decryptionPvk'],
+  'sso-oidc': ['clientSecret'],
+  'sso-ldap': ['bindCredentials'],
 }
 
 let _cache = { at: 0, doc: undefined }
@@ -178,6 +183,7 @@ function boolFromEnv(value) {
   return undefined
 }
 
+
 function seedTemplateCategories(env, stored) {
   // Union (user round 4, 2026-08-28): the table must list ALL categories
   // the template extension supports — the 12 manual defaults, whatever
@@ -264,6 +270,11 @@ function envSeeds(env, coreSettings, stored) {
       // disabled; empty/'' → the default /login.
       disabledRedirectUrl: env.OVERLEAF_REGISTRATION_DISABLED_REDIRECT || '',
     },
+    // SSO providers are admin-managed and stored-only (D7: no env
+    // fallback — an unset section means the provider is disabled).
+    'sso-saml': { enabled: false },
+    'sso-oidc': { enabled: false },
+    'sso-ldap': { enabled: false },
   }
 }
 
@@ -314,6 +325,31 @@ export async function getSection(name, coreSettings) {
     }
     merged.clientSecret = secret
     delete merged.hasEnvSecret
+  }
+
+  // SSO provider sections: stored (encrypted) secret wins, env seed
+  // second. Mirrors the zotero resolution above, generalized over the
+  // section's SECRET_FIELDS list.
+  const ssoSecrets = SECRET_FIELDS[name]
+  if (ssoSecrets && name !== 'zotero') {
+    for (const field of ssoSecrets) {
+      const storedVal = stored[field]
+      let resolved = ''
+      if (typeof storedVal === 'string' && storedVal.length > 0) {
+        try {
+          resolved = await decryptText(storedVal)
+        } catch (err) {
+          logger.warn(
+            { err, section: name, field },
+            `SiteSettings: ${name} ${field} decrypt failed; env value used if set`
+          )
+        }
+        if (!resolved) resolved = seeds[field] || ''
+      } else {
+        resolved = seeds[field] || ''
+      }
+      merged[field] = resolved
+    }
   }
 
   return merged
@@ -472,9 +508,68 @@ export function validateSignupSection(value) {
   return errors
 }
 
+export function validateSsoSamlSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    if (typeof value.issuer !== 'string' || value.issuer.length === 0) {
+      errors.push('issuer is required to enable SAML')
+    }
+    // A secret (stored or env) is required to verify IdP signatures.
+    const hasStored = typeof value.idpCert === 'string' && value.idpCert.length > 0
+    if (!hasStored && !process.env.OVERLEAF_SAML_IDP_CERT) {
+      errors.push('IdP certificate is required to enable SAML (stored or via OVERLEAF_SAML_IDP_CERT env)')
+    }
+  }
+  return errors
+}
+
+export function validateSsoOidcSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    const hasIssuer = typeof value.issuer === 'string' && value.issuer.length > 0
+    const hasUrls = typeof value.authorizationURL === 'string' && value.authorizationURL.length > 0
+      && typeof value.tokenURL === 'string' && value.tokenURL.length > 0
+    if (!hasIssuer && !hasUrls) {
+      errors.push('either the issuer URL or the authorization/token URLs are required to enable OIDC')
+    }
+    if (typeof value.clientID !== 'string' || value.clientID.length === 0) {
+      errors.push('clientID is required to enable OIDC')
+    }
+  }
+  if (value.allowedOIDCEmailDomains !== undefined && !Array.isArray(value.allowedOIDCEmailDomains)) {
+    errors.push('allowedOIDCEmailDomains must be an array')
+  }
+  return errors
+}
+
+export function validateSsoLdapSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    if (typeof value.url !== 'string' || !/^ldaps?:\/\//.test(value.url)) {
+      errors.push('url must be an ldapi(s)://… server URL to enable LDAP')
+    }
+    if (typeof value.searchBase !== 'string' || value.searchBase.length === 0) {
+      errors.push('searchBase (base DN) is required to enable LDAP')
+    }
+  }
+  if (value.searchAttributes !== undefined && typeof value.searchAttributes === 'string' && value.searchAttributes.length > 0) {
+    try { JSON.parse(value.searchAttributes) } catch { errors.push('searchAttributes must be a JSON array string') }
+  }
+  return errors
+}
+
 export const SECTION_VALIDATORS = {
   templates: validateTemplatesSection,
   zotero: validateZoteroSection,
   externalUrl: validateExternalUrlSection,
   signup: validateSignupSection,
+  'sso-saml': validateSsoSamlSection,
+  'sso-oidc': validateSsoOidcSection,
+  'sso-ldap': validateSsoLdapSection,
 }

@@ -40,6 +40,11 @@ import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 import useThemedPage from '@/shared/hooks/use-themed-page'
+import {
+  SamlSsoTab,
+  OidcSsoTab,
+  LdapSsoTab,
+} from './sso-settings-tab'
 
 type TemplateCategory = {
   key: string
@@ -68,15 +73,36 @@ type SiteSettings = {
     allowedResourcesRegex: string
   }
   signup: { enabled: boolean; allowedEmailDomains: string[]; disabledRedirectUrl?: string }
+
+  'sso-saml': {
+    enabled: boolean
+    idpCertSet?: boolean
+    [key: string]: unknown
+  }
+  'sso-oidc': {
+    enabled: boolean
+    clientSecretSet?: boolean
+    [key: string]: unknown
+  }
+  'sso-ldap': {
+    enabled: boolean
+    bindCredentialsSet?: boolean
+    [key: string]: unknown
+  }
 }
 
-type Section = 'templates' | 'zotero' | 'externalUrl' | 'signup'
+type Section =
+  | 'templates' | 'zotero' | 'externalUrl' | 'signup'
+  | 'ssoSaml' | 'ssoOidc' | 'ssoLdap'
 
 const SECTIONS: { id: Section; labelKey: string }[] = [
   { id: 'templates', labelKey: 'adminSite.templates' },
   { id: 'zotero', labelKey: 'adminSite.zotero' },
   { id: 'externalUrl', labelKey: 'adminSite.externalUrls' },
   { id: 'signup', labelKey: 'adminSite.signUp' },
+  { id: 'ssoSaml', labelKey: 'adminSite.ssoSaml' },
+  { id: 'ssoOidc', labelKey: 'adminSite.ssoOidc' },
+  { id: 'ssoLdap', labelKey: 'adminSite.ssoLdap' },
 ]
 
 function useSectionSave(section: Section) {
@@ -253,6 +279,15 @@ export default function SiteSettingsPage() {
                       {active === 'zotero' && <ZoteroTab initial={settings.zotero} />}
                       {active === 'externalUrl' && <ExternalUrlTab initial={settings.externalUrl} />}
                       {active === 'signup' && <SignupTab initial={settings.signup} />}
+                      {active === 'ssoSaml' && (
+                        <SamlSsoTab key={`saml-${settings['sso-saml']?.enabled}`} section={settings['sso-saml'] ?? { enabled: false }} />
+                      )}
+                      {active === 'ssoOidc' && (
+                        <OidcSsoTab key={`oidc-${settings['sso-oidc']?.enabled}`} section={settings['sso-oidc'] ?? { enabled: false }} />
+                      )}
+                      {active === 'ssoLdap' && (
+                        <LdapSsoTab key={`ldap-${settings['sso-ldap']?.enabled}`} section={settings['sso-ldap'] ?? { enabled: false }} />
+                      )}
                     </div>
                   </>
                 )}

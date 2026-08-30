@@ -55,12 +55,16 @@ export default {
    * templates: per-category template counts.
    */
   getSiteSettings: expressify(async (req, res) => {
-    const [templates, zotero, externalUrl, signup] = await Promise.all([
-      getSection('templates', Settings),
-      getSection('zotero', Settings),
-      getSection('externalUrl', Settings),
-      getSection('signup', Settings),
-    ])
+    const [templates, zotero, externalUrl, signup, ssoSaml, ssoOidc, ssoLdap] =
+      await Promise.all([
+        getSection('templates', Settings),
+        getSection('zotero', Settings),
+        getSection('externalUrl', Settings),
+        getSection('signup', Settings),
+        getSection('sso-saml', Settings),
+        getSection('sso-oidc', Settings),
+        getSection('sso-ldap', Settings),
+      ])
 
     // Template counts per category (same source as the gallery).
     const counts = {}
@@ -83,6 +87,9 @@ export default {
       zotero: maskSecrets('zotero', zotero),
       externalUrl: maskSecrets('externalUrl', externalUrl),
       signup: maskSecrets('signup', signup),
+      'sso-saml': maskSecrets('sso-saml', ssoSaml),
+      'sso-oidc': maskSecrets('sso-oidc', ssoOidc),
+      'sso-ldap': maskSecrets('sso-ldap', ssoLdap),
     })
   }),
 
@@ -110,6 +117,20 @@ export default {
       { section, result, userId: req.session?.user?.id },
       'site-settings: section updated'
     )
+    // SSO: re-register the passport strategy from the new stored config so
+    // the change applies without a container restart (best effort — the
+    // login start also refreshes).
+    const ssoType = section === 'sso-saml' ? 'saml'
+      : section === 'sso-oidc' ? 'oidc'
+        : section === 'sso-ldap' ? 'ldap' : null
+    if (ssoType) {
+      try {
+        const runtime = await import('../../../authentication/sso-runtime.mjs')
+        await runtime.refreshSsoStrategy(ssoType)
+      } catch (err) {
+        logger.warn({ err, section }, 'site-settings: SSO strategy refresh failed')
+      }
+    }
     res.json({ ok: true, ...result })
   }),
 }
