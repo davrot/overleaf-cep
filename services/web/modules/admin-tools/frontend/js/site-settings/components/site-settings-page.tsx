@@ -26,7 +26,6 @@ import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
 import { Dropdown } from 'react-bootstrap'
-import TemplateBundles from '../../../../../template-gallery/frontend/js/features/template-bundles/template-bundles'
 
 import { User as UserIcon } from '@phosphor-icons/react'
 import { AccountMenuItems } from '@/shared/components/navbar/account-menu-items'
@@ -493,7 +492,15 @@ function TemplatesTab({
         </tbody>
       </table>
 
-      <TemplateBundles />
+      {/* R9 item 6 (2026-08-29): bundle import/export lives exclusively at
+          /templates/manage (shared TemplateBundles component) — pointer only. */}
+      <p style={{ margin: '12px 0 0', fontSize: '13px' }}>
+        {t('template_bundles_pointer')}{' '}
+        <a href="/templates/manage" style={{ color: 'var(--link-web, #0f5f93)' }}>
+          /templates/manage
+        </a>
+        {t('template_bundles_pointer_end')}
+      </p>
       <TemplateAdminsTable />
 
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '16px' }}>

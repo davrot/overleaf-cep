@@ -533,7 +533,7 @@
   top: 0;
   bottom: 0;
   right: 0;
-  width: 30rem;
+  width: var(--bibtex-split-preview-width, 30rem);
   max-width: 100%;
   z-index: 20;
 }
@@ -559,7 +559,7 @@
 /* The list shifts to make room for the open, contained slide-out (D4).
    The list is always mounted, so this animates in AND out. */
 .bib-editor-panel:has(.bibtex-entry-preview-panel-contained.bibtex-entry-preview-panel-open) .bibtex-entry-list {
-  margin-right: 30rem;
+  margin-right: var(--bibtex-split-preview-width, 30rem);
 }
 
 /* Narrow layouts: full-width overlay (no list shift). */
@@ -1245,6 +1245,17 @@
   font-size: 1rem;
 }
 
+/* Duplicate-key warning (matches the library page rule; R9 2026-08-29). */
+.bib-editor-panel .bibtex-entry-duplicate-icon {
+  color: var(--bibtex-already-in-library-color, #d4a10c);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.bib-editor-panel .bibtex-entry-duplicate-icon .material-symbols {
+  font-size: 1.125rem;
+}
+
 .bib-editor-panel .bibtex-tooltip-errors {
   display: flex;
   flex-direction: column;
@@ -1466,4 +1477,22 @@
   .bib-editor-panel .bib-editor-panel-content {
     overflow-y: auto;
   }
+}
+
+/* Shared column resizer (R9 item 2, 2026-08-29): 6px draggable gutter
+   at the preview's left edge + visible on hover/focus. */
+.bib-editor-panel .bibtex-preview-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 25;
+  touch-action: none;
+}
+.bib-editor-panel .bibtex-preview-resizer:hover,
+.bib-editor-panel .bibtex-preview-resizer:focus-visible {
+  background: var(--blue-50);
+  box-shadow: 0 0 0 1px var(--blue-50);
 }

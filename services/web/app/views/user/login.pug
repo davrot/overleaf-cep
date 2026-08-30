@@ -2,6 +2,10 @@ extends ../layout-website-redesign
 
 block vars
 	- isWebsiteRedesign = true
+	// R9 item 8 (2026-08-29, davrot/overleaf-cep@6a0aaaba login.pug): suppress
+	// the right-side navbar block on the login page (no account/admin tabs
+	// are meaningful signed-out — keeps the navbar clean).
+	- suppressNavbarRight = true
 
 block content
 	main#main-content.content

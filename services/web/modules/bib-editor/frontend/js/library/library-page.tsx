@@ -514,6 +514,7 @@ export default function LibraryPage() {
             onFormChange={handlePreviewFormChange}
             existingIds={loadedKeys}
             canDelete
+              resizerStorageKey="libraryResizer"
           />
         )}
       </div>

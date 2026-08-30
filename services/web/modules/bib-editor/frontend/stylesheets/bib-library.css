@@ -495,7 +495,7 @@
   top: 0;
   bottom: 0;
   right: 0;
-  width: 30rem;
+  width: var(--bibtex-split-preview-width, 30rem);
   max-width: 100%;
   z-index: 20;
 }
@@ -521,7 +521,7 @@
 /* The list shifts to make room for the open, contained slide-out (D4).
    The list is always mounted, so this animates in AND out. */
 .library-page-main:has(.bibtex-entry-preview-panel-contained.bibtex-entry-preview-panel-open) .bibtex-entry-list {
-  margin-right: 30rem;
+  margin-right: var(--bibtex-split-preview-width, 30rem);
 }
 
 /* Narrow layouts: full-width overlay (no list shift). */
@@ -1465,26 +1465,40 @@
   padding: 0.75rem 0;
 }
 
-/* Full (SaaS) card layout inside the shared list. */
-.library-page-main .bibtex-entry-card-full .bibtex-entry-card-details {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
+/* Full (SaaS) card layout inside the shared list — R9 (2026-08-29):
+   restyled for the restructured card DOM
+   (key-row [key + error/dup icons] → title → author → year → updated).
+   Same structure as the project panel card; visually larger card. */
+.library-page-main .bibtex-entry-card-full {
+  min-height: 104px;
+  padding: 0.625rem 0.75rem;
+}
+.library-page-main .bibtex-entry-card-full .bibtex-entry-card-content {
+  gap: 0.1rem;
+}
+.library-page-main .bibtex-entry-card-full .bibtex-entry-card-key {
+  font-size: var(--font-size-03, 0.875rem);
+  max-width: 100%;
 }
 .library-page-main .bibtex-entry-card-full .bibtex-entry-card-title {
   font-weight: 600;
+  font-size: var(--font-size-03, 0.875rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.library-page-main .bibtex-entry-card-full .bibtex-entry-card-meta {
-  display: flex;
-  gap: 0.75rem;
+.library-page-main .bibtex-entry-card-full .bibtex-entry-card-author,
+.library-page-main .bibtex-entry-card-full .bibtex-entry-card-year {
+  min-width: 0;
   font-size: 0.8125rem;
   color: var(--bib-panel-secondary-color);
-  flex-wrap: wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .library-page-main .bibtex-entry-card-updated-at {
-  flex: 0 0 auto;
-  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
   font-size: 0.75rem;
   color: var(--bib-panel-secondary-color);
@@ -1492,7 +1506,9 @@
   border: 1px solid var(--bib-panel-border);
   border-radius: 0.375rem;
   padding: 0.125rem 0.5rem;
-  align-self: center;
+  align-self: flex-start;
+  width: fit-content;
+  margin-top: 0.15rem;
 }
 
 /* Duplicate-key warning (SaaS bibtex_duplicates_keys). */
@@ -1872,4 +1888,22 @@
   .library-page-main {
     overflow-y: auto;
   }
+}
+
+/* Shared column resizer (R9 item 2, 2026-08-29): 6px draggable gutter
+   at the preview's left edge + visible on hover/focus. */
+.library-page-main .bibtex-preview-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 25;
+  touch-action: none;
+}
+.library-page-main .bibtex-preview-resizer:hover,
+.library-page-main .bibtex-preview-resizer:focus-visible {
+  background: var(--blue-50);
+  box-shadow: 0 0 0 1px var(--blue-50);
 }

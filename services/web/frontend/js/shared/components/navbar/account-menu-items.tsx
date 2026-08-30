@@ -125,6 +125,14 @@ export function AccountMenuItems({
           {t('subscription')}
         </NavDropdownLinkItem>
       ) : null}
+      {/* R9 item 5 (2026-08-29): template gallery management lives in the
+          account menu (site admins + template gallery admins only), directly
+          above the Manage submenu. */}
+      {getMeta('ol-ExposedSettings')?.canManageTemplatesMenu ? (
+        <NavDropdownLinkItem href="/templates/manage">
+          {t('Manage template gallery')}
+        </NavDropdownLinkItem>
+      ) : null}
       {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup || nav.canDisplayAdminRedirect || nav.canDisplaySplitTestMenu || nav.canDisplaySurveyMenu || nav.canDisplayScriptLogMenu) && (
         <>
           <NavDropdownDivider />

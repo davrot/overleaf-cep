@@ -39,6 +39,32 @@ function UpdateUserModal({
     }
   }, [showModal, users])
 
+  // R9 item 7 (2026-08-29): the list rows can be stale (revoked/updated via
+  // other modals), so re-fetch the CURRENT role state on open.
+  useEffect(() => {
+    if (!showModal || users.length !== 1) return
+    const id = users[0].id
+    let cancelled = false
+    fetch(`/admin/user/${encodeURIComponent(id)}/info`, {
+      credentials: 'same-origin',
+      headers: { 'X-Csrf-Token': getMeta('ol-csrfToken') },
+    })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(info => {
+        if (cancelled) return
+        setUserData(d => ({
+          ...d,
+          canManageTemplates: Boolean(info?.canManageTemplates),
+        }))
+      })
+      .catch(() => {
+        // best effort — the modal keeps its initial value
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showModal, users])
+
   if (users.length !== 1) return null
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,6 +148,12 @@ function UpdateUserModal({
               name="canManageTemplates"
               label={t('template_gallery_admin')}
               checked={Boolean(userData.canManageTemplates)}
+              disabled={Boolean(userData.isAdmin)}
+              title={
+                userData.isAdmin
+                  ? t('template_gallery_admin_siteAdmin_locked')
+                  : undefined
+              }
             />
           </OLFormGroup>
         </OLCol>

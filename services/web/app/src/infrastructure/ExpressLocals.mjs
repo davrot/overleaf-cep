@@ -377,8 +377,34 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
     next()
   })
 
-  webRouter.use(function (req, res, next) {
+  webRouter.use(async function (req, res, next) {
+    // R9 item 5 (2026-08-29): "Manage template gallery" account-menu entry.
+    // Site admins AND template gallery admins (scoped flag / all-users /
+    // legacy user_id) may manage the gallery — same rule as the gallery
+    // pages (TemplateAuthorizationHelper). Best-effort; never blocks the
+    // request.
+    let canManageTemplatesMenu = false
+    try {
+      const sessionUser = SessionManager.getSessionUser(req.session)
+      const userId = sessionUser?.id || req.user?.user?._id
+      if (userId) {
+        const {
+          default: TemplateAuthorizationHelper,
+        } = await import(
+          '../../../modules/template-gallery/app/src/TemplateAuthorizationHelper.mjs'
+        )
+        canManageTemplatesMenu = !!(
+          await TemplateAuthorizationHelper.hasTemplateAdminAccess(
+            sessionUser || req.user?.user,
+            userId
+          )
+        )
+      }
+    } catch (err) {
+      logger.warn({ err }, 'ExpressLocals: template menu access check failed')
+    }
     res.locals.ExposedSettings = {
+      canManageTemplatesMenu,
       isOverleaf: Settings.overleaf != null,
       appName: Settings.appName,
       adminEmail: Settings.adminEmail,

@@ -38,6 +38,7 @@ import {
   DropdownToggle,
 } from '@/shared/components/dropdown/dropdown-menu'
 import BibEntryForm from './bib-entry-form'
+import SplitResizer from '../util/split-resizer'
 import type { BibEntry } from '../utils/bib-types'
 import {
   missingRequiredLabels,
@@ -63,6 +64,8 @@ export type BibPreviewProps = {
   onFormChange: (entry: BibEntry, originalId: string | null) => void
   existingIds: string[]
   canDelete: boolean
+  /** localStorage key for the shared list/preview split (R9 item 2). */
+  resizerStorageKey?: string
 }
 
 export default function BibEntryPreview({
@@ -77,6 +80,7 @@ export default function BibEntryPreview({
   onFormChange,
   existingIds,
   canDelete,
+  resizerStorageKey,
 }: BibPreviewProps) {
   const { t } = useTranslation()
 
@@ -188,6 +192,10 @@ export default function BibEntryPreview({
       aria-label={t('Edit reference')}
       onKeyDown={handleBodyKeyDown}
     >
+      {/* Shared column resizer (R9 item 2): draggable gutter at the panel's
+          left edge; project panel and /library share the component and both
+          set `--bibtex-split-preview-width` on their layout root. */}
+      <SplitResizer storageKey={resizerStorageKey} />
       {/* Header nav (capture: chevrons + Close) */}
       <div className="bibtex-entry-preview-header">
         <div className="bibtex-entry-preview-header-nav">

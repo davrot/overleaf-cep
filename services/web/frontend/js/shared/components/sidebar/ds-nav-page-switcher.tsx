@@ -120,12 +120,15 @@ export function DsNavPageSwitcher({
               aria-current={activePage === 'templates' ? 'page' : undefined}
               aria-expanded={subOpen || undefined}
               onClick={e => {
-                // First click: expand the category sub-items (stay put);
-                // second click: navigate to /templates.
-                if (!subOpen) {
-                  e.preventDefault()
-                  setSubOpen(true)
-                }
+                // R9 item 4 (2026-08-29) + original intent:
+                //  - header CLOSED  → toggle the category sub-menu open (no
+                //    navigation, no page reload);
+                //  - header OPEN    → close it — a PURE state toggle: no
+                //    navigation, no anchor follow, no page reload.
+                //    /templates itself is one click away (navigate then the
+                //    header stays available for the sub-menu).
+                e.preventDefault()
+                setSubOpen(!subOpen)
               }}
             >
               <LinkIcon size={24} />

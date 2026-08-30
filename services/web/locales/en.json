@@ -3603,5 +3603,8 @@
   "adminSite.ssoLdapBindCred": "Bind credentials (secret)",
   "adminSite.ssoLdapFilter": "Search filter (optional)",
   "adminSite.ssoLdapStarttls": "Use STARTTLS",
-  "adminSite.ssoSecretNote": "Leave empty to keep the currently stored value. Secrets are stored encrypted and are never returned to the browser."
+  "adminSite.ssoSecretNote": "Leave empty to keep the currently stored value. Secrets are stored encrypted and are never returned to the browser.",
+  "template_gallery_admin_siteAdmin_locked": "Site admins are always template gallery admins — use the Site admin checkbox instead.",
+  "template_bundles_pointer": "Template bundle import/export is managed at",
+  "template_bundles_pointer_end": "."
 }

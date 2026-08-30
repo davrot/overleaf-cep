@@ -571,6 +571,23 @@ async function updateUser(req, res, next) {
   }
 
   if ('canManageTemplates' in updatesInput) {
+    // R9 item 3 (2026-08-29): site admins are template gallery admins
+    // implicitly (TemplateAuthorizationHelper), so removing the flag from
+    // them via this table is a conflict — not allowed.
+    if (updatesInput.canManageTemplates === false) {
+      const fullUser = await User.findById(userId)
+        .select('isAdmin')
+        .lean()
+        .exec()
+      if (fullUser && Boolean(fullUser.isAdmin)) {
+        return HttpErrorHandler.conflict(
+          req,
+          res,
+          'Site admins are template gallery admins implicitly and cannot be removed from this role here.',
+          { userId }
+        )
+      }
+    }
     update.flags = {
       ...(user.flags ? user.flags.toObject ? user.flags.toObject() : { ...user.flags } : {}),
       canManageTemplates: Boolean(updatesInput.canManageTemplates),
@@ -644,7 +661,19 @@ async function _getActivationLink(userId) {
 async function getAdditionalUserInfo(req, res, next) {
   const { userId } = req.params
   const activationLink = await _getActivationLink(userId)
-  res.json({ activationLink })
+  // R9 item 7 (2026-08-29): always-fresh scoped roles for the update
+  // account modal (the list rows can be stale after other edits).
+  let canManageTemplates = false
+  try {
+    const dbUser = await User.findById(userId)
+      .select('flags.canManageTemplates')
+      .lean()
+      .exec()
+    canManageTemplates = Boolean(dbUser?.flags?.canManageTemplates)
+  } catch {
+    // leave false — the modal keeps its (possibly stale) value
+  }
+  res.json({ activationLink, canManageTemplates })
 }
 
 export default {

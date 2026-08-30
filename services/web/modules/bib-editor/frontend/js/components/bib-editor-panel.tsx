@@ -647,6 +647,7 @@ function BibEditorPanel() {
                 onFormChange={handleFormChange}
                 existingIds={entries.map(e => e.id)}
                 canDelete
+                resizerStorageKey="bibPanelResizer"
               />
             ) : null}
           </div>
