@@ -279,22 +279,10 @@ export default function LibraryPage() {
               }}
             />
           </div>
-          {!isTrash && (
-            <div className="library-toolbar-buttons">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm library-download-all-btn"
-                aria-label={t('Download')}
-                onClick={() => lib.downloadVisible()}
-              >
-                <span className="button-content">
-                  <span className="material-symbols" aria-hidden="true">
-                    download
-                  </span>
-                  {t('Download')}
-                </span>
-              </button>
-              <div className="bibtex-add-button dropdown">
+          {
+            !isTrash && (
+              <div className="library-toolbar-buttons">
+                <div className="bibtex-add-button dropdown">
               <Dropdown align="end">
                 <DropdownToggle
                   className="d-inline-grid custom-toggle dropdown-toggle btn btn-secondary btn-sm"
@@ -468,11 +456,9 @@ export default function LibraryPage() {
               onAddManual={() => setManualShow(true)}
               variant={isTrash ? 'trash' : 'library'}
               hideToolbar
-              cardLayout="full"
               showUpdatedAt
               rowIdOf={entry => entry.libId ?? entry.id}
               duplicateIds={lib.duplicateKeyIds}
-              onBulkDownload={lib.downloadSelection}
               onBulkRestore={
                 isTrash ? () => void lib.restoreEntries(selectedIds) : undefined
               }

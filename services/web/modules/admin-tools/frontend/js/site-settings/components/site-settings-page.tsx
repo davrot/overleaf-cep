@@ -501,6 +501,7 @@ function TemplatesTab({
             <th title={t('adminSite.publishableHelper')}>{t('adminSite.publishable')}</th>
             <th>{t('templatesCount')}</th>
             <th>{t('description')}</th>
+            <th aria-label={t('adminSite.editAriaLabel')} />
           </tr>
         </thead>
         <tbody>

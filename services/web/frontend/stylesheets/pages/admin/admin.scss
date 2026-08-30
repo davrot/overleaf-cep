@@ -229,6 +229,14 @@
   .form-select {
     font-size: 1rem;
     color: rgb(27, 34, 44);
+    // The card surface is a pinned LIGHT surface in both themes; the
+    // data-theme UA form-control styling (color-scheme: dark) otherwise
+    // gives inputs a dark background — invisible dark text on the white
+    // card (user report: External URL "font color in the box is not
+    // readable"). Pin the surface explicitly (2026-08-30, W6).
+    background-color: var(--white) !important;
+    border-color: var(--neutral-30);
+    color-scheme: light;
 
     &::placeholder {
       color: rgb(133, 140, 154);

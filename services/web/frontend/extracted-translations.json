@@ -2959,7 +2959,7 @@
   "adminSite.emailPort": "SMTP port (EMAIL_PORT)",
   "adminSite.emailSecure": "TLS/secure (EMAIL_SECURE)",
   "adminSite.emailIgnoreTLS": "Ignore TLS certificate errors (EMAIL_IGNORE_TLS)",
-  "adminSite.emailName": "SMTP name/HELO (EMAIL_NAME)",
+  "adminSite.emailName": "SMTP name (EHLO)",
   "adminSite.emailUser": "SMTP user (EMAIL_USER)",
   "adminSite.emailPass": "SMTP password (EMAIL_PASS)",
   "adminSite.emailTlsReject": "Reject unauthorized TLS certificates (EMAIL_TLS_REJECT_UNAUTHORIZED)",
@@ -3011,7 +3011,7 @@
   "adminSite.emailFromHint": "The sender address for all Overleaf emails. Required.",
   "adminSite.emailReplyToHint": "Optional reply-to address.",
   "adminSite.emailDriverHint": "Choose between an SMTP server or Amazon SES.",
-  "adminSite.emailNameHint": "Optional EHLO hostname.",
+  "adminSite.emailNameHint": "Sent as EMAIL_NAME (optional EHLO hostname).",
   "adminSite.emailSecureHint": "Connect using implicit TLS (port 465).",
   "adminSite.emailIgnoreTLSHint": "Skip the STARTTLS upgrade (insecure).",
   "adminSite.emailTlsRejectHint": "Reject unauthorized TLS connections.",
@@ -3023,5 +3023,6 @@
   "adminSite.extNetwork": "URL Network Policy",
   "adminSite.signUpRestrictions": "Registration Restrictions",
   "Expand reference list": "Expand reference list",
-  "Collapse reference list": "Collapse reference list"
+  "Collapse reference list": "Collapse reference list",
+  "adminSite.editAriaLabel": "Edit category"
 }
