@@ -3024,5 +3024,10 @@
   "adminSite.signUpRestrictions": "Registration Restrictions",
   "Expand reference list": "Expand reference list",
   "Collapse reference list": "Collapse reference list",
-  "adminSite.editAriaLabel": "Edit category"
+  "adminSite.editAriaLabel": "Edit category",
+  "adminSite.emailTestTo": "Recipient address",
+  "adminSite.emailTestToHint": "Sends a test e-mail to this address using the SAVED configuration (save the settings above first).",
+  "adminSite.emailTestSend": "Send test e-mail",
+  "adminSite.emailTestSending": "Sending…",
+  "adminSite.emailTestOk": "Test e-mail sent to"
 }

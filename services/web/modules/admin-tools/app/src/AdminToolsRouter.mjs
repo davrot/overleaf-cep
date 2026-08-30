@@ -3,6 +3,7 @@ import UserListController from './UserListController.mjs'
 import ProjectListController from './ProjectListController.mjs'
 import AdminToolsController from './AdminToolsController.mjs'
 import SiteSettingsController from './SiteSettingsController.mjs'
+import EmailTestController from './EmailTestController.mjs'
 import AuthorizationMiddleware from '../../../../app/src/Features/Authorization/AuthorizationMiddleware.mjs'
 import AuthenticationController from '../../../../app/src/Features/Authentication/AuthenticationController.mjs'
 
@@ -97,6 +98,12 @@ export default {
     webRouter.put('/admin/site-settings/:section',
       AuthorizationMiddleware.ensureUserIsSiteAdmin,
       SiteSettingsController.updateSiteSettings
+    )
+    // UI round 10 item 6: send a one-off test e-mail through the stored
+    // E-mail section (admin-only, rate-limited, sanitized errors).
+    webRouter.post('/admin/site-settings/email/test',
+      AuthorizationMiddleware.ensureUserIsSiteAdmin,
+      EmailTestController.sendTestEmail
     )
     // R6 item 7 (2026-08-29): list the users holding the template gallery
     // admin flag (Manage Site → Templates table).

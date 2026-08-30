@@ -67,9 +67,17 @@ const SettingsTemplateCategory: React.FC<SettingsTemplateCategoryProps> = ({
 
   // Keep the current value selectable even if its category has been
   // disabled since the template was created.
-  const current =
-    options.find(o => o.value === value) ??
-    (value ? [{ value, label: value.replace(/^\/templates\//, '') }] : [])
+  // (BUGFIX 2026-08-30, W4: `options.find()` returns a single Option, not
+  // an array — spreading it as `[...current]` threw `TypeError: c is not
+  // iterable` and crashed the Publish-as-Template modal whenever the
+  // current value matched a known option (e.g. after the same-name
+  // prefill resolves). Always keep `current` an array.)
+  const found = options.find(o => o.value === value)
+  const current: Option[] = found
+    ? [found]
+    : value
+      ? [{ value, label: value.replace(/^\/templates\//, '') }]
+      : []
 
   if (options.length === 0 && current.length === 0) {
     return null

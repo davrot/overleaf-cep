@@ -18,6 +18,7 @@
  */
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { postJSON } from '@/infrastructure/fetch-json'
 import {
   Card,
   Field,
@@ -318,6 +319,27 @@ export function EmailTab ({ initial }: { initial: SectionValue }) {
   const [accessKeyId, setAccessKeyId] = useState(String(initial.accessKeyId ?? ''))
   const [sesSecret, setSesSecret] = useState('')
   const [sesRegion, setSesRegion] = useState(String(initial.sesRegion ?? ''))
+  // UI round 10 item 6: one-off test e-mail (sent through the STORED config).
+  const [testTo, setTestTo] = useState('')
+  const [testSending, setTestSending] = useState(false)
+  const [testStatus, setTestStatus] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const runTest = async () => {
+    const to = testTo.trim()
+    if (!to || testSending) return
+    setTestSending(true)
+    setTestStatus(null)
+    try {
+      await postJSON('/admin/site-settings/email/test', { body: { to } })
+      setTestStatus({ ok: true, msg: to })
+    } catch (err: unknown) {
+      const message =
+        (err as { data?: { message?: string } })?.data?.message ||
+        (err instanceof Error ? err.message : String(err))
+      setTestStatus({ ok: false, msg: message })
+    }
+    setTestSending(false)
+  }
   const passSet = Boolean(initial.passSet)
   const sesSecretSet = Boolean(initial.sesSecretSet)
 
@@ -433,6 +455,40 @@ export function EmailTab ({ initial }: { initial: SectionValue }) {
           </div>
         </>
       )}
+      <SectionTitle top>Send a test e-mail</SectionTitle>
+      <div className="row mb-3 align-items-end">
+        <div className="col-md-6">
+          <Field
+            id="em-test-to"
+            label={t('adminSite.emailTestTo')}
+            value={testTo}
+            onChange={setTestTo}
+            placeholder="admin@example.com"
+            hint={t('adminSite.emailTestToHint')}
+          />
+        </div>
+        <div className="col-md-6">
+          <button
+            type="button"
+            className="btn btn-primary d-block"
+            disabled={testSending || testTo.trim() === ''}
+            onClick={() => void runTest()}
+          >
+            {testSending ? t('adminSite.emailTestSending') : t('adminSite.emailTestSend')}
+          </button>
+        </div>
+      </div>
+      {testStatus ? (
+        testStatus.ok ? (
+          <div role="status" className="alert alert-success mb-3">
+            {t('adminSite.emailTestOk')} — {testStatus.msg}
+          </div>
+        ) : (
+          <div role="alert" className="alert alert-danger mb-3">
+            {testStatus.msg}
+          </div>
+        )
+      ) : null}
       <SaveFooter flash={flash} onSave={submit} note={t('adminSite.restartHint')} />
     </Card>
   )
