@@ -1,25 +1,35 @@
 // ---------------------------------------------------------------------------
-// CE fork — consistent app navbar (UI round 10, items 8-11 + 1; 2026-08-30).
+// CE fork — app navbar (UI round 10 + round 11 items 6-8, 15).
 //
-// The app surfaces (/project, /library, /templates, /templates/manage) use
-// the SAME navbar as the admin pages (/admin/site, /admin/user): the light
-// navbar palette (white background, dark text) PLUS the admin red-gradient
-// tail (.red-nav-bar-for-admins .navbar-default), in BOTH themes.
+// Item 15 (user, 2026-08-30): the white→red gradient is the ADMIN-PAGE
+// warning signal — it must NOT appear on normal user pages. Therefore:
+//   * user pages (/project, /library, /templates) get a SOLID NEUTRAL
+//     WHITE navbar with dark text in BOTH themes (no gradient);
+//   * admin consoles keep the red-gradient tail — the .red-nav-bar-for-admins
+//     pages (/admin/site, /admin/user, ...) via their own CSS, and the
+//     template management console (#template-admin-root / /templates/manage)
+//     here.
 //
-// How it works without touching upstream files:
-//  * components/navbar.scss applies `navbar-light` to
-//    `.website-redesign .navbar-default` (base) and re-applies `navbar-dark`
-//    to these roots under `[data-theme='default']`.
-//  * This file (imported later: pages/ loads after components/) re-applies
-//    `navbar-light` with EQUAL specificity under the same
-//    `[data-theme='default']` scope, so it wins by source order, and adds the
-//    red-gradient tail — the exact .red-nav-bar-for-admins treatment.
+// How it works (no upstream edits):
+//  * components/navbar.scss re-applies `navbar-dark` to these roots under
+//    [data-theme='default'] → this file (later source order, equal
+//    specificity) re-applies navbar-light + a solid white background.
 // ---------------------------------------------------------------------------
 [data-theme='default'] {
   #project-list-root,
   #library-root,
   #template-root,
-  #template-gallery-root,
+  #template-gallery-root {
+    .website-redesign-navbar,
+    .website-redesign .navbar-default {
+      @include navbar-light;
+
+      background-color: #fff !important;
+      background-image: none !important;
+    }
+  }
+
+  // admin console: keep the red admin-signal tail in dark theme
   #template-admin-root {
     .website-redesign-navbar,
     .website-redesign .navbar-default {
@@ -34,12 +44,20 @@
   }
 }
 
-// Light theme: the base navbar-light already applies; only add the gradient
-// tail so every theme shows the same white→red admin navbar.
+// Light theme: navbar-light already applies; pin the solid white surface on
+// user pages (clear any inherited gradient) and keep the red tail on the
+// template management console.
 #project-list-root,
 #library-root,
 #template-root,
-#template-gallery-root,
+#template-gallery-root {
+  .website-redesign-navbar,
+  .website-redesign .navbar-default {
+    background-color: #fff !important;
+    background-image: none !important;
+  }
+}
+
 #template-admin-root {
   .website-redesign-navbar,
   .website-redesign .navbar-default {

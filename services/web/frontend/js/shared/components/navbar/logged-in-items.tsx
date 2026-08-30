@@ -15,6 +15,18 @@ export default function LoggedInItems({
   const { t } = useTranslation()
   const sendProjectListMB = useSendProjectListMB()
 
+  // R11 item 2/3 (user, 2026-08-30): the top navbar of the plain user pages
+  // (/project, /library) carries ONLY the Library / Templates / Projects
+  // links — the Account dropdown is removed there (the user's desired
+  // markup). The Account item stays on /templates and everywhere else the
+  // shared default-navbar is used (e.g. /templates/manage).
+  const pathName =
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  const suppressAccountItem =
+    pathName === '/project' ||
+    pathName === '/library' ||
+    pathName.startsWith('/library/')
+
   return (
     <>
       <NavLinkItem href="/project" className="nav-item-projects">
@@ -23,7 +35,8 @@ export default function LoggedInItems({
       {/* Templates lives in the left sidebar page switcher
           (DsNavPageSwitcher), per the SaaS layout (bib-editor
           LIBRARY_PLAN D-C4) — not in the top navbar. */}
-      <NavDropdownMenu
+      {!suppressAccountItem && (
+        <NavDropdownMenu
         title={t('Account')}
         className="nav-item-account"
         onToggle={nextShow => {
@@ -39,7 +52,8 @@ export default function LoggedInItems({
           sessionUser={sessionUser}
           showSubscriptionLink={showSubscriptionLink}
         />
-      </NavDropdownMenu>
+        </NavDropdownMenu>
+      )}
     </>
   )
 }

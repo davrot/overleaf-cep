@@ -367,7 +367,7 @@ export default function SiteSettingsPage() {
 function TemplateAdminsTable() {
   const { t } = useTranslation()
   const [users, setUsers] = useState<
-    { id: string; email: string; firstName?: string; lastName?: string }[] | null
+    { id: string; email: string; firstName?: string; lastName?: string; isAdmin?: boolean; hasTemplateFlag?: boolean }[] | null
   >(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -418,19 +418,30 @@ function TemplateAdminsTable() {
               const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
               return (
               <tr key={u.id}>
-                <td>{fullName}</td>
+                <td>
+                  {fullName || u.email}
+                  {u.isAdmin ? (
+                    <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>{t('Site admin')}</div>
+                  ) : (
+                    <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>{t('Template gallery admin')}</div>
+                  )}
+                </td>
                 <td>
                   <a href={`/admin/user/${u.id}`}>{u.email}</a>
                 </td>
                 <td className="text-right">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={busyId === u.id}
-                    onClick={() => revoke(u)}
-                  >
-                    {t('Revoke')}
-                  </button>
+                  {u.hasTemplateFlag ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      disabled={busyId === u.id}
+                      onClick={() => revoke(u)}
+                    >
+                      {t('Revoke')}
+                    </button>
+                  ) : (
+                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>{t('Managed via site-admin role')}</span>
+                  )}
                 </td>
               </tr>
               )

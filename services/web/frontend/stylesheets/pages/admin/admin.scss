@@ -202,6 +202,12 @@
 // ---------------------------------------------------------------------------
 .ce-admin-card {
   font-size: 1rem;
+  // R11-1 (UI round 11, items 13): the card SURFACE itself must be pinned
+  // to the light palette in both themes — in dark mode the theme body
+  // color was leaking in (measured: card bg rgb(244,245,246), input
+  // VALUE text rgb(244,245,246) on a white field = unreadable).
+  background-color: #fff;
+  color: rgb(27, 34, 44);
 
   label,
   .form-label,
@@ -228,7 +234,11 @@
   .form-control,
   .form-select {
     font-size: 1rem;
-    color: rgb(27, 34, 44);
+    // R11-1: !important — the dark-theme input color rule otherwise wins
+    // on later tabs (Sandboxed compiles / E-mail / Pandoc: value text
+    // measured rgb(244,245,246) on white = unreadable, user report
+    // 2026-08-30 round 11 item 13).
+    color: rgb(27, 34, 44) !important;
     // The card surface is a pinned LIGHT surface in both themes; the
     // data-theme UA form-control styling (color-scheme: dark) otherwise
     // gives inputs a dark background — invisible dark text on the white

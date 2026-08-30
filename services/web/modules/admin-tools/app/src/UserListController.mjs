@@ -625,17 +625,31 @@ async function updateUser(req, res, next) {
 // R6 item 7 (2026-08-29): site-admin console → Templates tab table of the
 // users who carry the template gallery admin flag.
 async function templateAdmins(req, res) {
+  // R11 item 12 (2026-08-30): the list was missing site admins — the query
+  // only covered the `flags.canManageTemplates` grant, while admins
+  // created without that flag (incl. the main site admin) never appeared.
+  // Union of both classes; de-duplicated by _id.
   const users = await User.find(
-    { 'flags.canManageTemplates': true },
-    { _id: 1, email: 1, first_name: 1, last_name: 1 }
+    { $or: [{ 'flags.canManageTemplates': true }, { isAdmin: true }] },
+    { _id: 1, email: 1, first_name: 1, last_name: 1, isAdmin: 1, flags: 1 }
   ).lean().exec()
-  const rows = users.map(u => ({
-    id: String(u._id),
-    email: u.email,
-    firstName: u.first_name || '',
-    lastName: u.last_name || '',
-    isAdmin: Boolean(u.isAdmin),
-  }))
+  const seen = new Set()
+  const rows = []
+  for (const u of users) {
+    const id = String(u._id)
+    if (seen.has(id)) continue
+    seen.add(id)
+    rows.push({
+      id,
+      email: u.email,
+      firstName: u.first_name || '',
+      lastName: u.last_name || '',
+      isAdmin: Boolean(u.isAdmin),
+      // true only when the template-admin flag itself is set — that is
+      // the only re-voke-able grant (site admin status is not this role).
+      hasTemplateFlag: Boolean(u.flags?.canManageTemplates),
+    })
+  }
   res.json({ users: rows })
 }
 
