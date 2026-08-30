@@ -125,6 +125,18 @@ export function Switch ({ id, checked, onChange, label, disabled }: {
 
 
 /** Card shell: header with title + optional enable switch. */
+// One or two columns inside a card (CE+ row/col-md-* vocabulary).
+export function Row ({ cols, children }: {
+  cols?: number
+  children: React.ReactNode
+}) {
+  return (
+    <div className="row mb-3">
+      <div className={cols === 3 ? 'col-md-4' : 'col-md-6'}>{children}</div>
+    </div>
+  )
+}
+
 export function Card ({ title, enabled, onEnabled, children, badge }: {
   title: React.ReactNode
   enabled?: boolean
