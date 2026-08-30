@@ -133,7 +133,7 @@ export function Card ({ title, enabled, onEnabled, children, badge }: {
   badge?: React.ReactNode
 }) {
   return (
-    <div className="card mb-4">
+    <div className="ce-admin-card card mb-4">
       <div className="card-header d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
           {badge && (
