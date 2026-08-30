@@ -137,6 +137,35 @@ export function Row ({ cols, children }: {
   )
 }
 
+// Textarea field (blocked networks, notes, …) — BS 4 class vocabulary.
+export function TextArea ({ id, label, required, hint, value, onChange, placeholder, rows = 5 }: {
+  id: string
+  label: React.ReactNode
+  required?: boolean
+  hint?: React.ReactNode
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  rows?: number
+}) {
+  return (
+    <div>
+      <label className="form-label" htmlFor={id}>
+        <strong>{label}</strong>{required && <Req />}
+      </label>
+      <textarea
+        id={id}
+        className="form-control"
+        rows={rows}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.currentTarget.value)}
+      />
+      {hint && <Hint>{hint}</Hint>}
+    </div>
+  )
+}
+
 export function Card ({ title, enabled, onEnabled, children, badge }: {
   title: React.ReactNode
   enabled?: boolean
