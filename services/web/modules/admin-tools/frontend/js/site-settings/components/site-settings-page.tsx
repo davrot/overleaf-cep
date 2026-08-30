@@ -568,7 +568,7 @@ function TemplatesTab({
       </table>
       <Hint>
         {t('template_bundles_pointer')}{' '}
-        <a href="/templates/manage">{t('template_bundles_href') || '/templates/manage'}</a>{' '}
+        <a href="/templates/manage">{t('adminSite.template_bundles_href') || '/templates/manage'}</a>{' '}
         {t('template_bundles_pointer_end')}
       </Hint>
       <TemplateAdminsTable />
