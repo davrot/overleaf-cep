@@ -1,22 +1,28 @@
 /**
  * SSO tabs of the Manage Site console (SSO multi-provider feature,
- * 2026-08-29).
+ * 2026-08-29) — restyled 2026-08-30 in the CE+ admin vocabulary
+ * (davrot/overleaf-cep@fe4ceb6 sso-admin.pug): card + enable switch,
+ * h6.text-primary section headers, row/col-md field grids,
+ * form-label/form-control/form-text.
  *
- * Three provider tabs — SSO SAML / SSO OIDC / SSO LDAP — each independently
- * enabled and configured in site settings (`sso-saml` / `sso-oidc` /
- * `sso-ldap`). The OVERLEAF_* env values remain the seed/fallback layer
- * (stored wins); secrets are stored encrypted and masked (placeholder shows
- * "configured" when a value exists); saving an empty secret keeps the stored
- * one.
+ * Three provider tabs — SSO SAML / SSO OIDC / SSO LDAP — each stored under
+ * `sso-saml` / `sso-oidc` / `sso-ldap`. Secrets are stored encrypted and
+ * masked (placeholder shows "(configured)" when a value exists); saving an
+ * empty secret keeps the stored one.
  */
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { putJSON } from '@/infrastructure/fetch-json'
-import OLButton from '@/shared/components/ol/ol-button'
-import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
-import OLFormLabel from '@/shared/components/ol/ol-form-label'
-import OLFormControl from '@/shared/components/ol/ol-form-control'
-import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import {
+  Card,
+  Field,
+  Hint,
+  NoAutofill,
+  Req,
+  SaveFooter,
+  SectionTitle,
+  Switch
+} from './ce-admin-ui'
 
 export type SsoSection = {
   enabled: boolean
@@ -31,11 +37,11 @@ export function useSave(section: string) {
   const save = async (body: unknown): Promise<boolean> => {
     setFlash({ saving: true, saved: false, error: null })
     try {
-      // NOTE: pass the OBJECT — fetchJSON stringifies once.
+      // NOTE: pass the OBJECT — putJSON stringifies once.
       await putJSON(`/admin/site-settings/${section}`, { body })
       setFlash({ saving: false, saved: true, error: null })
       return true
-    } catch (err) {
+    } catch (err: unknown) {
       const message =
         (err as { data?: { message?: string } })?.data?.message ||
         (err instanceof Error ? err.message : String(err))
@@ -46,457 +52,381 @@ export function useSave(section: string) {
   return { flash, save }
 }
 
-function FieldRow({
-  label,
-  htmlFor,
-  children,
-  hint,
-}: {
-  label?: string
-  htmlFor?: string
-  children: React.ReactNode
-  hint?: string
+function Two ({ a, b, cols = 'col-md-6' }: {
+  a: React.ReactNode
+  b?: React.ReactNode
+  cols?: string
 }) {
   return (
-    <OLFormGroup>
-      {label && htmlFor && <OLFormLabel htmlFor={htmlFor}>{label}</OLFormLabel>}
-      {children}
-      {hint && (
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>{hint}</p>
-      )}
-    </OLFormGroup>
-  )
-}
-
-function ProviderTab({
-  description,
-  flash,
-  onSave,
-  children,
-}: {
-  description: string
-  flash: Flash
-  onSave: () => void
-  children: React.ReactNode
-}) {
-  const { t } = useTranslation()
-  return (
-    <div>
-      <p style={{ fontSize: '13px', color: 'var(--text-secondary, #666)' }}>
-        {description}
-      </p>
-      {children}
-      {flash.error && (
-        <p role="alert" style={{ color: 'var(--danger, #b00020)', fontSize: '13px' }}>
-          {flash.error}
-        </p>
-      )}
-      {flash.saved && (
-        <p style={{ color: 'var(--success, #0a7b3e)', fontSize: '13px' }}>
-          {t('adminSite.settingsSaved')}
-        </p>
-      )}
-      <OLButton variant="primary" disabled={flash.saving} onClick={onSave}>
-        {flash.saving ? 'Saving…' : t('save')}
-      </OLButton>
+    <div className="row mb-3">
+      <div className={cols}>{a}</div>
+      {b && <div className={cols}>{b}</div>}
     </div>
   )
 }
 
-export function SamlSsoTab({ section }: { section: SsoSection }) {
+function SecretPlaceholder ({ set }: { set?: boolean }) {
+  return set ? '•••••• (configured — leave empty to keep)' : undefined
+}
+
+function SelectField ({ id, label, value, onChange, options, required }: {
+  id: string
+  label: React.ReactNode
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  required?: boolean
+}) {
+  return (
+    <>
+      <label className="form-label" htmlFor={id}>
+        <strong>{label}</strong>
+        {required && <Req />}
+      </label>
+      <select
+        id={id}
+        className="form-select"
+        value={value}
+        onChange={e => onChange(e.currentTarget.value)}
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </>
+  )
+}
+
+// ------------------------------------------------------------------------
+// SAML
+// ------------------------------------------------------------------------
+export function SamlSsoTab ({ section }: { section: SsoSection }) {
   const { t } = useTranslation()
-  const s = section || {}
   const { flash, save } = useSave('sso-saml')
-  const [v, setV] = useState({
-    enabled: Boolean(s.enabled),
-    identityServiceName: String(s.identityServiceName || ''),
-    issuer: String(s.issuer || ''),
-    audience: String(s.audience || ''),
-    entrypoint: String(s.entrypoint || ''),
-    idpCert: '',
-    wantAssertionsSigned: Boolean(s.wantAssertionsSigned),
-    attUserId: String(s.attUserId || 'nameID'),
-    attEmail: String(s.attEmail || 'nameID'),
-    attFirstName: String(s.attFirstName || 'givenName'),
-    attLastName: String(s.attLastName || 'lastName'),
-  })
+  const [enabled, setEnabled] = useState(Boolean(section.enabled))
+  const [serviceName, setServiceName] = useState(String(section.identityServiceName ?? ''))
+  const [issuer, setIssuer] = useState(String(section.issuer ?? ''))
+  const [entryPoint, setEntryPoint] = useState(String(section.entryPoint ?? ''))
+  const [audience, setAudience] = useState(String(section.audience ?? ''))
+  const [wantSigned, setWantSigned] = useState(Boolean(section.wantAssertionsSigned ?? true))
+  const [idpCert, setIdpCert] = useState('')
+  const [privateKey, setPrivateKey] = useState('')
+  const certSet = Boolean(section.idpCertSet)
+  const keySet = Boolean(section.privateKeySet)
+
+  const submit = () => {
+    void save({
+      enabled,
+      identityServiceName: serviceName,
+      issuer,
+      entryPoint,
+      audience,
+      wantAssertionsSigned: wantSigned,
+      idpCert,
+      privateKey
+    })
+  }
 
   return (
-    <ProviderTab
-      description={t('adminSite.ssoSamlDesc')}
-      flash={flash}
-      onSave={() =>
-        void save({
-          enabled: v.enabled,
-          identityServiceName: v.identityServiceName,
-          issuer: v.issuer,
-          audience: v.audience,
-          entrypoint: v.entrypoint,
-          idpCert: v.idpCert,
-          wantAssertionsSigned: v.wantAssertionsSigned,
-          attUserId: v.attUserId,
-          attEmail: v.attEmail,
-          attFirstName: v.attFirstName,
-          attLastName: v.attLastName,
-        })
-      }
+    <Card
+      title={t('adminSite.ssoSamlTitle')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="SAML"
     >
-      <FieldRow htmlFor="sso-saml-enabled">
-        <OLFormCheckbox
-          id="sso-saml-enabled"
-          checked={v.enabled}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, enabled: e.target.checked }))
-          }
-          label={t('adminSite.ssoEnable')}
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoDisplayName')} htmlFor="sso-saml-name">
-        <OLFormControl
-          id="sso-saml-name"
-          type="text"
-          value={v.identityServiceName}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, identityServiceName: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoSamlIssuer')} htmlFor="sso-saml-issuer">
-        <OLFormControl
-          id="sso-saml-issuer"
-          type="text"
-          value={v.issuer}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, issuer: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoSamlEntries')} htmlFor="sso-saml-audience">
-        <OLFormControl
-          id="sso-saml-audience"
-          type="text"
-          placeholder={t('adminSite.ssoSamlAudience')}
-          value={v.audience}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, audience: e.target.value }))
-          }
-        />
-        <OLFormControl
-          type="text"
-          placeholder={t('adminSite.ssoSamlEntrypoint')}
-          style={{ marginTop: '6px' }}
-          value={v.entrypoint}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, entrypoint: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoSamlIdpCert')} htmlFor="sso-saml-cert" hint={t('adminSite.ssoSecretNote')}>
-        <textarea
-          id="sso-saml-cert"
-          rows={4}
-          className="form-control"
-          placeholder={s.idpCertSet ? t('adminSite.secretConfigured') : '-----BEGIN CERTIFICATE-----'}
-          value={v.idpCert}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-            setV(x => ({ ...x, idpCert: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoSamlAttrs')} htmlFor="sso-saml-attuser">
-        <OLFormControl
-          id="sso-saml-attuser"
-          type="text"
-          placeholder={t('adminSite.ssoSamlAttUser')}
-          value={v.attUserId}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, attUserId: e.target.value }))
-          }
-        />
-        <OLFormControl
-          type="text"
-          placeholder={t('adminSite.ssoSamlAttAttrs')}
-          style={{ marginTop: '6px' }}
-          value={[
-            v.attEmail,
-            v.attFirstName,
-            v.attLastName,
-          ].join(' / ')}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const [a, b, c] = e.target.value.split(' / ').map(x => x.trim())
-            setV(x => ({ ...x, attEmail: a || 'nameID', attFirstName: b || 'givenName', attLastName: c || 'lastName' }))
-          }}
-        />
-      </FieldRow>
-      <FieldRow>
-        <OLFormCheckbox
-          checked={v.wantAssertionsSigned}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, wantAssertionsSigned: e.target.checked }))
-          }
-          label={t('adminSite.ssoSamlWantSigned')}
-        />
-      </FieldRow>
-    </ProviderTab>
+      <Two
+        a={<Field id="saml-name" label={t('adminSite.ssoServiceName')} value={serviceName} onChange={setServiceName} placeholder={t('adminSite.ssoServiceNamePh')} />}
+        b={<Field id="saml-issuer" label={t('adminSite.ssoSamlIssuer')} value={issuer} onChange={setIssuer} placeholder="https://app.example.com" />}
+      />
+      <SectionTitle>{t('adminSite.ssoSamlIdp')}</SectionTitle>
+      <Two
+        a={<Field id="saml-entry" label={t('adminSite.ssoSamlEntryPoint')} required value={entryPoint} onChange={setEntryPoint} placeholder="https://idp.example.com/sso/saml" />}
+        b={<Field id="saml-audience" label={t('adminSite.ssoSamlAudience')} value={audience} onChange={setAudience} placeholder={t('adminSite.ssoSamlAudiencePh')} />}
+      />
+      <div className="row mb-3">
+        <div className="col-md-6">
+          <Switch
+            id="saml-signed"
+            checked={wantSigned}
+            onChange={setWantSigned}
+            label={t('adminSite.ssoSamlWantSigned')}
+          />
+        </div>
+      </div>
+      <SectionTitle top>{t('adminSite.ssoSamlCerts')}</SectionTitle>
+      <Two
+        cols="col-md-12"
+        a={
+          <div>
+            <label className="form-label" htmlFor="saml-cert"><strong>{t('adminSite.ssoSamlIdpCert')}</strong></label>
+            <NoAutofill>
+              <input
+                id="saml-cert"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                value={idpCert}
+                placeholder={SecretPlaceholder({ set: certSet })}
+                onChange={e => setIdpCert(e.currentTarget.value)}
+              />
+            </NoAutofill>
+            <Hint>{t('adminSite.ssoSamlIdpCertPh')}</Hint>
+          </div>
+        }
+      />
+      <Two
+        cols="col-md-12"
+        a={
+          <div>
+            <label className="form-label" htmlFor="saml-key"><strong>{t('adminSite.ssoSamlPrivateKey')}</strong></label>
+            <NoAutofill>
+              <input
+                id="saml-key"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                value={privateKey}
+                placeholder={SecretPlaceholder({ set: keySet })}
+                onChange={e => setPrivateKey(e.currentTarget.value)}
+              />
+            </NoAutofill>
+            <Hint>{t('adminSite.ssoSecretNote')}</Hint>
+          </div>
+        }
+      />
+      <p className="text-muted">
+        {t('adminSite.ssoSamlNote')}
+        <br />
+        <a
+          className="btn btn-sm btn-outline-secondary"
+          href="/saml/metadata"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t('adminSite.ssoSamlMetadata')}
+        </a>
+      </p>
+      <SaveFooter
+        flash={flash}
+        onSave={submit}
+        note={t('adminSite.ssoRestartNote')}
+      />
+    </Card>
   )
 }
 
-export function OidcSsoTab({ section }: { section: SsoSection }) {
+// ------------------------------------------------------------------------
+// OIDC
+// ------------------------------------------------------------------------
+export function OidcSsoTab ({ section }: { section: SsoSection }) {
   const { t } = useTranslation()
-  const o = section || {}
   const { flash, save } = useSave('sso-oidc')
-  const [v, setV] = useState({
-    enabled: Boolean(o.enabled),
-    identityServiceName: String(o.identityServiceName || ''),
-    issuer: String(o.issuer || ''),
-    authorizationURL: String(o.authorizationURL || ''),
-    tokenURL: String(o.tokenURL || ''),
-    userInfoURL: String(o.userInfoURL || ''),
-    clientID: String(o.clientID || ''),
-    clientSecret: '',
-    scope: String(o.scope || 'openid profile email'),
-    allowedOIDCEmailDomains: ((o.allowedOIDCEmailDomains as string[]) || []).join(', '),
-  })
+  const [enabled, setEnabled] = useState(Boolean(section.enabled))
+  const [serviceName, setServiceName] = useState(String(section.identityServiceName ?? ''))
+  const [issuer, setIssuer] = useState(String(section.issuer ?? ''))
+  const [authUrl, setAuthUrl] = useState(String(section.authorizationURL ?? ''))
+  const [tokenUrl, setTokenUrl] = useState(String(section.tokenURL ?? ''))
+  const [userInfoUrl, setUserInfoUrl] = useState(String(section.userInfoURL ?? ''))
+  const [logoutUrl, setLogoutUrl] = useState(String(section.logoutURL ?? ''))
+  const [clientID, setClientID] = useState(String(section.clientID ?? ''))
+  const [clientSecret, setClientSecret] = useState('')
+  const [scope, setScope] = useState(String(section.scope ?? 'openid profile email'))
+  const secretSet = Boolean(section.clientSecretSet)
+
+  const submit = () => {
+    void save({
+      enabled,
+      identityServiceName: serviceName,
+      issuer,
+      authorizationURL: authUrl,
+      tokenURL: tokenUrl,
+      userInfoURL: userInfoUrl,
+      logoutURL: logoutUrl,
+      clientID,
+      clientSecret,
+      scope
+    })
+  }
 
   return (
-    <ProviderTab
-      description={t('adminSite.ssoOidcDesc')}
-      flash={flash}
-      onSave={() =>
-        void save({
-          enabled: v.enabled,
-          identityServiceName: v.identityServiceName,
-          issuer: v.issuer,
-          authorizationURL: v.authorizationURL,
-          tokenURL: v.tokenURL,
-          userInfoURL: v.userInfoURL,
-          clientID: v.clientID,
-          clientSecret: v.clientSecret,
-          scope: v.scope,
-          allowedOIDCEmailDomains: v.allowedOIDCEmailDomains
-            .split(/[,\s]+/)
-            .map(x => x.trim())
-            .filter(Boolean),
-        })
-      }
+    <Card
+      title={t('adminSite.ssoOidcTitle')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="OIDC"
     >
-      <FieldRow htmlFor="sso-oidc-enabled">
-        <OLFormCheckbox
-          id="sso-oidc-enabled"
-          checked={v.enabled}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, enabled: e.target.checked }))
-          }
-          label={t('adminSite.ssoEnable')}
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoDisplayName')} htmlFor="sso-oidc-name">
-        <OLFormControl
-          id="sso-oidc-name"
-          type="text"
-          value={v.identityServiceName}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, identityServiceName: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcIssuer')} htmlFor="sso-oidc-issuer">
-        <OLFormControl
-          id="sso-oidc-issuer"
-          type="text"
-          placeholder="https://idp.example.com"
-          value={v.issuer}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, issuer: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcUrls')} htmlFor="sso-oidc-urls">
-        <OLFormControl
-          id="sso-oidc-urls"
-          type="text"
-          placeholder={t('adminSite.ssoOidcAuthUrl')}
-          value={v.authorizationURL}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, authorizationURL: e.target.value }))
-          }
-        />
-        <OLFormControl
-          type="text"
-          placeholder={t('adminSite.ssoOidcTokenUrl')}
-          style={{ marginTop: '6px' }}
-          value={v.tokenURL}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, tokenURL: e.target.value }))
-          }
-        />
-        <OLFormControl
-          type="text"
-          placeholder={t('adminSite.ssoOidcUserInfoUrl')}
-          style={{ marginTop: '6px' }}
-          value={v.userInfoURL}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, userInfoURL: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcClientId')} htmlFor="sso-oidc-clientid">
-        <OLFormControl
-          id="sso-oidc-clientid"
-          type="text"
-          value={v.clientID}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, clientID: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcClientSecret')} htmlFor="sso-oidc-secret" hint={t('adminSite.ssoSecretNote')}>
-        <OLFormControl
-          id="sso-oidc-secret"
-          type="password"
-          autoComplete="new-password"
-          placeholder={o.clientSecretSet ? t('adminSite.secretConfigured') : ''}
-          value={v.clientSecret}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, clientSecret: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcScope')} htmlFor="sso-oidc-scope">
-        <OLFormControl
-          id="sso-oidc-scope"
-          type="text"
-          value={v.scope}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, scope: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoOidcDomains')} htmlFor="sso-oidc-domains" hint={t('adminSite.ssoOidcDomainsHint')}>
-        <OLFormControl
-          id="sso-oidc-domains"
-          type="text"
-          placeholder="uni-bremen.de, example.org"
-          value={v.allowedOIDCEmailDomains}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, allowedOIDCEmailDomains: e.target.value }))
-          }
-        />
-      </FieldRow>
-    </ProviderTab>
+      <Two
+        a={<Field id="oidc-name" label={t('adminSite.ssoServiceName')} value={serviceName} onChange={setServiceName} placeholder={t('adminSite.ssoServiceNamePh')} />}
+        b={<Field id="oidc-issuer" label={t('adminSite.ssoOidcIssuer')} required value={issuer} onChange={setIssuer} placeholder="https://accounts.example.com" />}
+      />
+      <SectionTitle>{t('adminSite.ssoOidcEndpoints')}</SectionTitle>
+      <Two
+        a={<Field id="oidc-auth" label={t('adminSite.ssoOidcAuthUrl')} value={authUrl} onChange={setAuthUrl} placeholder={t('adminSite.ssoOidcAutoDisc')} />}
+        b={<Field id="oidc-token" label={t('adminSite.ssoOidcTokenUrl')} value={tokenUrl} onChange={setTokenUrl} placeholder={t('adminSite.ssoOidcAutoDisc')} />}
+      />
+      <Two
+        a={<Field id="oidc-userinfo" label={t('adminSite.ssoOidcUserInfo')} value={userInfoUrl} onChange={setUserInfoUrl} placeholder={t('adminSite.ssoOidcAutoDisc')} />}
+        b={<Field id="oidc-scope" label={t('adminSite.ssoOidcScope')} value={scope} onChange={setScope} placeholder="openid profile email" />}
+      />
+      <Two a={<Field id="oidc-logout" label={t('adminSite.ssoOidcLogout')} value={logoutUrl} onChange={setLogoutUrl} />} />
+      <SectionTitle top>{t('adminSite.ssoOidcClient')}</SectionTitle>
+      <Two
+        a={<Field id="oidc-cid" label={t('adminSite.ssoOidcClientId')} required value={clientID} onChange={setClientID} />}
+        b={
+          <div>
+            <label className="form-label" htmlFor="oidc-csecret"><strong>{t('adminSite.ssoOidcClientSecret')}</strong><Req /></label>
+            <NoAutofill>
+              <input
+                id="oidc-csecret"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                value={clientSecret}
+                placeholder={SecretPlaceholder({ set: secretSet })}
+                onChange={e => setClientSecret(e.currentTarget.value)}
+              />
+            </NoAutofill>
+            <Hint>{t('adminSite.ssoSecretNote')}</Hint>
+          </div>
+        }
+      />
+      <SaveFooter
+        flash={flash}
+        onSave={submit}
+        note={t('adminSite.ssoRestartNote')}
+      />
+    </Card>
   )
 }
 
-export function LdapSsoTab({ section }: { section: SsoSection }) {
+// ------------------------------------------------------------------------
+// LDAP
+// ------------------------------------------------------------------------
+export function LdapSsoTab ({ section }: { section: SsoSection }) {
   const { t } = useTranslation()
-  const l = section || {}
   const { flash, save } = useSave('sso-ldap')
-  const [v, setV] = useState({
-    enabled: Boolean(l.enabled),
-    placeholder: String(l.placeholder || 'Username'),
-    url: String(l.url || ''),
-    searchBase: String(l.searchBase || ''),
-    bindDN: String(l.bindDN || ''),
-    bindCredentials: '',
-    searchFilter: String(l.searchFilter || ''),
-    searchScope: String(l.searchScope || 'sub'),
-    starttls: Boolean(l.starttls),
-    attEmail: String(l.attEmail || 'mail'),
-  })
+  const [enabled, setEnabled] = useState(Boolean(section.enabled))
+  const [serviceName, setServiceName] = useState(String(section.identityServiceName ?? ''))
+  const [url, setUrl] = useState(String(section.url ?? ''))
+  const [searchBase, setSearchBase] = useState(String(section.searchBase ?? ''))
+  const [bindDN, setBindDN] = useState(String(section.bindDN ?? ''))
+  const [bindCreds, setBindCreds] = useState('')
+  const [searchFilter, setSearchFilter] = useState(String(section.searchFilter ?? '(uid={{username}})'))
+  const [searchScope, setSearchScope] = useState(String(section.searchScope ?? 'sub'))
+  const [placeholder, setPlaceholder] = useState(String(section.placeholder ?? 'Username'))
+  const [emailAtt, setEmailAtt] = useState(String(section.emailAtt ?? 'mail'))
+  const [firstNameAtt, setFirstNameAtt] = useState(String(section.firstNameAtt ?? 'givenName'))
+  const [lastNameAtt, setLastNameAtt] = useState(String(section.lastNameAtt ?? 'sn'))
+  const [isAdminAtt, setIsAdminAtt] = useState(String(section.isAdminAtt ?? ''))
+  const [updateOnLogin, setUpdateOnLogin] = useState(Boolean(section.updateUserDetailsOnLogin ?? false))
+  const credsSet = Boolean(section.bindCredentialsSet)
+
+  const submit = () => {
+    void save({
+      enabled,
+      identityServiceName: serviceName,
+      url,
+      searchBase,
+      bindDN,
+      bindCredentials: bindCreds,
+      searchFilter,
+      searchScope,
+      placeholder,
+      emailAtt,
+      firstNameAtt,
+      lastNameAtt,
+      isAdminAtt,
+      updateUserDetailsOnLogin: updateOnLogin
+    })
+  }
 
   return (
-    <ProviderTab
-      description={t('adminSite.ssoLdapDesc')}
-      flash={flash}
-      onSave={() =>
-        void save({
-          enabled: v.enabled,
-          placeholder: v.placeholder,
-          url: v.url,
-          searchBase: v.searchBase,
-          bindDN: v.bindDN,
-          bindCredentials: v.bindCredentials,
-          searchFilter: v.searchFilter,
-          searchScope: v.searchScope,
-          starttls: v.starttls,
-          attEmail: v.attEmail,
-        })
-      }
+    <Card
+      title={t('adminSite.ssoLdapTitle')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="LDAP"
     >
-      <FieldRow htmlFor="sso-ldap-enabled">
-        <OLFormCheckbox
-          id="sso-ldap-enabled"
-          checked={v.enabled}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, enabled: e.target.checked }))
-          }
-          label={t('adminSite.ssoEnable')}
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoLdapUrl')} htmlFor="sso-ldap-url">
-        <OLFormControl
-          id="sso-ldap-url"
-          type="text"
-          placeholder="ldap(s)://ldap.example.com:389"
-          value={v.url}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, url: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoLdapSearchBase')} htmlFor="sso-ldap-base">
-        <OLFormControl
-          id="sso-ldap-base"
-          type="text"
-          placeholder="dc=example,dc=com"
-          value={v.searchBase}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, searchBase: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoLdapBindDn')} htmlFor="sso-ldap-binddn">
-        <OLFormControl
-          id="sso-ldap-binddn"
-          type="text"
-          value={v.bindDN}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, bindDN: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoLdapBindCred')} htmlFor="sso-ldap-bindcred" hint={t('adminSite.ssoSecretNote')}>
-        <OLFormControl
-          id="sso-ldap-bindcred"
-          type="password"
-          autoComplete="new-password"
-          placeholder={l.bindCredentialsSet ? t('adminSite.secretConfigured') : ''}
-          value={v.bindCredentials}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, bindCredentials: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow label={t('adminSite.ssoLdapFilter')} htmlFor="sso-ldap-filter">
-        <OLFormControl
-          id="sso-ldap-filter"
-          type="text"
-          placeholder="(objectClass=inetOrgPerson)"
-          value={v.searchFilter}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, searchFilter: e.target.value }))
-          }
-        />
-      </FieldRow>
-      <FieldRow>
-        <OLFormCheckbox
-          checked={v.starttls}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setV(x => ({ ...x, starttls: e.target.checked }))
-          }
-          label={t('adminSite.ssoLdapStarttls')}
-        />
-      </FieldRow>
-    </ProviderTab>
+      <Two
+        a={<Field id="ldap-name" label={t('adminSite.ssoServiceName')} value={serviceName} onChange={setServiceName} placeholder={t('adminSite.ssoServiceNamePh')} />}
+        b={<Field id="ldap-url" label={t('adminSite.ssoLdapUrl')} required value={url} onChange={setUrl} placeholder="ldap://ldap.example.com:389" />}
+      />
+      <SectionTitle>{t('adminSite.ssoLdapConnect')}</SectionTitle>
+      <Two
+        cols="col-md-4"
+        a={<Field id="ldap-binddn" label={t('adminSite.ssoLdapBindDN')} value={bindDN} onChange={setBindDN} placeholder="cn=admin,dc=example,dc=com" />}
+        b={undefined}
+      />
+      <Two
+        a={
+          <div>
+            <label className="form-label" htmlFor="ldap-creds"><strong>{t('adminSite.ssoLdapBindCreds')}</strong></label>
+            <NoAutofill>
+              <input
+                id="ldap-creds"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                value={bindCreds}
+                placeholder={SecretPlaceholder({ set: credsSet })}
+                onChange={e => setBindCreds(e.currentTarget.value)}
+              />
+            </NoAutofill>
+            <Hint>{t('adminSite.ssoSecretNote')}</Hint>
+          </div>
+        }
+        b={<Field id="ldap-timeout" label={t('adminSite.ssoLdapTimeout')} value="10000" onChange={() => {}} placeholder="10000" disabled />}
+      />
+      <SectionTitle top>{t('adminSite.ssoLdapSearch')}</SectionTitle>
+      <Two
+        a={<Field id="ldap-base" label={t('adminSite.ssoLdapSearchBase')} required value={searchBase} onChange={setSearchBase} placeholder="ou=people,dc=example,dc=com" />}
+        b={
+          <SelectField
+            id="ldap-scope"
+            label={t('adminSite.ssoLdapScope')}
+            value={searchScope}
+            onChange={setSearchScope}
+            options={[
+              { value: 'sub', label: 'sub (subtree)' },
+              { value: 'one', label: 'one (single level)' },
+              { value: 'base', label: 'base' }
+            ]}
+          />
+        }
+      />
+      <Two
+        a={<Field id="ldap-filter" label={t('adminSite.ssoLdapFilter')} required value={searchFilter} onChange={setSearchFilter} placeholder="(uid={{username}})" hint={t('adminSite.ssoLdapFilterHint')} />}
+        b={<Field id="ldap-placeholder" label={t('adminSite.ssoLdapPlaceholder')} value={placeholder} onChange={setPlaceholder} placeholder="Username" />}
+      />
+      <SectionTitle top>{t('adminSite.ssoLdapMapping')}</SectionTitle>
+      <Two
+        cols="col-md-4"
+        a={<Field id="ldap-mail" label={t('adminSite.ssoLdapEmailAtt')} required value={emailAtt} onChange={setEmailAtt} placeholder="mail" />}
+        b={undefined}
+      />
+      <Two
+        a={<Field id="ldap-first" label={t('adminSite.ssoLdapFirstAtt')} value={firstNameAtt} onChange={setFirstNameAtt} placeholder="givenName" />}
+        b={<Field id="ldap-last" label={t('adminSite.ssoLdapLastAtt')} value={lastNameAtt} onChange={setLastNameAtt} placeholder="sn" />}
+      />
+      <Two
+        a={<Field id="ldap-admin" label={t('adminSite.ssoLdapAdminAtt')} value={isAdminAtt} onChange={setIsAdminAtt} placeholder="memberOf" hint={t('adminSite.ssoLdapAdminHint')} />}
+        b={
+          <div>
+            <br />
+            <Switch
+              id="ldap-upd"
+              checked={updateOnLogin}
+              onChange={setUpdateOnLogin}
+              label={t('adminSite.ssoLdapUpdate')}
+            />
+          </div>
+        }
+      />
+      <SaveFooter
+        flash={flash}
+        onSave={submit}
+        note={t('adminSite.ssoRestartNote')}
+      />
+    </Card>
   )
 }

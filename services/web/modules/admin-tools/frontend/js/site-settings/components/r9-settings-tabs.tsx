@@ -3,20 +3,31 @@
  * Site console — Sandboxed Compiles, Git Integration, GitHub Sync,
  * E-mail, Linked File Types, Pandoc.
  *
+ * Restyled 2026-08-30 in the CE+ admin vocabulary (user request — mirror
+ * davrot/overleaf-cep@fe4ceb6 email-admin.pug / sso-admin.pug):
+ * card + enable switch, h6.text-primary section headers, row/col-md grids,
+ * label.form-label (strong) + input.form-control, form-text hints,
+ * no-autofill password wrappers, big "Save Configuration" footer.
+ *
  * Each tab saves its own site-settings section (stored values WIN over
  * compose env from the next container cycle — the boot hydrator applies
  * them to every service, see modules/server-ce-scripts/scripts/
  * hydrate-site-settings-env.mjs and app/src/Features/SiteSettings/
- * EnvHydrator.mjs). Secrets are encrypted + masked exactly like the
- * Zotero/SSO tabs: empty on save keeps the stored value.
+ * EnvHydrator.mjs). Secrets are encrypted + masked exactly like the SSO
+ * tabs: empty on save keeps the stored value.
  */
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/shared/components/ol/ol-button'
-import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
-import OLFormLabel from '@/shared/components/ol/ol-form-label'
-import OLFormControl from '@/shared/components/ol/ol-form-control'
-import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import {
+  Card,
+  Field,
+  Hint,
+  NoAutofill,
+  Row,
+  SaveFooter,
+  SectionTitle,
+  Switch
+} from './ce-admin-ui'
 import { useSave } from './sso-settings-tab'
 
 type SectionValue = {
@@ -24,20 +35,47 @@ type SectionValue = {
   [key: string]: unknown
 }
 
-function Text(
-  { value, onChange, id, placeholder }: {
-    value: string
-    onChange: (v: string) => void
-    id?: string
-    placeholder?: string
-  }) {
+function SecretPlaceholder ({ set }: { set?: boolean }) {
+  return set ? '•••••• (configured — leave empty to keep)' : undefined
+}
+
+function PasswordField ({ id, label, value, onChange, set, hint }: {
+  id: string
+  label: React.ReactNode
+  value: string
+  onChange: (v: string) => void
+  set?: boolean
+  hint?: React.ReactNode
+}) {
   return (
-    <OLFormControl
-      id={id}
-      value={value}
-      placeholder={placeholder}
-      onChange={e => onChange(e.currentTarget.value)}
-    />
+    <>
+      <label className="form-label" htmlFor={id}><strong>{label}</strong></label>
+      <NoAutofill>
+        <input
+          id={id}
+          className="form-control"
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          placeholder={SecretPlaceholder({ set })}
+          onChange={e => onChange(e.currentTarget.value)}
+        />
+      </NoAutofill>
+      {hint && <Hint>{hint}</Hint>}
+    </>
+  )
+}
+
+function Two ({ a, b, cols = 'col-md-6' }: {
+  a: React.ReactNode
+  b?: React.ReactNode
+  cols?: string
+}) {
+  return (
+    <div className="row mb-3">
+      <div className={cols}>{a}</div>
+      {b && <div className={cols}>{b}</div>}
+    </div>
   )
 }
 
@@ -51,7 +89,7 @@ export function SandboxedCompilesTab (
 ) {
   const { t } = useTranslation()
   const { flash, save } = useSave('sandboxed-compiles')
-  const [enabled, setEnabled] = useState(Boolean(initial.enabled))
+  const [enabled, setEnabled] = useState(Boolean(initial.enabled ?? true))
   const [hostDir, setHostDir] = useState(String(initial.hostDir ?? ''))
   const [socketPath, setSocketPath] = useState(String(initial.socketPath ?? ''))
   const [extraFlags, setExtraFlags] = useState(String(initial.extraFlags ?? ''))
@@ -77,7 +115,7 @@ export function SandboxedCompilesTab (
   const submit = () => {
     void save({
       enabled,
-      dockerRunner: enabled, // enable group: one checkbox drives the four vars
+      dockerRunner: enabled,
       hostDir,
       socketPath,
       extraFlags,
@@ -88,158 +126,97 @@ export function SandboxedCompilesTab (
   }
 
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>
+    <Card
+      title={t('adminSite.sandboxedCompiles')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="docker"
+    >
+      <p className="text-muted">
         {t('adminSite.scDesc')}
         {t('adminSite.scFixed')}
       </p>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={e => setEnabled(e.currentTarget.checked)}
-        >
-          {t('adminSite.scEnable')}
-        </OLFormCheckbox>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="sc-hostdir">{t('adminSite.scHostDir')}</OLFormLabel>
-        <Text
-          value={hostDir}
-          onChange={setHostDir}
-          id="sc-hostdir"
-          placeholder="/data/overleaf/compiles"
-        />
-        <p style={{ fontSize: 12 }}>
-          {t('adminSite.scHostDirHint')}
-        </p>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="sc-socket">{t('adminSite.scSocket')}</OLFormLabel>
-        <Text
-          value={socketPath}
-          onChange={setSocketPath}
-          id="sc-socket"
-          placeholder="/var/run/docker.sock"
-        />
-        <p style={{ fontSize: 12 }}>
-          {t('adminSite.scSocketHint')}
-        </p>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="sc-flags">{t('adminSite.scFlags')}</OLFormLabel>
-        <Text
-          value={extraFlags}
-          onChange={setExtraFlags}
-          id="sc-flags"
-          placeholder="-shell-escape"
-        />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="sc-user">{t('adminSite.scImageUser')}</OLFormLabel>
-        <Text
-          value={imageUser}
-          onChange={setImageUser}
-          id="sc-user"
-          placeholder="www-data"
-        />
-      </OLFormGroup>
-
-
-      <h3 style={{ margin: '16px 0 8px' }}>{t('adminSite.scImages')}</h3>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      <SectionTitle>Container Host</SectionTitle>
+      <Two
+        a={<Row><Field id="sc-hostdir" label={t('adminSite.scHostDir')} required value={hostDir} onChange={setHostDir} placeholder="/data/overleaf/compiles" hint={t('adminSite.scHostDirHint')} /></Row>}
+        b={<Row><Field id="sc-socket" label={t('adminSite.scSocket')} required value={socketPath} onChange={setSocketPath} placeholder="/var/run/docker.sock" hint={t('adminSite.scSocketHint')} /></Row>}
+      />
+      <Two
+        a={<Field id="sc-flags" label={t('adminSite.scFlags')} value={extraFlags} onChange={setExtraFlags} placeholder="-shell-escape" />}
+        b={<Field id="sc-user" label={t('adminSite.scImageUser')} value={imageUser} onChange={setImageUser} placeholder="www-data" hint={t('adminSite.scImageUserHint')} />}
+      />
+      <SectionTitle top>{t('adminSite.scImages')}</SectionTitle>
+      <table className="table table-sm mb-2">
         <thead>
           <tr>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>
-              {t('adminSite.scImageCol')}
-            </th>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>
-              {t('adminSite.scNameCol')}
-            </th>
-            <th style={{ width: '70px', padding: '4px 8px' }} />
-            <th style={{ width: '90px', padding: '4px 8px' }}>
-              {t('adminSite.scDefaultCol')}
-            </th>
+            <th>{t('adminSite.scImageCol')}</th>
+            <th>{t('adminSite.scNameCol')}</th>
+            <th style={{ width: '90px' }}>{t('remove')}</th>
+            <th style={{ width: '100px' }}>{t('adminSite.scDefaultCol')}</th>
           </tr>
         </thead>
         <tbody>
           {images.map((row, i) => (
             <tr key={i}>
-              <td style={{ padding: '4px 8px' }}>
-                <OLFormControl
+              <td>
+                <input
+                  className="form-control"
                   value={row.image}
+                  placeholder="texlive/texlive:latest-full"
                   onChange={e => setRow(i, { image: e.currentTarget.value })}
                 />
               </td>
-              <td style={{ padding: '4px 8px' }}>
-                <OLFormControl
+              <td>
+                <input
+                  className="form-control"
                   value={row.name}
+                  placeholder="TeXLive 2025"
                   onChange={e => setRow(i, { name: e.currentTarget.value })}
                 />
               </td>
-              <td style={{ textAlign: 'center', padding: '4px 8px' }}>
-                <OLButton
-                  variant="ghost"
-                  size="sm"
+              <td>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
                   disabled={images.length <= 1}
                   onClick={() =>
                     setImages(rows => rows.filter((_, j) => j !== i))
                   }
                 >
                   {t('remove')}
-                </OLButton>
+                </button>
               </td>
-              <td style={{ textAlign: 'center', padding: '4px 8px' }}>
-                <input
-                  type="radio"
-                  name="sc-default-image"
-                  checked={
-                    (defaultImage || (images[0] && images[0].image)) === row.image
-                  }
-                  onChange={() => setDefaultImage(row.image)}
-                  aria-label={t('adminSite.scDefaultCol')}
-                />
+              <td>
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="radio"
+                    name="sc-default-image"
+                    checked={
+                      (defaultImage || (images[0] && images[0].image)) === row.image
+                    }
+                    onChange={() => setDefaultImage(row.image)}
+                    aria-label={t('adminSite.scDefaultCol')}
+                  />
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div style={{ marginTop: '8px' }}>
-        <OLButton
-          variant="ghost"
-          size="sm"
-          onClick={() => setImages(rows => [...rows, { image: '', name: '' }])}
-        >
-          {t('adminSite.scAddRow')}
-        </OLButton>
-      </div>
-      <p style={{ fontSize: 12, margin: '6px 0 0' }}>
-        {t('adminSite.scImageUserHint')}
-      </p>
-
-      <TabFooter flash={flash} onSave={submit} saveLabel={t('save')} />
-    </div>
-  )
-}
-
-function TabFooter (
-  { flash, onSave, saveLabel }: {
-    flash: { saving: boolean; saved: boolean; error: string | null }
-    onSave: () => void
-    saveLabel: string
-  }
-) {
-  return (
-    <div style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-      <OLButton variant="primary" disabled={flash.saving} onClick={onSave}>
-        {flash.saving ? '…' : saveLabel}
-      </OLButton>
-      {flash.saved && <span style={{ fontSize: 13 }}>Saved ✓</span>}
-      {flash.error && (
-        <span style={{ fontSize: 13, color: 'var(--red-50, #c00)' }}>
-          {flash.error}
-        </span>
-      )}
-    </div>
+      <button
+        type="button"
+        className="btn btn-sm btn-outline-secondary"
+        onClick={() => setImages(rows => [...rows, { image: '', name: '' }])}
+      >
+        + {t('adminSite.scAddRow')}
+      </button>
+      <SaveFooter
+        flash={flash}
+        onSave={submit}
+        note={t('adminSite.restartHint')}
+      />
+    </Card>
   )
 }
 
@@ -256,38 +233,24 @@ export function GitIntegrationTab (
   const [port, setPort] = useState(String(initial.port ?? 8000))
 
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>{t('adminSite.gitDesc')}</p>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={e => setEnabled(e.currentTarget.checked)}
-        >
-          {t('adminSite.gitEnable')}
-        </OLFormCheckbox>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="git-host">{t('adminSite.gitHost')}</OLFormLabel>
-        <Text value={host} onChange={setHost} id="git-host" placeholder="git-bridge" />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="git-port">{t('adminSite.gitPort')}</OLFormLabel>
-        <Text
-          value={port}
-          onChange={v => setPort(v.replace(/[^\d]/g, ''))}
-          id="git-port"
-          placeholder="8000"
-        />
-      </OLFormGroup>
-      <p style={{ fontSize: 12, margin: '8px 0 0' }}>
-        {t('adminSite.gitContainerNote')}
-      </p>
-      <TabFooter
-        flash={flash}
-        saveLabel={t('save')}
-        onSave={() => void save({ enabled, host, port: Number(port) || 8000 })}
+    <Card
+      title={t('adminSite.gitIntegration')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="git"
+    >
+      <p className="text-muted">{t('adminSite.gitDesc')}</p>
+      <Two
+        a={<Field id="git-host" label={t('adminSite.gitHost')} required value={host} onChange={setHost} placeholder="git-bridge" />}
+        b={<Field id="git-port" label={t('adminSite.gitPort')} required value={port} onChange={v => setPort(v.replace(/[^\d]/g, ''))} placeholder="8000" />}
       />
-    </div>
+      <p className="text-muted">{t('adminSite.gitContainerNote')}</p>
+      <SaveFooter
+        flash={flash}
+        onSave={() => void save({ enabled, host, port: Number(port) || 8000 })}
+        note={t('adminSite.restartHint')}
+      />
+    </Card>
   )
 }
 
@@ -300,90 +263,72 @@ export function GithubSyncTab (
   const { t } = useTranslation()
   const { flash, save } = useSave('github-sync')
   const [enabled, setEnabled] = useState(Boolean(initial.enabled))
-  const [clientID, setClientID] = useState(String(initial.clientID ?? ''))
+  const [clientID, setClientID] = useState(
+    String(initial.clientId ?? initial.clientID ?? '')
+  )
   const [clientSecret, setClientSecret] = useState('')
   const [cipherFile, setCipherFile] = useState(String(initial.cipherFile ?? ''))
   const [cipherLabel, setCipherLabel] = useState(String(initial.cipherLabel ?? ''))
+  const [advanced, setAdvanced] = useState(false)
   const secretSet = Boolean(initial.clientSecretSet)
 
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>{t('adminSite.ghDesc')}</p>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={e => setEnabled(e.currentTarget.checked)}
-        >
-          {t('adminSite.ghEnable')}
-        </OLFormCheckbox>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="gh-id">{t('adminSite.ghClientId')}</OLFormLabel>
-        <Text value={clientID} onChange={setClientID} id="gh-id" />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="gh-secret">{t('adminSite.ghClientSecret')}</OLFormLabel>
-        <input
-          id="gh-secret"
-          type="password"
-          autoComplete="new-password"
-          value={clientSecret}
-          placeholder={secretSet ? '•••••• (configured — empty keeps it)' : ''}
-          onChange={e => setClientSecret(e.currentTarget.value)}
-        />
-        <p style={{ fontSize: 12 }}>{t('adminSite.ssoSecretNote')}</p>
-      </OLFormGroup>
-      <details style={{ margin: '12px 0' }}>
-        <summary style={{ cursor: 'pointer', fontSize: 13 }}>
-          {t('adminSite.ghAdvanced')}
-        </summary>
-        <OLFormGroup>
-          <OLFormLabel htmlFor="gh-cipherfile">{t('adminSite.ghCipherFile')}</OLFormLabel>
-          <Text value={cipherFile} onChange={setCipherFile} id="gh-cipherfile" />
-        </OLFormGroup>
-        <OLFormGroup>
-          <OLFormLabel htmlFor="gh-cipherlabel">{t('adminSite.ghCipherLabel')}</OLFormLabel>
-          <Text value={cipherLabel} onChange={setCipherLabel} id="gh-cipherlabel" />
-          <p style={{ fontSize: 12 }}>{t('adminSite.ghCipherHint')}</p>
-        </OLFormGroup>
-      </details>
-      <p style={{ fontSize: 12 }}>
-        {t('adminSite.ghCallback')}
-        <code>
-          https://psintern.neuro.uni-bremen.de/user/github-sync/oauth2/callback
-        </code>
-      </p>
-      <p style={{ fontSize: 12, margin: '6px 0 0' }}>
+    <Card
+      title={t('adminSite.githubSync')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="github"
+    >
+      <p className="text-muted">{t('adminSite.ghDesc')}</p>
+      <SectionTitle>OAuth App</SectionTitle>
+      <Two
+        a={<Field id="gh-id" label={t('adminSite.ghClientId')} required value={clientID} onChange={setClientID} />}
+        b={<PasswordField id="gh-secret" label={t('adminSite.ghClientSecret')} value={clientSecret} onChange={setClientSecret} set={secretSet} hint={t('adminSite.ssoSecretNote')} />}
+      />
+      <button
+        type="button"
+        className="btn btn-sm btn-outline-secondary mb-3"
+        onClick={() => setAdvanced(a => !a)}
+      >
+        {advanced ? '−' : '+'} {t('adminSite.ghAdvanced')}
+      </button>
+      {advanced && (
+        <div className="mb-3">
+          <Two
+            a={<Field id="gh-cipherfile" label={t('adminSite.ghCipherFile')} value={cipherFile} onChange={setCipherFile} />}
+            b={<Field id="gh-cipherlabel" label={t('adminSite.ghCipherLabel')} value={cipherLabel} onChange={setCipherLabel} hint={t('adminSite.ghCipherHint')} />}
+          />
+        </div>
+      )}
+      <p className="text-muted">
+        {t('adminSite.ghCallback')}{' '}
+        <code>https://psintern.neuro.uni-bremen.de/user/github-sync/oauth2/callback</code>
+        <br />
         {t('adminSite.ghLimits')}
       </p>
-      <TabFooter
+      <SaveFooter
         flash={flash}
-        saveLabel={t('save')}
         onSave={() =>
           void save({
             enabled,
-            clientID,
+            clientId: clientID,
             clientSecret,
             cipherFile,
             cipherLabel
           })
         }
+        note={t('adminSite.restartHint')}
       />
-    </div>
+    </Card>
   )
 }
 
 // ------------------------------------------------------------------------
-// E-mail
+// E-mail — CE+ email-admin.pug layout (2026-08-30)
 // ------------------------------------------------------------------------
-export function EmailTab (
-  { initial }: { initial: SectionValue }
-) {
+export function EmailTab ({ initial }: { initial: SectionValue }) {
   const { t } = useTranslation()
   const { flash, save } = useSave('email')
-  const [skipConfirmation, setSkipConfirmation] = useState(
-    Boolean(initial.skipConfirmation)
-  )
   const [driver, setDriver] = useState(String(initial.driver ?? 'smtp'))
   const [fromAddress, setFromAddress] = useState(String(initial.fromAddress ?? ''))
   const [replyTo, setReplyTo] = useState(String(initial.replyTo ?? ''))
@@ -395,7 +340,10 @@ export function EmailTab (
   const [user, setUser] = useState(String(initial.user ?? ''))
   const [pass, setPass] = useState('')
   const [tlsRejectUnauth, setTlsRejectUnauth] = useState(
-    Boolean(initial.tlsRejectUnauth)
+    Boolean(initial.tlsRejectUnauth ?? true)
+  )
+  const [skipConfirmation, setSkipConfirmation] = useState(
+    Boolean(initial.skipConfirmation)
   )
   const [accessKeyId, setAccessKeyId] = useState(String(initial.accessKeyId ?? ''))
   const [sesSecret, setSesSecret] = useState('')
@@ -403,145 +351,120 @@ export function EmailTab (
   const passSet = Boolean(initial.passSet)
   const sesSecretSet = Boolean(initial.sesSecretSet)
 
+  const submit = () => {
+    void save({
+      driver,
+      fromAddress,
+      replyTo,
+      host,
+      port: Number(port) || 587,
+      secure: driver === 'smtp' ? secure : false,
+      ignoreTLS: driver === 'smtp' ? ignoreTLS : false,
+      name,
+      user,
+      pass,
+      tlsRejectUnauth,
+      accessKeyId: driver === 'ses' ? accessKeyId : '',
+      sesSecret: driver === 'ses' ? sesSecret : '',
+      sesRegion: driver === 'ses' ? sesRegion : '',
+      skipConfirmation
+    })
+  }
+
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>{t('adminSite.emailDesc')}</p>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={skipConfirmation}
-          onChange={e => setSkipConfirmation(e.currentTarget.checked)}
-        >
-          {t('adminSite.emailSkipConfirm')}
-        </OLFormCheckbox>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="em-driver">{t('adminSite.emailDriver')}</OLFormLabel>
-        <select
-          id="em-driver"
-          value={driver}
-          onChange={e => setDriver(e.currentTarget.value)}
-          style={{ padding: '6px 8px', maxWidth: '280px' }}
-        >
-          <option value="smtp">SMTP</option>
-          <option value="ses">Amazon SES</option>
-        </select>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="em-from">{t('adminSite.emailFrom')}</OLFormLabel>
-        <Text value={fromAddress} onChange={setFromAddress} id="em-from" />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="em-reply">{t('adminSite.emailReplyTo')}</OLFormLabel>
-        <Text value={replyTo} onChange={setReplyTo} id="em-reply" />
-      </OLFormGroup>
+    <Card
+      title={t('adminSite.email')}
+      badge="smtp/ses"
+    >
+      <p className="text-muted">{t('adminSite.emailDesc')}</p>
+      <div className="row mb-3">
+        <div className="col-md-6">
+          <Switch
+            id="em-skipconfirm"
+            checked={skipConfirmation}
+            onChange={setSkipConfirmation}
+            label={<><strong>{t('adminSite.emailSkipConfirm')}</strong> <span className="text-muted">{t('adminSite.emailSkipConfirmHint') || ''}</span></>}
+          />
+        </div>
+      </div>
+      <SectionTitle>General</SectionTitle>
+      <Two
+        a={<Field id="em-from" label={t('adminSite.emailFrom')} required value={fromAddress} onChange={setFromAddress} placeholder="noreply@example.com" hint={t('adminSite.emailFromHint')} />}
+        b={<Field id="em-reply" label={t('adminSite.emailReplyTo')} value={replyTo} onChange={setReplyTo} placeholder="support@example.com" hint={t('adminSite.emailReplyToHint')} />}
+      />
+      <SectionTitle top>Email Driver</SectionTitle>
+      <div className="row mb-3">
+        <div className="col-md-6">
+          <label className="form-label" htmlFor="em-driver"><strong>{t('adminSite.emailDriver')}</strong></label>
+          <select
+            id="em-driver"
+            className="form-select"
+            value={driver}
+            onChange={e => setDriver(e.currentTarget.value)}
+          >
+            <option value="smtp">SMTP</option>
+            <option value="ses">AWS SES</option>
+          </select>
+          <Hint>{t('adminSite.emailDriverHint')}</Hint>
+        </div>
+      </div>
       {driver === 'smtp' ? (
         <>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-host">{t('adminSite.emailHost')}</OLFormLabel>
-            <Text value={host} onChange={setHost} id="em-host" placeholder="smtp.example.com" />
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-port">{t('adminSite.emailPort')}</OLFormLabel>
-            <Text
-              value={port}
-              onChange={v => setPort(v.replace(/[^\d]/g, ''))}
-              id="em-port"
-              placeholder="587"
-            />
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormCheckbox
-              checked={secure}
-              onChange={e => setSecure(e.currentTarget.checked)}
-            >
-              {t('adminSite.emailSecure')}
-            </OLFormCheckbox>
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormCheckbox
-              checked={ignoreTLS}
-              onChange={e => setIgnoreTLS(e.currentTarget.checked)}
-            >
-              {t('adminSite.emailIgnoreTLS')}
-            </OLFormCheckbox>
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-name">{t('adminSite.emailName')}</OLFormLabel>
-            <Text value={name} onChange={setName} id="em-name" />
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-user">{t('adminSite.emailUser')}</OLFormLabel>
-            <Text value={user} onChange={setUser} id="em-user" />
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-pass">{t('adminSite.emailPass')}</OLFormLabel>
-            <input
-              id="em-pass"
-              type="password"
-              autoComplete="new-password"
-              value={pass}
-              placeholder={passSet ? '•••••• (configured — empty keeps it)' : ''}
-              onChange={e => setPass(e.currentTarget.value)}
-            />
-            <p style={{ fontSize: 12 }}>{t('adminSite.ssoSecretNote')}</p>
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormCheckbox
-              checked={tlsRejectUnauth}
-              onChange={e => setTlsRejectUnauth(e.currentTarget.checked)}
-            >
-              {t('adminSite.emailTlsReject')}
-            </OLFormCheckbox>
-          </OLFormGroup>
+          <SectionTitle top>SMTP Configuration</SectionTitle>
+          <div className="row mb-3">
+            <div className="col-md-6">
+              <Field id="em-host" label={t('adminSite.emailHost')} required value={host} onChange={setHost} placeholder="smtp.example.com" />
+            </div>
+            <div className="col-md-3">
+              <Field id="em-port" label={t('adminSite.emailPort')} value={port} onChange={v => setPort(v.replace(/[^\d]/g, ''))} placeholder="587" />
+            </div>
+            <div className="col-md-3">
+              <Field id="em-name" label={t('adminSite.emailName')} value={name} onChange={setName} placeholder="" hint={t('adminSite.emailNameHint')} />
+            </div>
+          </div>
+          <div className="row mb-3">
+            <div className="col-md-4">
+              <Switch id="em-secure" checked={secure} onChange={setSecure} label={t('adminSite.emailSecure')} />
+              <Hint>{t('adminSite.emailSecureHint')}</Hint>
+            </div>
+            <div className="col-md-4">
+              <Switch id="em-ignoretls" checked={ignoreTLS} onChange={setIgnoreTLS} label={t('adminSite.emailIgnoreTLS')} />
+              <Hint>{t('adminSite.emailIgnoreTLSHint')}</Hint>
+            </div>
+            <div className="col-md-4">
+              <Switch id="em-tlsreject" checked={tlsRejectUnauth} onChange={setTlsRejectUnauth} label={t('adminSite.emailTlsReject')} />
+              <Hint>{t('adminSite.emailTlsRejectHint')}</Hint>
+            </div>
+          </div>
+          <div className="row mb-3">
+            <div className="col-md-6">
+              <Field id="em-user" label={t('adminSite.emailUser')} value={user} onChange={setUser} placeholder="" />
+            </div>
+            <div className="col-md-6">
+              <PasswordField id="em-pass" label={t('adminSite.emailPass')} value={pass} onChange={setPass} set={passSet} hint={t('adminSite.ssoSecretNote')} />
+            </div>
+          </div>
         </>
       ) : (
         <>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-ak">{t('adminSite.emailSesAkId')}</OLFormLabel>
-            <Text value={accessKeyId} onChange={setAccessKeyId} id="em-ak" />
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-sk">{t('adminSite.emailSesSecret')}</OLFormLabel>
-            <input
-              id="em-sk"
-              type="password"
-              autoComplete="new-password"
-              value={sesSecret}
-              placeholder={sesSecretSet ? '•••••• (configured — empty keeps it)' : ''}
-              onChange={e => setSesSecret(e.currentTarget.value)}
-            />
-            <p style={{ fontSize: 12 }}>{t('adminSite.ssoSecretNote')}</p>
-          </OLFormGroup>
-          <OLFormGroup>
-            <OLFormLabel htmlFor="em-region">{t('adminSite.emailSesRegion')}</OLFormLabel>
-            <Text value={sesRegion} onChange={setSesRegion} id="em-region" />
-          </OLFormGroup>
+          <SectionTitle top>AWS SES Configuration</SectionTitle>
+          <div className="row mb-3">
+            <div className="col-md-6">
+              <Field id="em-ak" label={t('adminSite.emailSesAkId')} required value={accessKeyId} onChange={setAccessKeyId} placeholder="" />
+            </div>
+            <div className="col-md-6">
+              <PasswordField id="em-sk" label={t('adminSite.emailSesSecret')} value={sesSecret} onChange={setSesSecret} set={sesSecretSet} hint={t('adminSite.ssoSecretNote')} />
+            </div>
+          </div>
+          <div className="row mb-3">
+            <div className="col-md-6">
+              <Field id="em-region" label={t('adminSite.emailSesRegion')} value={sesRegion} onChange={setSesRegion} placeholder="us-east-1" />
+            </div>
+          </div>
         </>
       )}
-      <TabFooter
-        flash={flash}
-        saveLabel={t('save')}
-        onSave={() =>
-          void save({
-            skipConfirmation,
-            driver,
-            fromAddress,
-            replyTo,
-            host,
-            port: Number(port) || 587,
-            secure,
-            ignoreTLS,
-            name,
-            user,
-            pass,
-            tlsRejectUnauth,
-            accessKeyId,
-            sesSecret,
-            sesRegion
-          })
-        }
-      />
-    </div>
+      <SaveFooter flash={flash} onSave={submit} note={t('adminSite.restartHint')} />
+    </Card>
   )
 }
 
@@ -563,59 +486,69 @@ export function LinkedFileTypesTab (
   const initialTypes: string[] = Array.isArray(initial.enabledTypes)
     ? initial.enabledTypes
     : []
-  const [types, setTypes] = useState<string[]>((
+  const [types, setTypes] = useState<string[]>(
     ['project_file', 'project_output_file']
-      .concat(initialTypes.filter(k => k !== 'project_file' && k !== 'project_output_file'))
-  ))
+      .concat(
+        initialTypes.filter(
+          k => k !== 'project_file' && k !== 'project_output_file'
+        )
+      )
+  )
 
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>{t('adminSite.lftDesc')}</p>
+    <Card title={t('adminSite.linkedFileTypes')} badge="files">
+      <p className="text-muted">{t('adminSite.lftDesc')}</p>
       {LINKED_TYPES.map(row => {
         const checked = types.includes(row.key) || row.locked
         return (
-          <OLFormGroup key={row.key} style={{ marginBottom: '8px' }}>
-            <OLFormCheckbox
-              checked={checked}
-              disabled={row.locked}
-              onChange={e => {
-                const on = e.currentTarget.checked
-                setTypes(cur =>
-                  on
-                    ? Array.from(new Set([...cur, row.key]))
-                    : cur.filter(k => k !== row.key)
-                )
-              }}
-            >
-              {t(row.labelKey)}
-              {row.locked ? ` (${t('adminSite.lftLocked')})` : ''}
-            </OLFormCheckbox>
-          </OLFormGroup>
+          <div key={row.key} className="mb-2">
+            <div className="form-check">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id={`lft-${row.key}`}
+                checked={checked}
+                disabled={row.locked}
+                onChange={e => {
+                  const on = e.currentTarget.checked
+                  setTypes(cur =>
+                    on
+                      ? Array.from(new Set([...cur, row.key]))
+                      : cur.filter(k => k !== row.key)
+                  )
+                }}
+              />
+              <label className="form-check-label" htmlFor={`lft-${row.key}`}>
+                {t(row.labelKey)}
+                {row.locked ? ` (${t('adminSite.lftLocked')})` : ''}
+              </label>
+            </div>
+          </div>
         )
       })}
-      <TabFooter
+      <SaveFooter
         flash={flash}
-        saveLabel={t('save')}
         onSave={() =>
           void save({
             enabledTypes: [
               'project_file',
               'project_output_file',
-              ...types.filter(k => k !== 'project_file' && k !== 'project_output_file')
+              ...types.filter(
+                k => k !== 'project_file' && k !== 'project_output_file'
+              )
             ]
           })
         }
+        note={t('adminSite.restartHint')}
       />
-    </div>
+    </Card>
   )
 }
 
 // ------------------------------------------------------------------------
 // Pandoc
 // ------------------------------------------------------------------------
-export function PandocTab (
-  { initial }: { initial: SectionValue }
-) {
+export function PandocTab ({ initial }: { initial: SectionValue }) {
   const { t } = useTranslation()
   const { flash, save } = useSave('pandoc')
   const [enabled, setEnabled] = useState(Boolean(initial.enabled))
@@ -624,29 +557,22 @@ export function PandocTab (
   )
 
   return (
-    <div>
-      <p style={{ fontSize: 13 }}>{t('adminSite.pandocDesc')}</p>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={e => setEnabled(e.currentTarget.checked)}
-        >
-          {t('adminSite.pandocEnable')}
-        </OLFormCheckbox>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="pd-image">{t('adminSite.pandocImage')}</OLFormLabel>
-        <Text value={image} onChange={setImage} id="pd-image" placeholder="pandoc-ol:3.10.0.0" />
-        <p style={{ fontSize: 12 }}>{t('adminSite.restartHint')}</p>
-      </OLFormGroup>
-      <p style={{ fontSize: 12, margin: '8px 0 0' }}>
-        {t('adminSite.pandocBuildNote')}
-      </p>
-      <TabFooter
-        flash={flash}
-        saveLabel={t('save')}
-        onSave={() => void save({ enabled, image })}
+    <Card
+      title={t('adminSite.pandoc')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="pandoc"
+    >
+      <p className="text-muted">{t('adminSite.pandocDesc')}</p>
+      <Two
+        a={<Field id="pd-image" label={t('adminSite.pandocImage')} required value={image} onChange={setImage} placeholder="pandoc-ol:3.10.0.0" hint={t('adminSite.restartHint')} />}
       />
-    </div>
+      <p className="text-muted">{t('adminSite.pandocBuildNote')}</p>
+      <SaveFooter
+        flash={flash}
+        onSave={() => void save({ enabled, image })}
+        note={t('adminSite.restartHint')}
+      />
+    </Card>
   )
 }
