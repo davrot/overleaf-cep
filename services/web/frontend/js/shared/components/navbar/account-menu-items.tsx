@@ -17,14 +17,19 @@ import ThemeToggle from '@/features/project-list/components/sidebar/theme-toggle
  * browser sessions; inline cannot be clipped/positioning-sensitive).
  * Chevron: ">" (CaretRight), rotates down when open.
  *
- * Naming (user round 3): the historical Admin Panel (/admin) keeps the
- * name "Manage Site"; the settings console (/admin/site) is
+ * Naming (user round 3): the historical Admin Panel keeps the name
+ * "Manage Site"; the settings console (/admin/site) is
  * "Manage Extensions".
+ *
+ * W8 (UI-R10, 2026-08-30): the menu now points at this fork's SAME-ORIGIN
+ * shells — /admin/panel (the upstream admin tabset) and /user/mysettings
+ * (the upstream account-settings app, themed) — from the page-shells
+ * module. The original upstream URLs keep working.
  */
 function ManageMenu({ canManageProjects }: { canManageProjects: boolean }) {
   const [open, setOpen] = useState(false)
   const items = [
-    { href: '/admin', label: 'Manage Site' },
+    { href: '/admin/panel', label: 'Manage Site' },
     { href: '/admin/site', label: 'Manage Extensions' },
     { href: '/admin/user', label: 'Manage Users' },
   ]
@@ -117,7 +122,7 @@ export function AccountMenuItems({
           {item.translatedText || item.text}
         </NavDropdownLinkItem>
       ))}
-      <NavDropdownLinkItem href="/user/settings">
+      <NavDropdownLinkItem href="/user/mysettings">
         {t('account_settings')}
       </NavDropdownLinkItem>
       {showSubscriptionLink ? (
