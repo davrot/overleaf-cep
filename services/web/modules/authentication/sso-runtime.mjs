@@ -22,24 +22,28 @@ import {
   getOIDCProviderConfig,
   getLDAPConfig
 } from './ssoConfigLoader.mjs'
-import SAMLModuleManager from './saml/app/src/SAMLModuleManager.mjs'
-import OIDCModuleManager from './oidc/app/src/OIDCModuleManager.mjs'
-import LDAPModuleManager from './ldap/app/src/LDAPModuleManager.mjs'
+
+// Manager modules are imported LAZILY (inside refreshSsoStrategy): they
+// import the authentication controllers, which in turn import THIS module
+// (for refreshSsoStrategy) — a static import of them here would create an
+// ESM evaluation cycle (TDZ ReferenceError at boot, 2026-08-30).
+const MANAGER_IMPORTS = {
+  saml: () => import('./saml/app/src/SAMLModuleManager.mjs'),
+  oidc: () => import('./oidc/app/src/OIDCModuleManager.mjs'),
+  ldap: () => import('./ldap/app/src/LDAPModuleManager.mjs')
+}
 
 const PROXIES = {
   saml: {
     name: 'saml',
-    manager: SAMLModuleManager,
     getProvider: getSAMLProviderConfig
   },
   oidc: {
     name: 'openidconnect',
-    manager: OIDCModuleManager,
     getProvider: getOIDCProviderConfig
   },
   ldap: {
     name: 'ldapauth',
-    manager: LDAPModuleManager,
     getProvider: getLDAPConfig
   }
 }
@@ -70,6 +74,7 @@ function disabledStub (strategyName) {
 export async function refreshSsoStrategy (type) {
   const proxy = PROXIES[type]
   if (!proxy) throw new Error(`unknown SSO provider: ${type}`)
+  const { default: manager } = await MANAGER_IMPORTS[type]()
 
   let provider = null
   try {
@@ -83,10 +88,10 @@ export async function refreshSsoStrategy (type) {
   }
 
   try {
-    await proxy.manager.initSettings()
+    await manager.initSettings()
     let captured = null
     await new Promise((resolve, reject) => {
-      proxy.manager.passportSetup(
+      manager.passportSetup(
         { use: strategy => { captured = strategy } },
         err => (err ? reject(err) : resolve())
       )
