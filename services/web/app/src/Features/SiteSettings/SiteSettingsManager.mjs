@@ -150,13 +150,21 @@ export const SECTION_KNOWN_KEYS = {
     'dockerRunner',
     'hostDir',
     'socketPath',
-    'flags',
+    'extraFlags',
     'imageUser',
+    'defaultImage',
     'images',
     'names',
   ],
   'git-integration': ['enabled', 'host', 'port'],
-  'github-sync': ['enabled', 'clientId', 'clientSecret', 'cipherFile', 'cipherLabel'],
+  'github-sync': [
+    'enabled',
+    'clientId',
+    'clientID',
+    'clientSecret',
+    'cipherFile',
+    'cipherLabel',
+  ],
   email: [
     'driver',
     'host',
@@ -415,28 +423,32 @@ function envSeeds(env, coreSettings, stored) {
     },
     'github-sync': {
       enabled: boolFromEnv(env.GITHUB_SYNC_ENABLED) === true,
-      clientID: env.GITHUB_SYNC_CLIENT_ID || '',
+      // NOTE: key is 'clientId' (lowercase d) — matches the admin UI state,
+      // the allow-list and the EnvHydrator mapping (2026-08-30 bug fix).
+      clientId: env.GITHUB_SYNC_CLIENT_ID || '',
       // secret: stored (encrypted) wins; env value below acts like a seed.
       clientSecret: env.GITHUB_SYNC_CLIENT_SECRET || '',
       cipherFile: env.GITHUB_TOKEN_CIPHER_FILE || '',
       cipherLabel: env.GITHUB_TOKEN_CIPHER_LABEL || '',
     },
     email: {
+      // CE deployments set LONG OVERLEAF_EMAIL_* names — prefer those,
+      // short EMAIL_* as fallback (2026-08-30).
       skipConfirmation: boolFromEnv(env.EMAIL_CONFIRMATION_DISABLED) === true,
-      fromAddress: coreSettings?.email?.fromAddress || env.EMAIL_FROM_ADDRESS || '',
-      replyTo: coreSettings?.email?.replyTo || env.EMAIL_REPLY_TO || '',
-      driver: (coreSettings?.email && coreSettings.email.driver) || env.EMAIL_DRIVER || 'smtp',
-      host: coreSettings?.email?.host || env.EMAIL_HOST || '',
-      port: coreSettings?.email?.port ?? (env.EMAIL_PORT ? Number(env.EMAIL_PORT) : 587),
-      secure: boolFromEnv(env.EMAIL_SECURE) === true,
-      ignoreTLS: boolFromEnv(env.EMAIL_IGNORE_TLS) === true,
-      name: coreSettings?.email?.smtp?.name || env.EMAIL_NAME || '',
-      user: coreSettings?.email?.user || env.EMAIL_USER || '',
-      pass: coreSettings?.email?.pass || env.EMAIL_PASS || '',
+      fromAddress: coreSettings?.email?.fromAddress || env.OVERLEAF_EMAIL_FROM_ADDRESS || env.EMAIL_FROM_ADDRESS || '',
+      replyTo: coreSettings?.email?.replyTo || env.OVERLEAF_EMAIL_REPLY_TO || env.EMAIL_REPLY_TO || '',
+      driver: (coreSettings?.email && coreSettings.email.driver) || env.OVERLEAF_EMAIL_DRIVER || env.EMAIL_DRIVER || 'smtp',
+      host: coreSettings?.email?.host || env.OVERLEAF_EMAIL_SMTP_HOST || env.EMAIL_HOST || '',
+      port: coreSettings?.email?.port ?? (env.OVERLEAF_EMAIL_SMTP_PORT || env.EMAIL_PORT ? Number(env.OVERLEAF_EMAIL_SMTP_PORT || env.EMAIL_PORT) : 587),
+      secure: boolFromEnv(env.OVERLEAF_EMAIL_SMTP_SECURE) === true || boolFromEnv(env.EMAIL_SECURE) === true,
+      ignoreTLS: boolFromEnv(env.OVERLEAF_EMAIL_SMTP_IGNORE_TLS) === true || boolFromEnv(env.EMAIL_IGNORE_TLS) === true,
+      name: coreSettings?.email?.smtp?.name || env.OVERLEAF_EMAIL_SMTP_NAME || env.EMAIL_NAME || '',
+      user: coreSettings?.email?.user || env.OVERLEAF_EMAIL_SMTP_USER || env.EMAIL_USER || '',
+      pass: coreSettings?.email?.pass || env.OVERLEAF_EMAIL_SMTP_PASS || env.EMAIL_PASS || '',
       tlsRejectUnauth: boolFromEnv(env.EMAIL_TLS_REJECT_UNAUTHORIZED) === true,
-      accessKeyId: coreSettings?.email?.ses?.accessKeyId || env.EMAIL_SES_ACCESS_KEY_ID || '',
-      sesSecret: coreSettings?.email?.ses?.secretKey || env.EMAIL_SES_SECRET_ACCESS_KEY || '',
-      sesRegion: coreSettings?.email?.ses?.region || env.EMAIL_SES_REGION || '',
+      accessKeyId: coreSettings?.email?.ses?.accessKeyId || env.OVERLEAF_EMAIL_AWS_SES_ACCESS_KEY_ID || env.EMAIL_SES_ACCESS_KEY_ID || '',
+      sesSecret: coreSettings?.email?.ses?.secretKey || env.OVERLEAF_EMAIL_AWS_SES_SECRET_KEY || env.EMAIL_SES_SECRET_ACCESS_KEY || '',
+      sesRegion: coreSettings?.email?.ses?.region || env.OVERLEAF_EMAIL_AWS_SES_REGION || env.EMAIL_SES_REGION || '',
     },
     'linked-file-types': {
       enabledTypes: String(env.ENABLED_LINKED_FILE_TYPES || '')
@@ -803,8 +815,9 @@ export function validateGithubSyncSection(value) {
   if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
   if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
   if (value.enabled) {
-    if (typeof value.clientID !== 'string' || value.clientID.length === 0) {
-      errors.push('clientID (OAuth App ID) is required to enable GitHub sync')
+    const cid = value.clientId || value.clientID
+    if (typeof cid !== 'string' || cid.length === 0) {
+      errors.push('clientId (GitHub OAuth App ID) is required to enable GitHub sync')
     }
     const hasStored = typeof value.clientSecret === 'string' && value.clientSecret.length > 0
     if (!hasStored && !process.env.GITHUB_SYNC_CLIENT_SECRET) {

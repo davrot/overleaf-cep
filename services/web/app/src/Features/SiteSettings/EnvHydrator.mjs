@@ -67,7 +67,7 @@ export async function hydrateEnvFromStoredSiteSettings() {
     if (gh) {
       apply('github-sync', {
         GITHUB_SYNC_ENABLED: b(gh.enabled),
-        GITHUB_SYNC_CLIENT_ID: gh.clientID || '',
+        GITHUB_SYNC_CLIENT_ID: gh.clientId || gh.clientID || '',
         GITHUB_SYNC_CLIENT_SECRET: gh.clientSecret || '',
         GITHUB_TOKEN_CIPHER_FILE: gh.cipherFile || '',
         GITHUB_TOKEN_CIPHER_LABEL: gh.cipherLabel || '',
@@ -76,21 +76,23 @@ export async function hydrateEnvFromStoredSiteSettings() {
 
     const email = await readStoredSection('email')
     if (email) {
+      // CE's Settings email block reads LONG OVERLEAF_EMAIL_* names
+      // (server-ce/config/settings.js) — hydrate those, not short EMAIL_*.
       apply('email', {
         EMAIL_CONFIRMATION_DISABLED: b(email.skipConfirmation),
-        EMAIL_FROM_ADDRESS: email.fromAddress || '',
-        EMAIL_REPLY_TO: email.replyTo || '',
-        EMAIL_HOST: email.host || '',
-        EMAIL_PORT: email.port ?? '',
-        EMAIL_SECURE: b(email.secure),
-        EMAIL_IGNORE_TLS: b(email.ignoreTLS),
-        EMAIL_NAME: email.name || '',
-        EMAIL_USER: email.user || '',
-        EMAIL_PASS: email.pass || '',
-        EMAIL_TLS_REJECT_UNAUTHORIZED: b(email.tlsRejectUnauth),
-        EMAIL_SES_ACCESS_KEY_ID: email.accessKeyId || '',
-        EMAIL_SES_SECRET_ACCESS_KEY: email.sesSecret || '',
-        EMAIL_SES_REGION: email.sesRegion || '',
+        OVERLEAF_EMAIL_FROM_ADDRESS: email.fromAddress || '',
+        OVERLEAF_EMAIL_REPLY_TO: email.replyTo || '',
+        OVERLEAF_EMAIL_DRIVER: email.driver || 'smtp',
+        OVERLEAF_EMAIL_SMTP_HOST: email.host || '',
+        OVERLEAF_EMAIL_SMTP_PORT: email.port ?? '',
+        OVERLEAF_EMAIL_SMTP_SECURE: b(email.secure),
+        OVERLEAF_EMAIL_SMTP_IGNORE_TLS: b(email.ignoreTLS),
+        OVERLEAF_EMAIL_SMTP_NAME: email.name || '',
+        OVERLEAF_EMAIL_SMTP_USER: email.user || '',
+        OVERLEAF_EMAIL_SMTP_PASS: email.pass || '',
+        OVERLEAF_EMAIL_AWS_SES_ACCESS_KEY_ID: email.accessKeyId || '',
+        OVERLEAF_EMAIL_AWS_SES_SECRET_KEY: email.sesSecret || '',
+        OVERLEAF_EMAIL_AWS_SES_REGION: email.sesRegion || '',
       })
     }
 
