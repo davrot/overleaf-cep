@@ -45,15 +45,26 @@ export function buildTransport(email) {
     if (!email.accessKeyId || !email.sesSecret) {
       return { error: 'SES credentials are not configured yet' }
     }
-    const ses = new aws.SESClient({
-      apiVersion: '2010-12-01',
-      region: email.sesRegion || undefined,
-      credentials: {
-        accessKeyId: email.accessKeyId,
-        secretAccessKey: email.sesSecret,
-      },
-    })
-    return { client: nodemailer.createTransport({ SES: { ses, aws } }) }
+    // Same construction the production EmailSender uses (aws SES
+    // transport with @aws-sdk/client-ses). Newer nodemailer builds
+    // reject the legacy SES config, so catch that and surface a clean
+    // configuration error in the admin console.
+    try {
+      const ses = new aws.SESClient({
+        apiVersion: '2010-12-01',
+        region: email.sesRegion || undefined,
+        credentials: {
+          accessKeyId: email.accessKeyId,
+          secretAccessKey: email.sesSecret,
+        },
+      })
+      return { client: nodemailer.createTransport({ SES: { ses, aws } }) }
+    } catch {
+      return {
+        error:
+          "This build's nodemailer does not support the legacy SES driver (use SMTP)",
+      }
+    }
   }
 
   if (email.driver !== 'smtp') {
