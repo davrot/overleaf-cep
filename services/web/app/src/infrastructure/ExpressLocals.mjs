@@ -386,20 +386,21 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
     let canManageTemplatesMenu = false
     try {
       const sessionUser = SessionManager.getSessionUser(req.session)
-      const userId = sessionUser?.id || req.user?.user?._id
-      if (userId) {
-        const {
-          default: TemplateAuthorizationHelper,
-        } = await import(
-          '../../../modules/template-gallery/app/src/TemplateAuthorizationHelper.mjs'
+      // NOTE: passport session users carry `_id` (not `id`) — both shapes
+      // must work, and the admin check inside the helper runs even when
+      // no user id is available (site admins must always get the entry).
+      const userId = sessionUser?.id || sessionUser?._id || req.user?.user?._id
+      const {
+        default: TemplateAuthorizationHelper,
+      } = await import(
+        '../../../modules/template-gallery/app/src/TemplateAuthorizationHelper.mjs'
+      )
+      canManageTemplatesMenu = !!(
+        await TemplateAuthorizationHelper.hasTemplateAdminAccess(
+          sessionUser || req.user?.user,
+          userId || null
         )
-        canManageTemplatesMenu = !!(
-          await TemplateAuthorizationHelper.hasTemplateAdminAccess(
-            sessionUser || req.user?.user,
-            userId
-          )
-        )
-      }
+      )
     } catch (err) {
       logger.warn({ err }, 'ExpressLocals: template menu access check failed')
     }
