@@ -58,6 +58,9 @@ export const SECRET_FIELDS = {
   'sso-saml': ['idpCert', 'privateKey', 'decryptionPvk'],
   'sso-oidc': ['clientSecret'],
   'sso-ldap': ['bindCredentials'],
+  // R9 (2026-08-29): six new admin-managed sections.
+  'github-sync': ['clientSecret'],
+  email: ['pass', 'sesSecret'],
 }
 
 let _cache = { at: 0, doc: undefined }
@@ -95,6 +98,30 @@ function loadDoc() {
 
 export function invalidateCache() {
   _cache = { at: 0, doc: undefined }
+}
+
+/**
+ * Read ONLY the stored (admin-saved) copy of a section, with secret
+ * fields decrypted — no env seeds. `null` when the admin has never saved
+ * the section. Used by the boot env-hydrator so stored admin values can
+ * override the process env BEFORE Settings consumers load.
+ */
+export async function readStoredSection(name) {
+  const doc = await loadDoc()
+  const stored = doc && doc[name]
+  if (!stored || typeof stored !== 'object') return null
+  const out = cloneDeep(stored)
+  for (const field of SECRET_FIELDS[name] || []) {
+    if (typeof out[field] === 'string' && out[field].length > 0) {
+      try {
+        out[field] = await decryptText(out[field])
+      } catch (err) {
+        logger.warn({ err, section: name, field }, 'SiteSettings: stored secret decrypt failed at read')
+        out[field] = ''
+      }
+    }
+  }
+  return out
 }
 
 function cloneDeep(value) {
@@ -275,6 +302,65 @@ function envSeeds(env, coreSettings, stored) {
     'sso-saml': { enabled: false },
     'sso-oidc': { enabled: false },
     'sso-ldap': { enabled: false },
+
+    // R9 (2026-08-29): runtime sections that replace compose env.
+    // Stored values (admin console) WIN over these env seeds; the env
+    // lines are stripped from compose after migration (plan §7.4).
+    'sandboxed-compiles': {
+      enabled: boolFromEnv(env.SANDBOXED_COMPILES) === true,
+      dockerRunner: boolFromEnv(env.DOCKER_RUNNER) === true,
+      hostDir: env.SANDBOXED_COMPILES_HOST_DIR || env.COMPILES_HOST_DIR || '',
+      socketPath: env.DOCKER_SOCKET_PATH || '',
+      extraFlags: env.TEX_COMPILER_EXTRA_FLAGS || '',
+      imageUser: env.TEXLIVE_IMAGE_USER || '',
+      images: (() => {
+        const list = String(env.ALL_TEX_LIVE_DOCKER_IMAGES || '')
+          .split(',').map(x => x.trim()).filter(Boolean)
+        const names = String(env.ALL_TEX_LIVE_DOCKER_IMAGE_NAMES || '')
+          .split(',').map(x => x.trim())
+        return list.map((image, i) => ({ image, name: names[i] || '' }))
+      })(),
+      defaultImage: env.TEX_LIVE_DOCKER_IMAGE || '',
+    },
+    'git-integration': {
+      enabled: boolFromEnv(env.GIT_BRIDGE_ENABLED) === true,
+      host: env.GIT_BRIDGE_HOST || 'git-bridge',
+      port: Number(env.GIT_BRIDGE_PORT) > 0 ? Number(env.GIT_BRIDGE_PORT) : 8000,
+    },
+    'github-sync': {
+      enabled: boolFromEnv(env.GITHUB_SYNC_ENABLED) === true,
+      clientID: env.GITHUB_SYNC_CLIENT_ID || '',
+      // secret: stored (encrypted) wins; env value below acts like a seed.
+      clientSecret: env.GITHUB_SYNC_CLIENT_SECRET || '',
+      cipherFile: env.GITHUB_TOKEN_CIPHER_FILE || '',
+      cipherLabel: env.GITHUB_TOKEN_CIPHER_LABEL || '',
+    },
+    email: {
+      skipConfirmation: boolFromEnv(env.EMAIL_CONFIRMATION_DISABLED) === true,
+      fromAddress: coreSettings?.email?.fromAddress || env.EMAIL_FROM_ADDRESS || '',
+      replyTo: coreSettings?.email?.replyTo || env.EMAIL_REPLY_TO || '',
+      driver: (coreSettings?.email && coreSettings.email.driver) || env.EMAIL_DRIVER || 'smtp',
+      host: coreSettings?.email?.host || env.EMAIL_HOST || '',
+      port: coreSettings?.email?.port ?? (env.EMAIL_PORT ? Number(env.EMAIL_PORT) : 587),
+      secure: boolFromEnv(env.EMAIL_SECURE) === true,
+      ignoreTLS: boolFromEnv(env.EMAIL_IGNORE_TLS) === true,
+      name: coreSettings?.email?.smtp?.name || env.EMAIL_NAME || '',
+      user: coreSettings?.email?.user || env.EMAIL_USER || '',
+      pass: coreSettings?.email?.pass || env.EMAIL_PASS || '',
+      tlsRejectUnauth: boolFromEnv(env.EMAIL_TLS_REJECT_UNAUTHORIZED) === true,
+      accessKeyId: coreSettings?.email?.ses?.accessKeyId || env.EMAIL_SES_ACCESS_KEY_ID || '',
+      sesSecret: coreSettings?.email?.ses?.secretKey || env.EMAIL_SES_SECRET_ACCESS_KEY || '',
+      sesRegion: coreSettings?.email?.ses?.region || env.EMAIL_SES_REGION || '',
+    },
+    'linked-file-types': {
+      enabledTypes: String(env.ENABLED_LINKED_FILE_TYPES || '')
+        .split(',').map(x => x.trim()).filter(Boolean)
+        .concat(['project_file', 'project_output_file']),
+    },
+    pandoc: {
+      enabled: boolFromEnv(env.ENABLE_PANDOC_CONVERSIONS) === true,
+      image: env.PANDOC_IMAGE || 'pandoc-ol:3.10.0.0',
+    },
   }
 }
 
@@ -564,6 +650,154 @@ export function validateSsoLdapSection(value) {
   return errors
 }
 
+
+// The concrete linked-file agents actually present in this build (core:
+// url/project_file/project_output_file; modules: zotero). github-sync and
+// git-bridge are integrations, not linked-file agents.
+const KNOWN_LINKED_FILE_TYPES = [
+  'project_file',
+  'project_output_file',
+  'url',
+  'zotero',
+]
+
+export function validateSandboxedCompilesSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  for (const f of ['enabled', 'dockerRunner']) {
+    if (value[f] !== undefined && typeof value[f] !== 'boolean') {
+      errors.push(`${f} must be a boolean`)
+    }
+  }
+  for (const f of ['hostDir', 'socketPath', 'extraFlags', 'imageUser', 'defaultImage']) {
+    if (value[f] !== undefined && typeof value[f] !== 'string') {
+      errors.push(`${f} must be a string`)
+    }
+  }
+  // D4 (2026-08-29): image table = index-aligned (image, name) pairs.
+  if (value.images !== undefined) {
+    if (
+      !Array.isArray(value.images) ||
+      value.images.length < 1 ||
+      value.images.some(r => !r || typeof r.image !== 'string' || r.image.length === 0 ||
+        (r.name !== undefined && typeof r.name !== 'string'))
+    ) {
+      errors.push('images must be a non-empty array of { image, name? } rows')
+    } else {
+      const seen = new Set()
+      for (const r of value.images) {
+        if (seen.has(r.image)) {
+          errors.push(`duplicate image: ${r.image}`)
+          break
+        }
+        seen.add(r.image)
+      }
+    }
+  }
+  return errors
+}
+
+export function validateGitIntegrationSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    if (typeof value.host !== 'string' || value.host.length === 0) {
+      errors.push('host is required to enable git integration')
+    }
+  }
+  if (value.port !== undefined && (!Number.isInteger(value.port) || value.port < 1 || value.port > 65535)) {
+    errors.push('port must be an integer between 1 and 65535')
+  }
+  return errors
+}
+
+export function validateGithubSyncSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    if (typeof value.clientID !== 'string' || value.clientID.length === 0) {
+      errors.push('clientID (OAuth App ID) is required to enable GitHub sync')
+    }
+    const hasStored = typeof value.clientSecret === 'string' && value.clientSecret.length > 0
+    if (!hasStored && !process.env.GITHUB_SYNC_CLIENT_SECRET) {
+      errors.push('clientSecret is required to enable GitHub sync (stored or via GITHUB_SYNC_CLIENT_SECRET env)')
+    }
+  }
+  for (const f of ['cipherFile', 'cipherLabel']) {
+    if (value[f] !== undefined && typeof value[f] !== 'string') errors.push(`${f} must be a string`)
+  }
+  return errors
+}
+
+export function validateEmailSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (value.skipConfirmation !== undefined && typeof value.skipConfirmation !== 'boolean') {
+    errors.push('skipConfirmation must be a boolean')
+  }
+  if (value.driver !== undefined && !['smtp', 'ses'].includes(value.driver)) {
+    errors.push('driver must be "smtp" or "ses"')
+  }
+  if (value.port !== undefined && (!Number.isInteger(value.port) || value.port < 1 || value.port > 65535)) {
+    errors.push('port must be an integer between 1 and 65535')
+  }
+  if (value.driver === 'smtp') {
+    if (typeof value.host !== 'string' || value.host.length === 0) {
+      errors.push('smtp host is required for the smtp driver')
+    }
+  }
+  if (value.driver === 'ses') {
+    if (typeof value.accessKeyId !== 'string' || value.accessKeyId.length === 0) {
+      errors.push('SES accessKeyId is required for the ses driver')
+    }
+    const hasStored = typeof value.sesSecret === 'string' && value.sesSecret.length > 0
+    if (!hasStored && !process.env.EMAIL_SES_SECRET_ACCESS_KEY) {
+      errors.push('SES secret key is required for the ses driver (stored or env)')
+    }
+  }
+  for (const f of ['fromAddress', 'replyTo', 'user', 'name']) {
+    if (value[f] !== undefined && typeof value[f] !== 'string') errors.push(`${f} must be a string`)
+  }
+  return errors
+}
+
+export function validateLinkedFileTypesSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (!Array.isArray(value.enabledTypes)) {
+    return ['enabledTypes must be an array of linked file type names']
+  }
+  // D5 (2026-08-29): project_file + project_output_file are FIXED on.
+  for (const fixed of ['project_file', 'project_output_file']) {
+    if (!value.enabledTypes.includes(fixed)) {
+      errors.push(`${fixed} is always enabled and cannot be removed`)
+    }
+  }
+  for (const t of value.enabledTypes) {
+    if (typeof t !== 'string' || !KNOWN_LINKED_FILE_TYPES.includes(t)) {
+      errors.push(`unknown linked file type "${t}" (known: ${KNOWN_LINKED_FILE_TYPES.join(', ')})`)
+      break
+    }
+  }
+  return errors
+}
+
+export function validatePandocSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  if (typeof value.enabled !== 'boolean') errors.push('enabled must be a boolean')
+  if (value.enabled) {
+    if (typeof value.image !== 'string' || value.image.length === 0) {
+      errors.push('image is required to enable pandoc conversions')
+    }
+  } else if (value.image !== undefined && typeof value.image !== 'string') {
+    errors.push('image must be a string')
+  }
+  return errors
+}
+
 export const SECTION_VALIDATORS = {
   templates: validateTemplatesSection,
   zotero: validateZoteroSection,
@@ -572,4 +806,10 @@ export const SECTION_VALIDATORS = {
   'sso-saml': validateSsoSamlSection,
   'sso-oidc': validateSsoOidcSection,
   'sso-ldap': validateSsoLdapSection,
+  'sandboxed-compiles': validateSandboxedCompilesSection,
+  'git-integration': validateGitIntegrationSection,
+  'github-sync': validateGithubSyncSection,
+  email: validateEmailSection,
+  'linked-file-types': validateLinkedFileTypesSection,
+  pandoc: validatePandocSection,
 }

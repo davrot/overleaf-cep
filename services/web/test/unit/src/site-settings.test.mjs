@@ -15,12 +15,19 @@ const {
   validateSignupSection,
   SECTION_VALIDATORS,
   maskSecrets,
+  validateSandboxedCompilesSection,
+  validateGitIntegrationSection,
+  validateGithubSyncSection,
+  validateEmailSection,
+  validateLinkedFileTypesSection,
+  validatePandocSection,
   getSection,
 } = await import('../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
 const {
   encryptText,
   decryptText,
 } = await import('../../../app/src/Features/SiteSettings/SecretCipher.mjs')
+globalThis.__ssm = await import('../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
 const { default: mongodb } = await import('mongodb-legacy')
 const { MongoClient } = mongodb
 
@@ -138,7 +145,13 @@ describe('SiteSettings', () => {
 
     it('keeps per-section validators registered', () => {
       expect(Object.keys(SECTION_VALIDATORS).sort()).to.deep.equal([
+        'email',
         'externalUrl',
+        'git-integration',
+        'github-sync',
+        'linked-file-types',
+        'pandoc',
+        'sandboxed-compiles',
         'signup',
         'sso-ldap',
         'sso-oidc',
@@ -146,6 +159,112 @@ describe('SiteSettings', () => {
         'templates',
         'zotero',
       ])
+    })
+  })
+
+  describe('R9 §7.2 section validators (2026-08-29)', () => {
+    it('sandboxed compiles: image table rules (D4)', () => {
+      expect(
+        validateSandboxedCompilesSection({
+          enabled: true,
+          images: [{ image: 'a:1' }, { image: 'b:2', name: 'B' }],
+          defaultImage: 'a:1'
+        })
+      ).to.deep.equal([])
+      expect(
+        validateSandboxedCompilesSection({ enabled: true, images: [] }).length
+      ).to.be.greaterThan(0)
+      expect(
+        validateSandboxedCompilesSection({
+          enabled: true,
+          images: [{ image: 'a:1' }, { image: 'a:1' }]
+        }).length
+      ).to.be.greaterThan(0)
+    })
+
+    it('git integration: host + port bounds', () => {
+      expect(
+        validateGitIntegrationSection({ enabled: true, host: 'git-bridge', port: 8000 })
+      ).to.deep.equal([])
+      expect(
+        validateGitIntegrationSection({ enabled: true, host: '' }).length
+      ).to.be.greaterThan(0)
+      expect(
+        validateGitIntegrationSection({ enabled: true, host: 'h', port: 0 }).length
+      ).to.be.greaterThan(0)
+    })
+
+    it('github sync: clientID required when enabled', () => {
+      expect(
+        validateGithubSyncSection({ enabled: false, clientID: '' })
+      ).to.deep.equal([])
+      process.env.GITHUB_SYNC_CLIENT_SECRET = 'env-secret'
+      try {
+        expect(
+          validateGithubSyncSection({ enabled: true, clientID: 'id', clientSecret: '' })
+        ).to.deep.equal([])
+      } finally {
+        delete process.env.GITHUB_SYNC_CLIENT_SECRET
+      }
+    })
+
+    it('email: driver-specific required fields', () => {
+      expect(
+        validateEmailSection({ driver: 'smtp', host: 'smtp.x', port: 587 })
+      ).to.deep.equal([])
+      expect(
+        validateEmailSection({ driver: 'smtp', host: '' }).length
+      ).to.be.greaterThan(0)
+      process.env.EMAIL_SES_SECRET_ACCESS_KEY = 'env-sec'
+      try {
+        expect(
+          validateEmailSection({
+            driver: 'ses',
+            accessKeyId: 'AK',
+            sesSecret: '',
+            sesRegion: 'eu-central-1'
+          })
+        ).to.deep.equal([])
+      } finally {
+        delete process.env.EMAIL_SES_SECRET_ACCESS_KEY
+      }
+      expect(
+        validateEmailSection({ driver: 'carrier-pigeon' }).length
+      ).to.be.greaterThan(0)
+    })
+
+    it('linked file types: D5 fixed pair enforced, url not', () => {
+      expect(
+        validateLinkedFileTypesSection({
+          enabledTypes: ['project_file', 'project_output_file']
+        })
+      ).to.deep.equal([])
+      expect(
+        validateLinkedFileTypesSection({
+          enabledTypes: ['project_file', 'project_output_file', 'zotero']
+        })
+      ).to.deep.equal([])
+      expect(
+        validateLinkedFileTypesSection({ enabledTypes: ['url'] }).length
+      ).to.be.greaterThan(0)
+      expect(
+        validateLinkedFileTypesSection({ enabledTypes: ['nope'] }).length
+      ).to.be.greaterThan(0)
+    })
+
+    it('pandoc: image required when enabled', () => {
+      expect(validatePandocSection({ enabled: true, image: 'pandoc-ol:3.1.0' })).to.deep.equal([])
+      expect(validatePandocSection({ enabled: true, image: '' }).length).to.be.greaterThan(0)
+    })
+
+    it('masks github-sync and email secrets (empty-keeps handled by setSection)', () => {
+      const gh = maskSecrets('github-sync', { enabled: true, clientID: 'id', clientSecret: 'top' })
+      expect(gh.clientSecret).to.equal('')
+      expect(gh.clientSecretSet).to.equal(true)
+      const em = maskSecrets('email', { driver: 'smtp', pass: 'pw', sesSecret: '' })
+      expect(em.pass).to.equal('')
+      expect(em.passSet).to.equal(true)
+      expect(em.sesSecretSet).to.equal(false)
     })
   })
 
@@ -291,4 +410,40 @@ describe('SiteSettings', () => {
     try { await unitDb.dropDatabase() } catch { /* best effort */ }
   })
 
+  describe('R9 §7.2 stored-wins round-trip (2026-08-29)', () => {
+    it('decrypts the stored github-sync secret and masks it', async () => {
+      const m = globalThis.__ssm
+      await m.setSection('github-sync', { enabled: true, clientID: 'ov-id', clientSecret: 'ov-secret-123' })
+      const section = await m.getSection('github-sync', { githubSync: {} })
+      expect(section.clientSecret).to.equal('ov-secret-123')
+      const masked = m.maskSecrets('github-sync', section)
+      expect(masked.clientSecret).to.equal('')
+      expect(masked.clientSecretSet).to.equal(true)
+    })
+
+    it('empty secret on save keeps the previously stored one', async () => {
+      const m = globalThis.__ssm
+      await m.setSection('github-sync', { enabled: true, clientID: 'ov-id', clientSecret: 'ov-keep-456' })
+      await m.setSection('github-sync', { enabled: true, clientID: 'ov-id', clientSecret: '' })
+      const section = await m.getSection('github-sync', { githubSync: {} })
+      expect(section.clientSecret).to.equal('ov-keep-456')
+    })
+
+    it('pandoc section stored-wins over the env seed', async () => {
+      const m = globalThis.__ssm
+      process.env.ENABLE_PANDOC_CONVERSIONS = 'false'
+      process.env.PANDOC_IMAGE = 'env-image:1'
+      try {
+        await m.setSection('pandoc', { enabled: true, image: 'pandoc-ol:3.10.0.0' })
+        const section = await m.getSection('pandoc', {})
+        expect(section.enabled).to.equal(true)
+        expect(section.image).to.equal('pandoc-ol:3.10.0.0')
+      } finally {
+        delete process.env.ENABLE_PANDOC_CONVERSIONS
+        delete process.env.PANDOC_IMAGE
+      }
+      await m.setSection('pandoc', { enabled: false, image: '' })
+      await m.setSection('github-sync', { enabled: false, clientID: '', clientSecret: '' })
+    })
+  })
 })

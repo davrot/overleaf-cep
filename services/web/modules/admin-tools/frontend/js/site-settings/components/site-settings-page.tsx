@@ -44,6 +44,14 @@ import {
   OidcSsoTab,
   LdapSsoTab,
 } from './sso-settings-tab'
+import {
+  SandboxedCompilesTab,
+  GitIntegrationTab,
+  GithubSyncTab,
+  EmailTab,
+  LinkedFileTypesTab,
+  PandocTab
+} from './r9-settings-tabs'
 
 type TemplateCategory = {
   key: string
@@ -93,6 +101,8 @@ type SiteSettings = {
 type Section =
   | 'templates' | 'zotero' | 'externalUrl' | 'signup'
   | 'ssoSaml' | 'ssoOidc' | 'ssoLdap'
+  | 'sandboxedCompiles' | 'gitIntegration' | 'githubSync'
+  | 'email' | 'linkedFileTypes' | 'pandoc'
 
 const SECTIONS: { id: Section; labelKey: string }[] = [
   { id: 'templates', labelKey: 'adminSite.templates' },
@@ -102,6 +112,12 @@ const SECTIONS: { id: Section; labelKey: string }[] = [
   { id: 'ssoSaml', labelKey: 'adminSite.ssoSaml' },
   { id: 'ssoOidc', labelKey: 'adminSite.ssoOidc' },
   { id: 'ssoLdap', labelKey: 'adminSite.ssoLdap' },
+  { id: 'sandboxedCompiles', labelKey: 'adminSite.sandboxedCompiles' },
+  { id: 'gitIntegration', labelKey: 'adminSite.gitIntegration' },
+  { id: 'githubSync', labelKey: 'adminSite.githubSync' },
+  { id: 'email', labelKey: 'adminSite.email' },
+  { id: 'linkedFileTypes', labelKey: 'adminSite.linkedFileTypes' },
+  { id: 'pandoc', labelKey: 'adminSite.pandoc' },
 ]
 
 function useSectionSave(section: Section) {
@@ -286,6 +302,42 @@ export default function SiteSettingsPage() {
                       )}
                       {active === 'ssoLdap' && (
                         <LdapSsoTab key={`ldap-${settings['sso-ldap']?.enabled}`} section={settings['sso-ldap'] ?? { enabled: false }} />
+                      )}
+                      {active === 'sandboxedCompiles' && (
+                        <SandboxedCompilesTab
+                          key={`sc-${settings['sandboxed-compiles']?.enabled}`}
+                          initial={settings['sandboxed-compiles'] ?? { enabled: false, images: [] }}
+                        />
+                      )}
+                      {active === 'gitIntegration' && (
+                        <GitIntegrationTab
+                          key={`git-${settings['git-integration']?.enabled}`}
+                          initial={settings['git-integration'] ?? { enabled: false }}
+                        />
+                      )}
+                      {active === 'githubSync' && (
+                        <GithubSyncTab
+                          key={`gh-${settings['github-sync']?.enabled}`}
+                          initial={settings['github-sync'] ?? { enabled: false }}
+                        />
+                      )}
+                      {active === 'email' && (
+                        <EmailTab
+                          key={`em-${settings.email?.skipConfirmation}`}
+                          initial={settings.email ?? { driver: 'smtp', port: 587 }}
+                        />
+                      )}
+                      {active === 'linkedFileTypes' && (
+                        <LinkedFileTypesTab
+                          key={`lft-${settings['linked-file-types']?.enabledTypes?.join('_')}`}
+                          initial={settings['linked-file-types'] ?? { enabledTypes: ['project_file', 'project_output_file', 'url', 'zotero'] }}
+                        />
+                      )}
+                      {active === 'pandoc' && (
+                        <PandocTab
+                          key={`pd-${settings.pandoc?.enabled}`}
+                          initial={settings.pandoc ?? { enabled: false, image: 'pandoc-ol:3.10.0.0' }}
+                        />
                       )}
                     </div>
                   </>

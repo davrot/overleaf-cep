@@ -26,7 +26,7 @@ export type SsoSection = {
 type Flash = { saving: boolean; saved: boolean; error: string | null }
 const IDLE: Flash = { saving: false, saved: false, error: null }
 
-function useSave(section: string) {
+export function useSave(section: string) {
   const [flash, setFlash] = useState<Flash>(IDLE)
   const save = async (body: unknown): Promise<boolean> => {
     setFlash({ saving: true, saved: false, error: null })

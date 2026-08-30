@@ -55,16 +55,21 @@ export default {
    * templates: per-category template counts.
    */
   getSiteSettings: expressify(async (req, res) => {
-    const [templates, zotero, externalUrl, signup, ssoSaml, ssoOidc, ssoLdap] =
-      await Promise.all([
-        getSection('templates', Settings),
-        getSection('zotero', Settings),
-        getSection('externalUrl', Settings),
-        getSection('signup', Settings),
-        getSection('sso-saml', Settings),
-        getSection('sso-oidc', Settings),
-        getSection('sso-ldap', Settings),
-      ])
+    const [templates, zotero, externalUrl, signup, ssoSaml, ssoOidc, ssoLdap, sandboxedCompiles, gitIntegration, githubSync, email, linkedFileTypes, pandoc] = await Promise.all([
+      getSection('templates', Settings),
+      getSection('zotero', Settings),
+      getSection('externalUrl', Settings),
+      getSection('signup', Settings),
+      getSection('sso-saml', Settings),
+      getSection('sso-oidc', Settings),
+      getSection('sso-ldap', Settings),
+      getSection('sandboxed-compiles', Settings),
+      getSection('git-integration', Settings),
+      getSection('github-sync', Settings),
+      getSection('email', Settings),
+      getSection('linked-file-types', Settings),
+      getSection('pandoc', Settings),
+    ])
 
     // Template counts per category (same source as the gallery).
     const counts = {}
@@ -90,6 +95,12 @@ export default {
       'sso-saml': maskSecrets('sso-saml', ssoSaml),
       'sso-oidc': maskSecrets('sso-oidc', ssoOidc),
       'sso-ldap': maskSecrets('sso-ldap', ssoLdap),
+      'sandboxed-compiles': maskSecrets('sandboxed-compiles', sandboxedCompiles),
+      'git-integration': maskSecrets('git-integration', gitIntegration),
+      'github-sync': maskSecrets('github-sync', githubSync),
+      email: maskSecrets('email', email),
+      'linked-file-types': maskSecrets('linked-file-types', linkedFileTypes),
+      pandoc: maskSecrets('pandoc', pandoc),
     })
   }),
 
