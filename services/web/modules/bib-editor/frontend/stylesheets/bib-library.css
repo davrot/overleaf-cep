@@ -638,17 +638,6 @@
 }
 
 .library-page-main .bibtex-entry-card {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 47px;
-  padding: 0 0.7rem;
-  box-sizing: border-box;
-  border: none;
-  border-bottom: 1px solid var(--bib-panel-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--bib-panel-color);
   cursor: pointer;
   transition: background-color 0.15s ease;
 
@@ -658,6 +647,14 @@
   min-height: 80px;
   padding: 0.45rem 0.7rem;
 }
+
+/* R11 item 4 (2026-08-30): the /library card was a "ghost row" — this
+   override cancelled the shared base card look (bib-saas.css:
+   background-color / border / border-radius / themed color) that the
+   /project card keeps. Result: cards looked different and broken in
+   dark mode (transparent bg, theme-only text). Removed the border/bg/
+   color/radius cancellations so both pages render the SAME card (user
+   report: "make it the exact same card CSS that you see at /project"). */
 
 .library-page-main .bibtex-entry-card-compact {
   min-height: 80px;

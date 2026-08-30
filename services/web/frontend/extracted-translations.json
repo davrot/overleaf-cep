@@ -3029,5 +3029,9 @@
   "adminSite.emailTestToHint": "Sends a test e-mail to this address using the SAVED configuration (save the settings above first).",
   "adminSite.emailTestSend": "Send test e-mail",
   "adminSite.emailTestSending": "Sending…",
-  "adminSite.emailTestOk": "Test e-mail sent to"
+  "adminSite.emailTestOk": "Test e-mail sent to",
+  "Delete this template and its bundled assets? This cannot be undone.": "Delete this template and its bundled assets? This cannot be undone.",
+  "Template deleted": "Template deleted",
+  "Edit": "Edit",
+  "Delete": "Delete"
 }

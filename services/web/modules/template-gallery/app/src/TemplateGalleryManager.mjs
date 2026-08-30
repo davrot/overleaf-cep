@@ -122,7 +122,7 @@ async function fetchTemplatePreview({ templateId, version, style }) {
     if (isImage) {
       // No compiled PDF yet (e.g. uncompiled bundle import) — show a
       // placeholder thumbnail instead of erroring out (R6-item1).
-      try { response.body && response.body.destroy && response.body.destroy() } catch { /* ignore */ }
+      try { response.body?.destroy?.() } catch { /* ignore */ }
       return {
         stream: Readable.from(Buffer.from(TEMPLATE_PLACEHOLDER_SVG)),
         contentType: 'image/svg+xml',
@@ -506,7 +506,11 @@ async function importTemplateBundle({ data, userId, override, privileged = false
   } catch (err) {
     throw new BundleValidationIssuesError([err.message || 'The file is not a valid ZIP archive.'])
   }
-  await _importValidatedBundle({ bundle, userId, override, privileged })
+  // R11 item 10 (2026-08-30): return the validated-bundle result — without
+  // this `return` the controller received `undefined` and crashed with
+  // 500 "Cannot read properties of undefined (reading 'templateId')" on
+  // every SUCCESSFUL import (the template itself had already been saved).
+  return await _importValidatedBundle({ bundle, userId, override, privileged })
 }
 
 /**
@@ -561,7 +565,7 @@ async function importTemplateBundleFromUrl({ url, userId, override, privileged =
   if (total === 0) {
     throw new BundleValidationIssuesError(['The URL returned an empty body (expected a .zip bundle).'])
   }
-  await _importValidatedBundle({
+  return await _importValidatedBundle({
     bundle: null,
     buffer: Buffer.concat(chunks),
     userId,
@@ -573,7 +577,7 @@ async function importTemplateBundleFromUrl({ url, userId, override, privileged =
 async function _importValidatedBundle({ bundle, buffer, userId, override, privileged = false }) {
   const { readZipEntries } = await import('./_bundleZip.mjs')
   const bundleMap = bundle ?? (await readZipEntries(buffer))
-  const { issues, meta, doc: vdoc } = await validateTemplateBundle(bundleMap, { privileged })
+  const { issues, doc: vdoc } = await validateTemplateBundle(bundleMap, { privileged })
   if (issues.length) throw new BundleValidationIssuesError(issues)
   const doc = { ...vdoc }
   validateTemplateInput(doc)

@@ -184,7 +184,42 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
               </td>
               <td style={{ padding: '6px 8px', fontSize: '13px' }}>{(tp.category || '').replace('/templates/', '')}</td>
               <td style={{ padding: '6px 8px', fontSize: '13px' }}>{tp.version}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+              <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <OLButton variant="ghost" size="sm" as="a" href={`/template/${tp.id}/edit`}>
+                  {t('Edit')}
+                </OLButton>
+                <OLButton
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm(t('Delete this template and its bundled assets? This cannot be undone.'))) {
+                      return
+                    }
+                    setBusy(true)
+                    setStatus(null)
+                    const csrf = (document.querySelector('meta[name=ol-csrfToken]') || {}).content || ''
+                    void fetch(`/template/${tp.id}/delete`, {
+                      method: 'DELETE',
+                      headers: { 'content-type': 'application/json', 'X-Csrf-Token': csrf },
+                    })
+                      .then(async r => {
+                        if (!r.ok) {
+                          const body = await r.json().catch(() => ({}))
+                          throw new Error(body.message || `HTTP ${r.status}`)
+                        }
+                        setStatus({ kind: 'success', text: t('Template deleted', { name: tp.name }) })
+                        refresh()
+                      })
+                      .catch(err => {
+                        setStatus({ kind: 'error', text: err?.message || String(err) })
+                        refresh()
+                      })
+                      .finally(() => setBusy(false))
+                  }}
+                >
+                  {t('Delete')}
+                </OLButton>
                 <OLButton variant="ghost" size="sm" as="a" href={`/template/${tp.id}/bundle`}>
                   {t('Download bundle')}
                 </OLButton>

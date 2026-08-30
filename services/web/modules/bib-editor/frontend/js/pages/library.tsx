@@ -4,6 +4,7 @@
  */
 import ReactDOM from 'react-dom/client'
 import LibraryRoot from '../library/library-root'
+import '../../stylesheets/bib-saas.css'
 import '../../stylesheets/bib-library.css'
 
 const element = document.getElementById('library-root')

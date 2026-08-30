@@ -523,7 +523,11 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  /* R11 item 5 (2026-08-30): parity with /library (hidden scroll) — the
+     hidden-only value clipped long previews without scrolling while the
+     library pane scrolls (user: "make it the same as library — the
+     library separator is correct"). */
+  overflow: hidden scroll;
   background: var(--bib-panel-bg);
   color: var(--bib-panel-color);
   /* R7 (2026-08-29): visible divider between list and preview panels */
