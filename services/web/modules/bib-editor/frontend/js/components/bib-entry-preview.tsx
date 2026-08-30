@@ -27,7 +27,7 @@
  * one live-state report path (`onFormChange`) per open form, no separate
  * draft store.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import OLFormLabel from '@/shared/components/ol/ol-form-label'
