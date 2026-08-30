@@ -352,3 +352,25 @@ commit group per workstream.
   surface.
 * Theming: pinning palettes diverges from upstream theming on future updates — mitigation: all pins live
   in our own scss scopes (`.ce-admin-card`, new navbar scope), none in upstream files.
+
+---
+
+## Implementation results (2026-08-30 — ALL 13 ITEMS DONE, deployed, verified)
+
+Deployed build 33 (`28751cdb0cf6`), pushed HEAD `dbb076a1ca` (branch `bib-editor`).
+Commits: `f7d94de483` (W3/W5/W6/W7a) → `7095f7756f` (W1/W4/W7b) → `4fc0d84bea` (W8 + menu) → `dbb076a1ca` (tests + SES guard).
+
+| Item | Result | Verification |
+| --- | --- | --- |
+| 1 navbar unification | `ce-navbar-consistent.scss` (imported by `all.scss`) re-applies `navbar-light` + red gradient on `#project-list-root/#library-root/#template-root/#template-gallery-root` at /admin/site parity | /project, /library, /templates, /templates/manage all white surface + dark text in Dark **and** Light |
+| 2 library parity | `library-page.tsx`: compact cards (default layout), library-only Download-all + per-bulk Download removed; project-panel split behavior untouched (9/9 previously) | /library probe: 18 entries, `downloadAll: false`, `downloadBtns: 0` |
+| 3 publish-as-template | **Root cause**: `settings-template-category.tsx` — `options.find(...) ?? (value?[...]:[])` returns a single Option object when the value matches a known category; `[...current]` throws `TypeError: c is not iterable` | Modal opens clean, no JS errors, publish + overwrite flow completed, template visible in /templates gallery |
+| 4 test e-mail | `POST /admin/site-settings/email/test` (admin-only, 5/min, sanitized, stores-config transport) + UI block in E-mail tab; SES legacy-transport guarded (newer nodemailer rejects it → clean error) | UI click → "Test e-mail sent to — testjoe@rotermund.at"; API `200 {"ok":true}`; unit tests pass |
+| 5 table headers | 6th `<th aria-label="Edit category">` added | Templates tab: `6 th | 6 td` |
+| 6 textareas/inputs | `.ce-admin-card` form controls pinned to light surface in both themes (admin.scss) | External-URLs textarea: `color rgb(27,34,44) / bg rgb(255,255,255)` |
+| 7 email label | "SMTP name (EHLO)" + `EMAIL_NAME` moved to hint | verified in DOM |
+| 8 /admin/panel | **page-shells module** (new): `captureRender` imports upstream `AdminController.index` locals; 1:1 pug mirror; registered in `moduleImportSequence`; zero upstream edits | renders with tab set + upstream `/admin/*` actions; /admin still 200 |
+| 9 /user/mysettings | same module: `captureRender` of upstream `UserPagesController.settingsPage`; 1:1 mirror of `user/settings.pug` (entrypoint `pages/user/settings`) | `#settings-page-root` React app mounts ("Account settings…Update account info…"); /user/settings unchanged |
+| 10–13 | covered by W7b (10/11), W8 menu retarget (12: Manage Site→/admin/panel, Account settings→/user/mysettings), SSO regressions (13: SAML → /project green) | live probes above |
+
+Unit tests: `page-shells.test.mjs` (7) + `email-test.test.mjs` (6) pass; eslint `--max-warnings 0` clean on all touched files. Core `test/unit` suite: 220 pre-existing env/mock failures (redis/sandbox — present before this round; unrelated modules), 5073 pass.
