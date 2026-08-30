@@ -547,11 +547,11 @@ function TemplatesTab({
       {/* R9 item 6 (2026-08-29): bundle import/export lives exclusively at
           /templates/manage (shared TemplateBundles component) — pointer only. */}
       <p style={{ margin: '12px 0 0', fontSize: '13px' }}>
-        {t('template_bundles_pointer')}{' '}
+        {translate('template_bundles_pointer')}{' '}
         <a href="/templates/manage" style={{ color: 'var(--link-web, #0f5f93)' }}>
           /templates/manage
         </a>
-        {t('template_bundles_pointer_end')}
+        {translate('template_bundles_pointer_end')}
       </p>
       <TemplateAdminsTable />
 

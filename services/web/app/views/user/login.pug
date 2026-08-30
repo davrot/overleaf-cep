@@ -70,3 +70,11 @@ block content
 							)
 								span(data-ol-inflight="idle") #{settings.oidc.identityServiceName}
 								span(hidden data-ol-inflight="pending") #{translate("logging_in")}…
+					// SSO multi-provider (2026-08-30): LDAP logins go through
+					// the SAME /login form (LDAPRouter.post /login runs
+					// LDAPAuthenticationController.passportLogin first); the
+					// input type/placeholder above already adapts to
+					// settings.ldap.enable.
+					if settings.ldap && settings.ldap.enable
+						.actions(style='margin-top: 10px;')
+							p.form-text.text-center(style='margin: 0;') #{translate("ldap_login_hint", { placeholder: settings.ldap.placeholder || 'username' })}
