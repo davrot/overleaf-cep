@@ -78,7 +78,7 @@ if (git) {
 const gh = await section('github-sync', ['clientSecret'])
 if (gh) {
   add('GITHUB_SYNC_ENABLED', b(gh.enabled))
-  add('GITHUB_SYNC_CLIENT_ID', gh.clientID)
+  add('GITHUB_SYNC_CLIENT_ID', gh.clientId || gh.clientID)
   add('GITHUB_SYNC_CLIENT_SECRET', gh.clientSecret)
   add('GITHUB_TOKEN_CIPHER_FILE', gh.cipherFile)
   add('GITHUB_TOKEN_CIPHER_LABEL', gh.cipherLabel)
@@ -87,19 +87,21 @@ if (gh) {
 const email = await section('email', ['pass', 'sesSecret'])
 if (email) {
   add('EMAIL_CONFIRMATION_DISABLED', b(email.skipConfirmation))
-  add('EMAIL_FROM_ADDRESS', email.fromAddress)
-  add('EMAIL_REPLY_TO', email.replyTo)
-  add('EMAIL_HOST', email.host)
-  add('EMAIL_PORT', email.port)
-  add('EMAIL_SECURE', b(email.secure))
-  add('EMAIL_IGNORE_TLS', b(email.ignoreTLS))
-  add('EMAIL_NAME', email.name)
-  add('EMAIL_USER', email.user)
-  add('EMAIL_PASS', email.pass)
-  add('EMAIL_TLS_REJECT_UNAUTHORIZED', b(email.tlsRejectUnauth))
-  add('EMAIL_SES_ACCESS_KEY_ID', email.accessKeyId)
-  add('EMAIL_SES_SECRET_ACCESS_KEY', email.sesSecret)
-  add('EMAIL_SES_REGION', email.sesRegion)
+  // CE's Settings email block reads LONG OVERLEAF_EMAIL_* names
+  // (server-ce/config/settings.js) — emit those (2026-08-30).
+  add('OVERLEAF_EMAIL_FROM_ADDRESS', email.fromAddress)
+  add('OVERLEAF_EMAIL_REPLY_TO', email.replyTo)
+  add('OVERLEAF_EMAIL_DRIVER', email.driver || 'smtp')
+  add('OVERLEAF_EMAIL_SMTP_HOST', email.host)
+  add('OVERLEAF_EMAIL_SMTP_PORT', email.port)
+  add('OVERLEAF_EMAIL_SMTP_SECURE', b(email.secure))
+  add('OVERLEAF_EMAIL_SMTP_IGNORE_TLS', b(email.ignoreTLS))
+  add('OVERLEAF_EMAIL_SMTP_NAME', email.name)
+  add('OVERLEAF_EMAIL_SMTP_USER', email.user)
+  add('OVERLEAF_EMAIL_SMTP_PASS', email.pass)
+  add('OVERLEAF_EMAIL_AWS_SES_ACCESS_KEY_ID', email.accessKeyId)
+  add('OVERLEAF_EMAIL_AWS_SES_SECRET_KEY', email.sesSecret)
+  add('OVERLEAF_EMAIL_AWS_SES_REGION', email.sesRegion)
 }
 
 const lft = await section('linked-file-types')
