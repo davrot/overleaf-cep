@@ -2976,5 +2976,5 @@
   "adminSite.pandocEnable": "Enable pandoc conversions",
   "adminSite.pandocImage": "Pandoc container image (PANDOC_IMAGE)",
   "adminSite.pandocBuildNote": "The pandoc image can be built inside server-ce (Dockerfile-pandoc + Makefile target added in R9) instead of pulling a community image.",
-  "ldap_login_hint": "Organizational accounts: enter your {{placeholder}} in the form above and sign in."
+  "ldap_login_hint": "Organizational (LDAP) accounts also sign in through the form above."
 }

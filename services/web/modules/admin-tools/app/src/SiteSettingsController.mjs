@@ -19,6 +19,7 @@ import HttpErrorHandler from '../../../../app/src/Features/Errors/HttpErrorHandl
 import {
   getSection,
   setSection,
+  cleanSectionInput,
   maskSecrets,
   SECTION_VALIDATORS,
 } from '../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs'
@@ -123,7 +124,10 @@ export default {
       return HttpErrorHandler.unprocessableEntity(req, res, errors.join('; '))
     }
 
-    const result = await setSection(section, req.body)
+    const result = await setSection(
+      section,
+      cleanSectionInput(section, req.body)
+    )
     logger.info(
       { section, result, userId: req.session?.user?.id },
       'site-settings: section updated'

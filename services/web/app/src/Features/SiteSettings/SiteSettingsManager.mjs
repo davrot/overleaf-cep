@@ -96,6 +96,92 @@ function loadDoc() {
   return _inflight
 }
 
+// 2026-08-30: allow-list of stored section keys. setSection's validator
+// (and this cleanup) use it so round-tripping a GET response (which
+// carries derived "<field>Set" flags) back into a PUT does not 422 on
+// "unknown key" (live bug, sso-reenable probe).
+export const SECTION_KNOWN_KEYS = {
+  templates: ['enabled', 'categories', 'allUsersCanManageTemplates'],
+  zotero: ['enabled', 'clientKey', 'clientSecret'],
+  externalUrl: ['enabled', 'blockedNetworks', 'allowedResourcesRegex'],
+  signup: ['enabled', 'allowedEmailDomains', 'disabledRedirectUrl'],
+  'sso-saml': [
+    'enabled',
+    'identityServiceName',
+    'issuer',
+    'entryPoint',
+    'audience',
+    'callbackURL',
+    'idpCert',
+    'privateKey',
+    'decryptionPvk',
+    'wantAssertionsSigned',
+  ],
+  'sso-oidc': [
+    'enabled',
+    'identityServiceName',
+    'issuer',
+    'authorizationURL',
+    'tokenURL',
+    'userInfoURL',
+    'clientID',
+    'clientSecret',
+    'scope',
+    'logoutURL',
+  ],
+  'sso-ldap': [
+    'enabled',
+    'identityServiceName',
+    'url',
+    'searchBase',
+    'bindDN',
+    'bindCredentials',
+    'searchFilter',
+    'searchScope',
+    'placeholder',
+    'emailAtt',
+    'firstNameAtt',
+    'lastNameAtt',
+    'isAdminAtt',
+    'updateUserDetailsOnLogin',
+  ],
+  'sandboxed-compiles': [
+    'enabled',
+    'dockerRunner',
+    'hostDir',
+    'socketPath',
+    'flags',
+    'imageUser',
+    'images',
+    'names',
+  ],
+  'git-integration': ['enabled', 'host', 'port'],
+  'github-sync': ['enabled', 'clientId', 'clientSecret', 'cipherFile', 'cipherLabel'],
+  email: [
+    'driver',
+    'host',
+    'port',
+    'secure',
+    'user',
+    'pass',
+    'fromAddress',
+    'skipConfirmation',
+    'sesRegion',
+    'sesSecret',
+  ],
+  'linked-file-types': ['enabledTypes'],
+  pandoc: ['enabled', 'image'],
+}
+
+export function cleanSectionInput (name, value) {
+  const allowed = SECTION_KNOWN_KEYS[name]
+  if (!allowed || !value || typeof value !== 'object') return value
+  const allow = new Set(allowed)
+  return Object.fromEntries(
+    Object.entries(value).filter(([k]) => allow.has(k))
+  )
+}
+
 export function invalidateCache() {
   _cache = { at: 0, doc: undefined }
 }
