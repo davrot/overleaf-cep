@@ -23,27 +23,28 @@ block append meta
 		})();
 
 block content
-	#main-content.content.content-alt
-		.container
-			.row
-				.col-sm-12
-					.card
-						.card-body
-							.page-header
-								h1 Admin Panel
-							.ol-tabs(data-ol-bookmarkable-tabset)
-								.nav-tabs-container
-									ul.nav.nav-tabs.align-left(role='tablist')
-										+bookmarkable-tabset-header('system-messages', 'System Messages', true)
-										+bookmarkable-tabset-header('active-projects', 'Active Projects')
-										+bookmarkable-tabset-header('open-sockets', 'Open Sockets')
-										+bookmarkable-tabset-header('open-close-editor', 'Open/Close Editor')
-										if hasFeature('saas')
-											+bookmarkable-tabset-header('privileges-matrix', 'Privileges Matrix')
-											+bookmarkable-tabset-header('tpds', 'TPDS/Dropbox Management')
-											+bookmarkable-tabset-header('debug-projects', 'Debug Projects')
-
-								.tab-content
+	// R11 item 11 (2026-08-30): the same CE+ shell as /admin/site — page
+	// header + LEFT navigation column driving the existing tab panes. The
+	// upstream /admin view (app/views/admin/index.pug) and its behavior are
+	// UNTOUCHED: this is the fork's /admin/panel shell (page-shells module),
+	// using the same bookmarkable-tabset mechanism (Bootstrap Tab + hash
+	// deep links keep working — only the nav column moved).
+	ol-admin-shell-marker(style='display:none' data-shell='admin-panel')
+	#main-content.admin-panel-shell.user-ds-nav-page.website-redesign.red-nav-bar-for-admins
+		.admin-panel-body
+			h1.admin-panel-title Admin Panel
+			nav.admin-panel-left(role='navigation' aria-label='Admin panel sections')
+				ul.nav.align-left.admin-panel-nav-list(role='tablist')
+					+bookmarkable-tabset-header('system-messages', 'System Messages', true)
+					+bookmarkable-tabset-header('active-projects', 'Active Projects')
+					+bookmarkable-tabset-header('open-sockets', 'Open Sockets')
+					+bookmarkable-tabset-header('open-close-editor', 'Open/Close Editor')
+					if hasFeature('saas')
+					+bookmarkable-tabset-header('privileges-matrix', 'Privileges Matrix')
+					+bookmarkable-tabset-header('tpds', 'TPDS/Dropbox Management')
+					+bookmarkable-tabset-header('debug-projects', 'Debug Projects')
+			.admin-panel-content
+				.tab-content
 									.tab-pane.active(role='tabpanel' id='system-messages')
 										each message in systemMessages
 											ul.system-messages

@@ -43,6 +43,7 @@ import CookieBanner from '@/shared/components/cookie-banner'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
+import ThemeSelector from './theme-selector'
 import useThemedPage from '@/shared/hooks/use-themed-page'
 import {
   SamlSsoTab,
@@ -194,6 +195,9 @@ function ManageSidebar({
         </div>
       </nav>
       <div className="ds-nav-sidebar-lower">
+        {/* R11 item 14: Dark/Light/System selector — same fieldset as the
+            project-list sidebar; was missing on /admin/site. */}
+        <ThemeSelector />
         <nav
           className="d-flex flex-row gap-3 mb-2"
           aria-label="account help"

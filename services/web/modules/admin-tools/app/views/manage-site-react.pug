@@ -11,6 +11,11 @@ block vars
 
 block append meta
 	meta(name='ol-userSettings' data-type='json' content=userSettings)
+	// R11 item 14 (2026-08-30): the Dark/Light/System theme selector (same
+	// fieldset as the project-list sidebar) is rendered in the manage-site
+	// sidebar; 'ol-overallThemes' is a global res.local (ExpressLocals) so
+	// the option list matches the app pages exactly.
+	meta(name='ol-overallThemes' data-type='json' content=overallThemes)
 	if suggestedLanguageSubdomainConfig
 		meta(
 			name='ol-suggestedLanguage'
