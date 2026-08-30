@@ -451,9 +451,15 @@ function envSeeds(env, coreSettings, stored) {
       sesRegion: coreSettings?.email?.ses?.region || env.OVERLEAF_EMAIL_AWS_SES_REGION || env.EMAIL_SES_REGION || '',
     },
     'linked-file-types': {
-      enabledTypes: String(env.ENABLED_LINKED_FILE_TYPES || '')
-        .split(',').map(x => x.trim()).filter(Boolean)
-        .concat(['project_file', 'project_output_file']),
+      // D5: fixed pair first, then admin extras — deduplicated
+      // (2026-08-30: seed previously doubled the pair when env also
+      // listed them).
+      enabledTypes: (function () {
+        const forced = ['project_file', 'project_output_file']
+        const extra = String(env.ENABLED_LINKED_FILE_TYPES || '')
+          .split(',').map(x => x.trim()).filter(Boolean)
+        return forced.concat(extra.filter(t => !forced.includes(t)))
+      })(),
     },
     pandoc: {
       enabled: boolFromEnv(env.ENABLE_PANDOC_CONVERSIONS) === true,
