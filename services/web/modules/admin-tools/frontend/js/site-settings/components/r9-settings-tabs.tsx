@@ -22,7 +22,7 @@ import {
   Card,
   Field,
   Hint,
-  NoAutofill,
+  PasswordField,
   Row,
   SaveFooter,
   SectionTitle,
@@ -35,36 +35,6 @@ type SectionValue = {
   [key: string]: unknown
 }
 
-function SecretPlaceholder ({ set }: { set?: boolean }) {
-  return set ? '•••••• (configured — leave empty to keep)' : undefined
-}
-
-function PasswordField ({ id, label, value, onChange, set, hint }: {
-  id: string
-  label: React.ReactNode
-  value: string
-  onChange: (v: string) => void
-  set?: boolean
-  hint?: React.ReactNode
-}) {
-  return (
-    <>
-      <label className="form-label" htmlFor={id}><strong>{label}</strong></label>
-      <NoAutofill>
-        <input
-          id={id}
-          className="form-control"
-          type="password"
-          autoComplete="new-password"
-          value={value}
-          placeholder={SecretPlaceholder({ set })}
-          onChange={e => onChange(e.currentTarget.value)}
-        />
-      </NoAutofill>
-      {hint && <Hint>{hint}</Hint>}
-    </>
-  )
-}
 
 function Two ({ a, b, cols = 'col-md-6' }: {
   a: React.ReactNode

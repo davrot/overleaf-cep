@@ -207,3 +207,35 @@ export function SaveFooter ({ flash, onSave, note, saveLabel }: {
     </>
   )
 }
+
+// Secret field — BS4 password input wrapped in the no-autofill form +
+// "configured" placeholder; used by every section that stores secrets.
+export function PasswordField ({ id, label, value, onChange, set, hint, required }: {
+  id: string
+  label: React.ReactNode
+  value: string
+  onChange: (v: string) => void
+  set?: boolean
+  hint?: React.ReactNode
+  required?: boolean
+}) {
+  return (
+    <div className="mb-3">
+      <label className="form-label" htmlFor={id}>
+        <strong>{label}</strong>{required && <Req />}
+      </label>
+      <NoAutofill>
+        <input
+          id={id}
+          className="form-control"
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          placeholder={set ? '•••••• (configured — leave empty to keep)' : undefined}
+          onChange={e => onChange(e.currentTarget.value)}
+        />
+      </NoAutofill>
+      {hint && <Hint>{hint}</Hint>}
+    </div>
+  )
+}

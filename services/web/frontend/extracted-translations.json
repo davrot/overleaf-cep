@@ -3014,5 +3014,14 @@
   "adminSite.emailNameHint": "Optional EHLO hostname.",
   "adminSite.emailSecureHint": "Connect using implicit TLS (port 465).",
   "adminSite.emailIgnoreTLSHint": "Skip the STARTTLS upgrade (insecure).",
-  "adminSite.emailTlsRejectHint": "Reject unauthorized TLS connections."
+  "adminSite.emailTlsRejectHint": "Reject unauthorized TLS connections.",
+  "adminSite.tplCategories": "Categories",
+  "adminSite.template_bundles_href": "/templates/manage",
+  "adminSite.zoteroDesc": "Zotero integration — import references and attachments from a Zotero library into projects (file tree \"Import from Zotero\"). Requires a Zotero API key.",
+  "adminSite.zoteroCreds": "API Credentials",
+  "adminSite.extDesc": "Linked file types powered by external resources: project files, project output files, URLs and Zotero (see the Linked file types tab for the on/off matrix). URL linking is subject to the network policy below.",
+  "adminSite.extNetwork": "URL Network Policy",
+  "adminSite.signUpRestrictions": "Registration Restrictions",
+  "Expand reference list": "Expand reference list",
+  "Collapse reference list": "Collapse reference list"
 }

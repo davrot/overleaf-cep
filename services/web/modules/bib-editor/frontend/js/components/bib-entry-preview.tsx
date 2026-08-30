@@ -39,6 +39,7 @@ import {
 } from '@/shared/components/dropdown/dropdown-menu'
 import BibEntryForm from './bib-entry-form'
 import SplitResizer from '../util/split-resizer'
+import customLocalStorage from '@/infrastructure/local-storage'
 import type { BibEntry } from '../utils/bib-types'
 import {
   missingRequiredLabels,
@@ -95,6 +96,54 @@ export default function BibEntryPreview({
     null
   )
   const entryKey = `${entry.type}:${entry.id}`
+
+  // Collapse/expand the reference list (user request 2026-08-30): explicit
+  // control instead of (unreliable) narrow-window auto-stacking. Toggled in
+  // the header; the layout root (`.bib-editor-panel` / `.library-page-main`)
+  // gets `.bibtex-list-collapsed` and the CSS hides the list and gives the
+  // preview full width. Persisted per surface (same storage key family as
+  // the split resizer).
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const collapseKey = `${resizerStorageKey || 'bib'}-listCollapsed`
+  const [listCollapsed, setListCollapsed] = useState<boolean>(() => {
+    try { return String(customLocalStorage.getItem(collapseKey)) === 'true' } catch { return false }
+  })
+  const layoutRoot = useCallback((): HTMLElement | null => {
+    let el: Element | null = panelRef.current
+    while (el) {
+      const r = el.closest('.bib-editor-panel, .library-page-main')
+      if (r) return r as HTMLElement
+      el = el.parentElement
+    }
+    return null
+  }, [])
+  // Apply the persisted state on mount (the preview mounts late — after the
+  // user clicks a card — so the class must (re)land on the root then).
+  useEffect(() => {
+    const root = layoutRoot()
+    if (root) root.classList.toggle('bibtex-list-collapsed', listCollapsed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const toggleListCollapsed = useCallback(() => {
+    setListCollapsed(c => {
+      const next = !c
+      const root = layoutRoot()
+      if (root) root.classList.toggle('bibtex-list-collapsed', next)
+      try { customLocalStorage.setItem(collapseKey, String(next)) } catch {}
+      return next
+    })
+  }, [collapseKey, layoutRoot])
+  // A different surface (project vs library) starts fresh: resync when the
+  // panel unmounts/remounts on another root.
+  const rootIdRef = useRef<Element | null>(null)
+  useEffect(() => {
+    const root = layoutRoot()
+    if (root && rootIdRef.current !== root) {
+      rootIdRef.current = root
+      root.classList.toggle('bibtex-list-collapsed', listCollapsed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutRoot])
   // Biome flags the derived key as an over-dep; the ESLint gate (repo
   // convention) does not validate array deps here. The key is the reset
   // condition: a DIFFERENT entry was previewed.
@@ -183,11 +232,15 @@ export default function BibEntryPreview({
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
+      ref={panelRef}
       className={[
         'bibtex-entry-preview-panel',
         'bibtex-entry-preview-panel-contained',
         'bibtex-entry-preview-panel-open',
-      ].join(' ')}
+        listCollapsed ? 'bibtex-entry-preview-panel-full' : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role="region"
       aria-label={t('Edit reference')}
       onKeyDown={handleBodyKeyDown}
@@ -215,6 +268,23 @@ export default function BibEntryPreview({
             disabled={previewIndex >= entries.length - 1}
             onClick={onNext}
           />
+          {/* Collapse/expand the reference list (user request 2026-08-30):
+              explicit control instead of narrow-window auto-stacking. The
+              state lives on the layout root (`.bib-editor-panel` /
+              `.library-page-main`) so it survives entry switches and works
+              for BOTH surfaces from this one shared component. */}
+          <button
+            type="button"
+            className="icon-button-small btn btn-ghost"
+            aria-label={listCollapsed ? t('Expand reference list') : t('Collapse reference list')}
+            aria-pressed={listCollapsed}
+            title={listCollapsed ? t('Expand reference list') : t('Collapse reference list')}
+            onClick={toggleListCollapsed}
+          >
+            <span className="material-symbols icon-small" aria-hidden="true" translate="no">
+              {listCollapsed ? 'chevron_right' : 'chevron_left'}
+            </span>
+          </button>
         </div>
         <OLIconButton
           icon="close"

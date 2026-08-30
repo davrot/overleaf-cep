@@ -1907,3 +1907,46 @@
   background: var(--blue-50);
   box-shadow: 0 0 0 1px var(--blue-50);
 }
+
+/* ============================================================
+   Split unification (2026-08-30, user report):
+   1) The preview width MUST follow --bibtex-split-preview-width on BOTH
+      surfaces. bib-saas.css (loaded later) declares `width: 30rem` at the
+      same specificity and was winning, pinning the preview while only the
+      list shifted — the resizer appeared broken. Bumped specificity
+      (+.contained) and !important (saas declares none) so the var wins.
+   2) Collapse/expand the reference list (user request) replaces the
+      unreliable viewport-based auto-stacking for in-IDE narrow panes:
+      the layout root gets .bibtex-list-collapsed, the list hides, the
+      preview takes the full width, the resizer hides. State is set from
+      BibEntryPreview (persisted per surface).
+   ============================================================ */
+.bib-editor-panel .bibtex-entry-preview-panel.bibtex-entry-preview-panel-contained,
+.library-page-main .bibtex-entry-preview-panel.bibtex-entry-preview-panel-contained {
+  width: var(--bibtex-split-preview-width, 30rem) !important;
+}
+
+.bib-editor-panel.bibtex-list-collapsed .bibtex-entry-list,
+.library-page-main.bibtex-list-collapsed .bibtex-entry-list,
+.library-page-main.bibtex-list-collapsed .library-list-pane {
+  display: none;
+}
+
+.bib-editor-panel.bibtex-list-collapsed .bibtex-entry-preview-panel,
+.library-page-main.bibtex-list-collapsed .bibtex-entry-preview-panel {
+  width: 100% !important;
+  max-width: 100%;
+  flex: 1 1 auto;
+  left: auto;
+  right: auto;
+  border-left: none;
+}
+
+.bib-editor-panel.bibtex-list-collapsed .bibtex-entry-list {
+  margin-right: 0 !important;
+}
+
+.bib-editor-panel.bibtex-list-collapsed .bibtex-preview-resizer,
+.library-page-main.bibtex-list-collapsed .bibtex-preview-resizer {
+  display: none;
+}

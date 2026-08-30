@@ -19,13 +19,18 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/shared/components/ol/ol-button'
-import OLFormGroup from '@/shared/components/ol/ol-form-group'
-import OLFormLabel from '@/shared/components/ol/ol-form-label'
-import OLFormControl from '@/shared/components/ol/ol-form-control'
-import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 import Notification from '@/shared/components/notification'
 import { Dropdown } from 'react-bootstrap'
+import {
+  Card,
+  Field,
+  Hint,
+  PasswordField,
+  SaveFooter,
+  SectionTitle,
+  Switch,
+  TextArea
+} from './ce-admin-ui'
 
 import { User as UserIcon } from '@phosphor-icons/react'
 import { AccountMenuItems } from '@/shared/components/navbar/account-menu-items'
@@ -389,39 +394,43 @@ function TemplateAdminsTable() {
   }
 
   return (
-    <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '16px' }}>
-      <h3 style={{ marginTop: 0 }}>{t('Template gallery admins')}</h3>
-      <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
+    <div className="mt-3 pt-3 border-top">
+      <h6 className="text-primary border-bottom pb-2 mb-3">{t('Template gallery admins')}</h6>
+      <p className="text-muted">
         {t('Template gallery admins can manage templates (create, edit in place, download/import bundles) without full site admin powers. Assign the role on the user page (Create / Update account).')}
       </p>
       {error && (
         <Notification type="error" content={error} isDismissible onDismiss={() => setError(null)} />
       )}
-      {users === null && !error && null}
       {(users || []).length === 0 ? (
-        <p style={{ fontSize: '13px', color: 'var(--text-secondary, #666)' }}>{t('No users have the template gallery admin role yet.')}</p>
+        <Hint>{t('No users have the template gallery admin role yet.')}</Hint>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+        <table className="table table-sm">
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
-              <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('name')}</th>
-              <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('email')}</th>
-              <th style={{ padding: '6px 8px' }} />
+            <tr>
+              <th>{t('name')}</th>
+              <th>{t('email')}</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {(users || []).map(u => {
               const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
               return (
-              <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
-                <td style={{ padding: '6px 8px' }}>{fullName}</td>
-                <td style={{ padding: '6px 8px' }}>
+              <tr key={u.id}>
+                <td>{fullName}</td>
+                <td>
                   <a href={`/admin/user/${u.id}`}>{u.email}</a>
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                  <OLButton variant="secondary" size="sm" disabled={busyId === u.id} onClick={() => revoke(u)}>
+                <td className="text-right">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={busyId === u.id}
+                    onClick={() => revoke(u)}
+                  >
                     {t('Revoke')}
-                  </OLButton>
+                  </button>
                 </td>
               </tr>
               )
@@ -440,7 +449,7 @@ function TemplatesTab({
   initial: SiteSettings['templates']
   onApplied: (t: SiteSettings['templates']) => void
 }) {
-  const { t: translate } = useTranslation()
+  const { t } = useTranslation()
   const [enabled, setEnabled] = useState(initial.enabled)
   const [categories, setCategories] = useState<TemplateCategory[]>(initial.categories)
   const [allUsersAdmin, setAllUsersAdmin] = useState(Boolean(initial.allUsersCanManageTemplates))
@@ -458,168 +467,157 @@ function TemplatesTab({
   }
 
   return (
-    <div>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={(e) => setEnabled((e.target as HTMLInputElement).checked)}
-          label={translate('adminSite.templatesGallery')}
-        />
-      </OLFormGroup>
-      <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
-        {translate('adminSite.templatesGalleryHelper')}
-      </p>
-
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={allUsersAdmin}
-          onChange={(e) => setAllUsersAdmin((e.target as HTMLInputElement).checked)}
-          label={translate('adminSite.allUsersTemplateAdmins')}
-        />
-      </OLFormGroup>
-      <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
-        {translate('adminSite.allUsersTemplateAdminsHelper')}
-      </p>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+    <Card
+      title={t('adminSite.templates')}
+      badge="tex"
+    >
+      <p className="text-muted">{t('adminSite.templatesGallery')}</p>
+      <div className="row mb-3">
+        <div className="col-md-6">
+          <Switch
+            id="tpl-gallery"
+            checked={enabled}
+            onChange={setEnabled}
+            label={<><strong>{t('adminSite.templatesGallery')}</strong></>}
+          />
+          <Hint>{t('adminSite.templatesGalleryHelper')}</Hint>
+        </div>
+        <div className="col-md-6">
+          <Switch
+            id="tpl-admins"
+            checked={allUsersAdmin}
+            onChange={setAllUsersAdmin}
+            label={<><strong>{t('adminSite.allUsersTemplateAdmins')}</strong></>}
+          />
+          <Hint>{t('adminSite.allUsersTemplateAdminsHelper')}</Hint>
+        </div>
+      </div>
+      <SectionTitle>{t('adminSite.tplCategories')}</SectionTitle>
+      <table className="table table-sm">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{translate('name')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{translate('status')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }} title={translate('adminSite.publishableHelper')}>{translate('adminSite.publishable')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{translate('templatesCount')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{translate('description')}</th>
-            <th style={{ padding: '6px 8px' }} />
+          <tr>
+            <th>{t('name')}</th>
+            <th>{t('status')}</th>
+            <th title={t('adminSite.publishableHelper')}>{t('adminSite.publishable')}</th>
+            <th>{t('templatesCount')}</th>
+            <th>{t('description')}</th>
           </tr>
         </thead>
         <tbody>
           {categories.map(cat => (
-            <tr key={cat.key} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
-              <td style={{ padding: '6px 8px' }}>
+            <tr key={cat.key}>
+              <td>
                 <a href={`/templates/${cat.key}`}>{cat.name}</a>
               </td>
-              <td style={{ padding: '6px 8px' }}>
-                <OLFormCheckbox
-                  aria-label={`${cat.name} enabled`}
-                  checked={cat.enabled}
-                  onChange={(e) =>
-                    setCategories(cs =>
-                      cs.map(c =>
-                        c.key === cat.key
-                          ? { ...c, enabled: (e.target as HTMLInputElement).checked }
-                          : c
+              <td>
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id={`tpl-cat-on-${cat.key}`}
+                    checked={cat.enabled}
+                    onChange={e =>
+                      setCategories(cs =>
+                        cs.map(c =>
+                          c.key === cat.key
+                            ? { ...c, enabled: e.currentTarget.checked }
+                            : c
+                        )
                       )
-                    )
-                  }
-                />
+                    }
+                    aria-label={`${cat.name} enabled`}
+                  />
+                </div>
               </td>
-              <td style={{ padding: '6px 8px' }}>
-                <OLFormCheckbox
-                  aria-label={`${cat.name} publishable`}
-                  checked={cat.publishable !== false}
-                  onChange={(e) =>
-                    setCategories(cs =>
-                      cs.map(c =>
-                        c.key === cat.key
-                          ? { ...c, publishable: (e.target as HTMLInputElement).checked }
-                          : c
+              <td>
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id={`tpl-cat-pub-${cat.key}`}
+                    checked={cat.publishable !== false}
+                    onChange={e =>
+                      setCategories(cs =>
+                        cs.map(c =>
+                          c.key === cat.key
+                            ? { ...c, publishable: e.currentTarget.checked }
+                            : c
+                        )
                       )
-                    )
-                  }
-                />
+                    }
+                    aria-label={`${cat.name} publishable`}
+                  />
+                </div>
               </td>
-              <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+              <td>
                 {counts[cat.key] === null || counts[cat.key] === undefined ? '—' : counts[cat.key]}
               </td>
-              <td style={{ padding: '6px 8px', fontSize: '13px', maxWidth: '320px' }}>
-                {cat.description || '—'}
-              </td>
-              <td style={{ padding: '6px 8px' }}>
-                <OLButton variant="ghost" size="sm" onClick={() => openEdit(cat)}>
-                  {translate('edit')}
-                </OLButton>
+              <td className="ce-admin-desc">{cat.description || '—'}</td>
+              <td>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => openEdit(cat)}
+                >
+                  {t('edit')}
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-
-      {/* R9 item 6 (2026-08-29): bundle import/export lives exclusively at
-          /templates/manage (shared TemplateBundles component) — pointer only. */}
-      <p style={{ margin: '12px 0 0', fontSize: '13px' }}>
-        {translate('template_bundles_pointer')}{' '}
-        <a href="/templates/manage" style={{ color: 'var(--link-web, #0f5f93)' }}>
-          /templates/manage
-        </a>
-        {translate('template_bundles_pointer_end')}
-      </p>
+      <Hint>
+        {t('template_bundles_pointer')}{' '}
+        <a href="/templates/manage">{t('template_bundles_href') || '/templates/manage'}</a>{' '}
+        {t('template_bundles_pointer_end')}
+      </Hint>
       <TemplateAdminsTable />
-
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '16px' }}>
-        <OLButton
-          variant="primary"
-          disabled={saving}
-          isLoading={saving}
-          loadingLabel={translate("loading")}
-          onClick={() => {
-            void save({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin }).then(ok => {
-              if (ok) onApplied({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin })
-            })
-          }}
-        >
-          {translate('saveChanges')}
-        </OLButton>
-      </div>
-      <div style={{ marginTop: '8px' }}>{flash}</div>
+      <SaveFooter
+        flash={flash}
+        saving={saving}
+        onSave={() => {
+          void save({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin }).then(ok => {
+            if (ok) onApplied({ enabled, categories, allUsersCanManageTemplates: allUsersAdmin })
+          })
+        }}
+      />
 
       {editKey && (
         <div
           role="dialog"
           aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
+          className="ce-admin-modal-backdrop"
         >
-          <div
-            style={{ background: '#fff', borderRadius: '8px', width: '480px', padding: '20px' }}
-          >
-            <h3 style={{ marginTop: 0 }}>
-              {translate('adminSite.editCategory')} — {editKey}
-            </h3>
-            <OLFormGroup>
-              <OLFormLabel htmlFor={`tpl-name-${editKey}`}>{translate('name')}</OLFormLabel>
-              <OLFormControl
-                id={`tpl-name-${editKey}`}
-                type="text"
-                value={editDraft.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setEditDraft(d => ({ ...d, name: e.target.value }))
-                }
-              />
-            </OLFormGroup>
-            <OLFormGroup>
-              <OLFormLabel htmlFor={`tpl-desc-${editKey}`} className="d-block mb-2">{translate('description')}</OLFormLabel>
-              <textarea
-                id={`tpl-desc-${editKey}`}
-                className="ol-form-control w-100"
-                style={{ width: '100%' }}
-                rows={3}
-                value={editDraft.description}
-                onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))}
-              />
-            </OLFormGroup>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <OLButton variant="secondary" onClick={() => setEditKey(null)}>
-                {translate('cancel')}
-              </OLButton>
-              <OLButton
-                variant="primary"
+          <div className="ce-admin-modal card">
+            <div className="card-header">
+              <span>{t('adminSite.editCategory')} — {editKey}</span>
+            </div>
+            <div className="card-body">
+              <div className="mb-3">
+                <Field
+                  id={`tpl-name-${editKey}`}
+                  label={t('name')}
+                  value={editDraft.name}
+                  onChange={v => setEditDraft(d => ({ ...d, name: v }))}
+                />
+              </div>
+              <div className="mb-3">
+                <TextArea
+                  id={`tpl-desc-${editKey}`}
+                  label={t('description')}
+                  rows={3}
+                  value={editDraft.description}
+                  onChange={v => setEditDraft(d => ({ ...d, description: v }))}
+                />
+              </div>
+            </div>
+            <div className="card-footer d-flex justify-content-end gap-2">
+              <button type="button" className="btn btn-outline-secondary" onClick={() => setEditKey(null)}>
+                {t('cancel')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
                 onClick={() => {
                   setCategories(cs =>
                     cs.map(c => (c.key === editKey ? { ...c, ...editDraft } : c))
@@ -627,13 +625,13 @@ function TemplatesTab({
                   setEditKey(null)
                 }}
               >
-                {translate('adminSite.applyDraft')}
-              </OLButton>
+                {t('adminSite.applyDraft')}
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -645,54 +643,42 @@ function ZoteroTab({ initial }: { initial: SiteSettings['zotero'] }) {
   const { saving, save, flash } = useSectionSave('zotero')
 
   return (
-    <div>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={(e) => setEnabled((e.target as HTMLInputElement).checked)}
-          label={t('adminSite.zoteroEnabled')}
-        />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="zotero-key">{t('adminSite.zoteroClientKey')}</OLFormLabel>
-        <OLFormControl
-          id="zotero-key"
-          type="text"
-          value={clientKey}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClientKey(e.target.value)}
-        />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="zotero-secret">{t('adminSite.zoteroClientSecret')}</OLFormLabel>
-        <OLFormControl
-          id="zotero-secret"
-          type="password"
-          autoComplete="new-password"
-          placeholder={initial.clientSecretSet ? t('adminSite.secretConfigured') : ''}
-          value={clientSecret}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClientSecret(e.target.value)}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.zoteroSecretNote')}
-        </p>
-      </OLFormGroup>
-      <OLButton
-        variant="primary"
-        disabled={saving}
-        isLoading={saving}
-        loadingLabel={t("loading")}
-        onClick={() => {
-          void save({
-            enabled,
-            clientKey,
-            clientSecret: clientSecret === '' ? '' : clientSecret,
-          })
-        }}
-      >
-        {t('saveChanges')}
-      </OLButton>
-      <div style={{ marginTop: '8px' }}>{flash}</div>
-    </div>
+    <Card
+      title={t('adminSite.zotero')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="zotero"
+    >
+      <p className="text-muted">{t('adminSite.zoteroDesc')}</p>
+      <SectionTitle>{t('adminSite.zoteroCreds')}</SectionTitle>
+      <div className="row mb-3">
+        <div className="col-md-6">
+          <Field
+            id="zotero-key"
+            label={t('adminSite.zoteroClientKey')}
+            required
+            value={clientKey}
+            onChange={setClientKey}
+            placeholder="zotero_xxx"
+          />
+        </div>
+      </div>
+      <PasswordField
+        id="zotero-secret"
+        label={t('adminSite.zoteroClientSecret')}
+        value={clientSecret}
+        onChange={setClientSecret}
+        set={Boolean(initial.clientSecretSet)}
+        hint={t('adminSite.zoteroSecretNote')}
+      />
+      <SaveFooter
+        flash={{ ...flash, saving }}
+        saving={saving}
+        onSave={() =>
+          void save({ enabled, clientKey, clientSecret })
+        }
+      />
+    </Card>
   )
 }
 
@@ -704,47 +690,35 @@ function ExternalUrlTab({ initial }: { initial: SiteSettings['externalUrl'] }) {
   const { saving, save, flash } = useSectionSave('externalUrl')
 
   return (
-    <div>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={(e) => setEnabled((e.target as HTMLInputElement).checked)}
-          label={t('adminSite.externalUrlEnabled')}
-        />
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="ext-net" className="d-block mb-2">{t('adminSite.blockedNetworks')}</OLFormLabel>
-        <textarea
-          id="ext-net"
-          className="ol-form-control"
-          rows={6}
-          placeholder={'10.0.0.0/8\n192.168.0.0/16'}
-          value={net}
-          onChange={e => setNet(e.target.value)}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.blockedNetworksHelper')}
-        </p>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="ext-regex">{t('adminSite.allowedResourcesRegex')}</OLFormLabel>
-        <OLFormControl
-          id="ext-regex"
-          type="text"
-          placeholder=".*\.uni-bremen\.de/.*"
-          value={regex}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRegex(e.target.value)}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.allowedResourcesRegexHelper')}
-        </p>
-      </OLFormGroup>
-      <OLButton
-        variant="primary"
-        disabled={saving}
-        isLoading={saving}
-        loadingLabel={t("loading")}
-        onClick={() => {
+    <Card
+      title={t('adminSite.externalUrls')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="urls"
+    >
+      <p className="text-muted">{t('adminSite.extDesc')}</p>
+      <SectionTitle>{t('adminSite.extNetwork')}</SectionTitle>
+      <TextArea
+        id="ext-net"
+        label={t('adminSite.blockedNetworks')}
+        rows={5}
+        value={net}
+        onChange={setNet}
+        placeholder={'10.0.0.0/8\n192.168.0.0/16'}
+        hint={t('adminSite.blockedNetworksHelper')}
+      />
+      <Field
+        id="ext-regex"
+        label={t('adminSite.allowedResourcesRegex')}
+        value={regex}
+        onChange={setRegex}
+        placeholder=".*\.uni-bremen\.de/.*"
+        hint={t('adminSite.allowedResourcesRegexHelper')}
+      />
+      <SaveFooter
+        flash={flash}
+        saving={saving}
+        onSave={() =>
           void save({
             enabled,
             blockedNetworks: net
@@ -753,12 +727,9 @@ function ExternalUrlTab({ initial }: { initial: SiteSettings['externalUrl'] }) {
               .filter(Boolean),
             allowedResourcesRegex: regex,
           })
-        }}
-      >
-        {t('saveChanges')}
-      </OLButton>
-      <div style={{ marginTop: '8px' }}>{flash}</div>
-    </div>
+        }
+      />
+    </Card>
   )
 }
 
@@ -772,59 +743,41 @@ function SignupTab({ initial }: { initial: SiteSettings['signup'] }) {
   const { saving, save, flash } = useSectionSave('signup')
 
   return (
-    <div>
-      <OLFormGroup>
-        <OLFormCheckbox
-          checked={enabled}
-          onChange={(e) => setEnabled((e.target as HTMLInputElement).checked)}
-          label={t('adminSite.signUpEnabled')}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.signUpHelper')}
-        </p>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="signup-domains">{t('adminSite.allowedEmailDomains')}</OLFormLabel>
-        <OLFormControl
-          id="signup-domains"
-          type="text"
-          placeholder="example.org, example.edu"
-          value={domains}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDomains(e.target.value)}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.allowedEmailDomainsHelper')}
-        </p>
-      </OLFormGroup>
-      <OLFormGroup>
-        <OLFormLabel htmlFor="signup-redirect">{t('adminSite.disabledRedirectUrl')}</OLFormLabel>
-        <OLFormControl
-          id="signup-redirect"
-          type="text"
-          placeholder="/login, https://example.org/join …"
-          value={disabledRedirect}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisabledRedirect(e.target.value)}
-        />
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary, #666)' }}>
-          {t('adminSite.disabledRedirectUrlHelper')}
-        </p>
-      </OLFormGroup>
-      <OLButton
-        variant="primary"
-        disabled={saving}
-        isLoading={saving}
-        loadingLabel={t("loading")}
-        onClick={() => {
+    <Card
+      title={t('adminSite.signUp')}
+      enabled={enabled}
+      onEnabled={setEnabled}
+      badge="users"
+    >
+      <p className="text-muted">{t('adminSite.signUpHelper')}</p>
+      <SectionTitle>{t('adminSite.signUpRestrictions')}</SectionTitle>
+      <Field
+        id="signup-domains"
+        label={t('adminSite.allowedEmailDomains')}
+        value={domains}
+        onChange={setDomains}
+        placeholder="example.org, example.edu"
+        hint={t('adminSite.allowedEmailDomainsHelper')}
+      />
+      <Field
+        id="signup-redirect"
+        label={t('adminSite.disabledRedirectUrl')}
+        value={disabledRedirect}
+        onChange={setDisabledRedirect}
+        placeholder="/login, https://example.org/join …"
+        hint={t('adminSite.disabledRedirectUrlHelper')}
+      />
+      <SaveFooter
+        flash={flash}
+        saving={saving}
+        onSave={() =>
           void save({
             enabled,
             allowedEmailDomains: domains.split(/[,\s]+/).filter(Boolean),
             disabledRedirectUrl: disabledRedirect.trim(),
           })
-        }}
-      >
-        {t('saveChanges')}
-      </OLButton>
-      <div style={{ marginTop: '8px' }}>{flash}</div>
-    </div>
+        }
+      />
+    </Card>
   )
 }

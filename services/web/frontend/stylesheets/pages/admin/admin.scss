@@ -254,3 +254,22 @@
     color: rgb(73, 83, 101);
   }
 }
+
+.ce-admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ce-admin-modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+}
+
+.ce-admin-desc {
+  max-width: 320px;
+}
