@@ -151,41 +151,39 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
   }
 
   return (
-    <div
-      style={{
-        marginTop: compact ? 12 : 24,
-        borderTop: '1px solid var(--border-color, #eee)',
-        paddingTop: '16px',
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>{t('Template bundles')}</h3>
-      <p style={{ color: 'var(--text-secondary, #666)', fontSize: '13px' }}>
-        {t(
-          'A bundle is a zip of template.json + source.zip + output.pdf. Download one to save/backup a template, or import one (from a file or a URL) to restore/re-publish it (same name = replace, unless you confirm an override).'
+    <div className="ce-admin-card card mb-4" style={compact ? { marginTop: 12 } : undefined}>
+      <div className="card-header">
+        <strong>{t('Template bundles')}</strong>
+      </div>
+      <div className="card-body">
+        <p className="text-muted">
+          {t(
+            'A bundle is a zip of template.json + source.zip + output.pdf. Download one to save/backup a template, or import one (from a file or a URL) to restore/re-publish it (same name = replace, unless you confirm an override).'
+          )}
+        </p>
+        {loadError && (
+          <Notification type="error" content={loadError} isDismissible onDismiss={() => setLoadError(null)} />
         )}
-      </p>
-      {loadError && (
-        <Notification type="error" content={loadError} isDismissible onDismiss={() => setLoadError(null)} />
-      )}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('name')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('category')}</th>
-            <th style={{ padding: '6px 8px', textAlign: 'left' }}>{t('version')}</th>
-            <th style={{ padding: '6px 8px' }} />
-          </tr>
-        </thead>
-        <tbody>
-          {(templates || []).map(tp => (
-            <tr key={tp.id} style={{ borderBottom: '1px solid var(--border-color, #eee)' }}>
-              <td style={{ padding: '6px 8px' }}>
-                <a href={`/template/${tp.id}`}>{tp.name}</a>
-              </td>
-              <td style={{ padding: '6px 8px', fontSize: '13px' }}>{(tp.category || '').replace('/templates/', '')}</td>
-              <td style={{ padding: '6px 8px', fontSize: '13px' }}>{tp.version}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <OLButton variant="ghost" size="sm" as="a" href={`/template/${tp.id}/edit`}>
+        <table className="table table-sm align-middle mt-2">
+          <thead>
+            <tr>
+              <th>{t('name')}</th>
+              <th>{t('category')}</th>
+              <th>{t('version')}</th>
+              <th className="text-end"> </th>
+            </tr>
+          </thead>
+          <tbody>
+            {(templates || []).map(tp => (
+              <tr key={tp.id}>
+                <td><a href={`/template/${tp.id}`}>{tp.name}</a></td>
+                <td className="text-muted">{(tp.category || '').replace('/templates/', '')}</td>
+                <td className="text-muted">{tp.version}</td>
+                <td className="text-end" style={{ whiteSpace: 'nowrap' }}>
+                {/* R12-7 (2026-08-31): the in-place edit view is GET /template/:id —
+                    /template/:id/edit is POST-only (hence the 404). Same target as
+                    the upstream EditTemplateButton. */}
+                <OLButton variant="ghost" size="sm" as="a" href={`/template/${tp.id}`}>
                   {t('Edit')}
                 </OLButton>
                 <OLButton
@@ -226,9 +224,9 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
               </td>
             </tr>
           ))}
-        </tbody>
-      </table>
-      <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          </tbody>
+        </table>
+        <div className="d-flex gap-2 align-items-center flex-wrap mt-2">
         <OLButton variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
           {t('Import bundle…')}
         </OLButton>
@@ -250,22 +248,15 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
         </OLButton>
         <input
           type="url"
+          className="form-control form-control-sm"
+          style={{ flex: '1 1 260px', minWidth: '220px' }}
           placeholder={t('https://…/template.bundle.zip')}
           value={url}
           onChange={e => setUrl(e.target.value)}
-          style={{
-            flex: '1 1 260px',
-            minWidth: '220px',
-            padding: '6px 10px',
-            border: '1px solid var(--border-color, #ccc)',
-            borderRadius: '6px',
-            background: 'var(--bg-default, #fff)',
-            color: 'inherit',
-          }}
           data-testid="bundle-import-url-input"
         />
-        {busy && <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('Importing…')}</span>}
-      </div>
+        {busy && <span className="text-muted">{t('Importing…')}</span>}
+        </div>
       {status && status.kind === 'issues' && (
         <div style={{ marginTop: '8px' }}>
           <Notification type="error" content={t('Bundle rejected — fix the following and try again:')} />
@@ -293,6 +284,7 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
           />
         </div>
       )}
+      </div>
     </div>
   )
 }

@@ -412,9 +412,22 @@ function envSeeds(env, coreSettings, stored) {
           .split(',').map(x => x.trim()).filter(Boolean)
         const names = String(env.ALL_TEX_LIVE_DOCKER_IMAGE_NAMES || '')
           .split(',').map(x => x.trim())
-        return list.map((image, i) => ({ image, name: names[i] || '' }))
+        if (list.length > 0) {
+          return list.map((image, i) => ({ image, name: names[i] || '' }))
+        }
+        // R12-1 (2026-08-31): last-resort seed — when neither stored values
+        // nor env provide images, the sandbox tab used to render an EMPTY
+        // table whose Save then 422s ("images must be a non-empty array").
+        // Fall back to the canonical CE+ TeXLive set so the tab is always
+        // usable (admin can still edit before saving).
+        return [
+          { image: 'texlive/texlive:latest-full', name: 'TeXLive 2025' },
+          { image: 'texlive/texlive:TL2024-historic', name: 'TeXLive 2024' },
+          { image: 'texlive/texlive:TL2023-historic', name: 'TeXLive 2023' },
+        ]
       })(),
-      defaultImage: env.TEX_LIVE_DOCKER_IMAGE || '',
+      defaultImage:
+        env.TEX_LIVE_DOCKER_IMAGE || 'texlive/texlive:latest-full',
     },
     'git-integration': {
       enabled: boolFromEnv(env.GIT_BRIDGE_ENABLED) === true,

@@ -53,10 +53,12 @@ export function SplitResizer ({ storageKey }: { storageKey?: string }) {
     typeof window === 'undefined' ? DEFAULT_RATIO : readStored(key)
   )
   const dragging = useRef(false)
+  const liveRatio = useRef(ratio)
 
   const commit = useCallback(
     (next: number) => {
       const r = clampRatio(next)
+      liveRatio.current = r
       setRatio(r)
       applyRatio(layoutRootOf(ref.current), r)
       customLocalStorage.setItem(key, r)
@@ -70,11 +72,16 @@ export function SplitResizer ({ storageKey }: { storageKey?: string }) {
       dragging.current = true
       const root = layoutRootOf(ref.current)
       if (!root) return
+      // R12-11 (2026-08-31): during the drag, write the CSS custom property
+      // DIRECTLY (no React re-render, no localStorage churn per move) — the
+      // library's resizer always felt smoother because it did exactly this;
+      // the state + storage commit happens once, on release.
+      let lastRatio = liveRatio.current
       const update = (clientX: number) => {
         const rect = root.getBoundingClientRect()
         if (rect.width <= 0) return
-        // preview ratio = (right edge − pointer) / width
-        commit((rect.right - clientX) / rect.width)
+        lastRatio = clampRatio((rect.right - clientX) / rect.width)
+        root.style.setProperty('--bibtex-split-preview-width', `${(lastRatio * 100).toFixed(2)}%`)
       }
       update(e.clientX)
       const onMove = (ev: PointerEvent) => {
@@ -86,6 +93,7 @@ export function SplitResizer ({ storageKey }: { storageKey?: string }) {
         dragging.current = false
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
+        commit(lastRatio)
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)

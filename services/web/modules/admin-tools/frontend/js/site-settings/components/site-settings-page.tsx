@@ -43,7 +43,8 @@ import CookieBanner from '@/shared/components/cookie-banner'
 import overleafLogo from '@/shared/svgs/overleaf-a-ds-solution-mallard.svg'
 import overleafLogoDark from '@/shared/svgs/overleaf-a-ds-solution-mallard-dark.svg'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
-import ThemeSelector from './theme-selector'
+// (R12-2: the ThemeSelector sidebar block was removed per user; the toggle
+// stays in the Account menu — theme-selector.tsx is no longer imported.)
 import useThemedPage from '@/shared/hooks/use-themed-page'
 import {
   SamlSsoTab,
@@ -195,9 +196,9 @@ function ManageSidebar({
         </div>
       </nav>
       <div className="ds-nav-sidebar-lower">
-        {/* R11 item 14: Dark/Light/System selector — same fieldset as the
-            project-list sidebar; was missing on /admin/site. */}
-        <ThemeSelector />
+        {/* R12-2 (2026-08-31): the sidebar Theme fieldset was removed — the
+            theme toggle lives in the Account menu below (as on every other
+            page); a duplicate outside the menu was rejected by the user. */}
         <nav
           className="d-flex flex-row gap-3 mb-2"
           aria-label="account help"
@@ -434,7 +435,11 @@ function TemplateAdminsTable() {
                   <a href={`/admin/user/${u.id}`}>{u.email}</a>
                 </td>
                 <td className="text-right">
-                  {u.hasTemplateFlag ? (
+                  {/* R12-12: site admins are granted gallery admin via the
+                      site-admin role — Revoke would only clear the extra flag
+                      and mislead (they'd keep access). Only non-admin flagged
+                      users get the Revoke button. */}
+                  {!u.isAdmin && u.hasTemplateFlag ? (
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-danger"

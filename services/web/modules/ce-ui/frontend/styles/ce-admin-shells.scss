@@ -15,7 +15,9 @@ $shell-title: 1.75rem;
 // shared shell skeleton -----------------------------------------------------
 .admin-panel-shell,
 .my-settings-shell {
-  min-height: 100vh;
+  // R12-5/R12-8 (2026-08-31): no `min-height: 100vh` here — these shells sit
+  // INSIDE the DS page layout's fixed-height, scrolling #main-content; a 100vh
+  // min-height made the left nav column run out of the displayable region.
   background: var(--bg-primary-themed, #fff);
 
   .admin-panel-title,
@@ -81,6 +83,30 @@ $shell-title: 1.75rem;
   .my-settings-content {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  // R12-6 (2026-08-31): /user/mysettings mirrors /admin/site — the content
+  // column is a white admin card like the site-settings panes.
+  .my-settings-content.ce-admin-card {
+    border-left: 1px solid var(--border-divider-themed);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+
+    .form-control,
+    .form-select {
+      color: rgb(27, 34, 44);
+    }
+
+    .form-label,
+    label.form-label,
+    legend {
+      color: rgb(27, 34, 44);
+    }
+  }
+
+  // R12-8: keep the panel nav buttons visible in both themes (the card text
+  // pin above only targets the mysettings card).
+  .admin-panel-content {
     border-left: 1px solid var(--border-divider-themed);
     padding-left: 1.5rem;
   }

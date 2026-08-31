@@ -175,9 +175,12 @@ export function SandboxedCompilesTab (
           ))}
         </tbody>
       </table>
+      {/* R12-14 (2026-08-31): btn-outline-secondary was invisible on the white
+          admin card (faint border + faint text on white) — outline-primary is
+          clearly visible on both themes. */}
       <button
         type="button"
-        className="btn btn-sm btn-outline-secondary"
+        className="btn btn-sm btn-outline-primary"
         onClick={() => setImages(rows => [...rows, { image: '', name: '' }])}
       >
         + {t('adminSite.scAddRow')}

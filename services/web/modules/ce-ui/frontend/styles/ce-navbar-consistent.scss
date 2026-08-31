@@ -1,31 +1,55 @@
 // ---------------------------------------------------------------------------
-// CE fork — app navbar (UI round 10 + round 11 items 6-8, 15).
+// CE fork — app navbar (UI round 10 → round 12).
 //
-// Item 15 (user, 2026-08-30): the white→red gradient is the ADMIN-PAGE
-// warning signal — it must NOT appear on normal user pages. Therefore:
-//   * user pages (/project, /library, /templates) get a SOLID NEUTRAL
-//     WHITE navbar with dark text in BOTH themes (no gradient);
-//   * admin consoles keep the red-gradient tail — the .red-nav-bar-for-admins
-//     pages (/admin/site, /admin/user, ...) via their own CSS, and the
-//     template management console (#template-admin-root / /templates/manage)
-//     here.
+// R12-4 (user, 2026-08-31): the user-page header must FOLLOW the app theme
+// (dark header in dark mode, light in light mode) — round 11's "solid white
+// in both themes" was rejected. Upstream components/navbar.scss already
+// re-applies `navbar-dark` to these routes under [data-theme='default'], and
+// `--navbar-bg` is theme-aware (:root mixin vars), so we only need to:
+//   * kill the red gradient (it is the ADMIN-PAGE warning signal);
+//   * keep the solid neutral surface (--navbar-bg).
 //
-// How it works (no upstream edits):
-//  * components/navbar.scss re-applies `navbar-dark` to these roots under
-//    [data-theme='default'] → this file (later source order, equal
-//    specificity) re-applies navbar-light + a solid white background.
+// R12-3 (user, 2026-08-31): every top-nav link (Library / Templates /
+// Projects) uses the same pill style — the `.subdued` de-emphasis variant is
+// removed so non-active links match the active `nav-item-projects` pill.
+//
+// Admin consoles keep the red-gradient tail (/admin/* via admin.scss,
+// /templates/manage via #template-admin-root here).
 // ---------------------------------------------------------------------------
+
+// R12-3: pill parity for ALL top-nav links (both themes).
+.website-redesign-navbar .navbar-nav,
+.website-redesign .navbar-default .navbar-nav,
+  > .subdued > .nav-link,
+  > .subdued > .dropdown-toggle {
+    border: var(--navbar-btn-border-width) solid
+      var(--navbar-link-border-color);
+    color: var(--navbar-link-color);
+    padding: var(--navbar-btn-padding-v) var(--navbar-btn-padding-h);
+    background-color: transparent;
+    margin-left: var(--navbar-item-spacing-horizontal);
+
+    &.show,
+    &:hover,
+    &:focus {
+      color: var(--navbar-link-hover-color);
+      background-color: var(--navbar-link-hover-bg);
+      border-color: var(--navbar-link-hover-border-color);
+    }
+  }
+}
+
 [data-theme='default'] {
+  // R12-4 (dark): theme-following solid neutral header on user pages
+  // (upstream navbar-dark applies the dark text/controls).
   #project-list-root,
   #library-root,
   #template-root,
   #template-gallery-root {
     .website-redesign-navbar,
     .website-redesign .navbar-default {
-      @include navbar-light;
-
-      background-color: #fff !important;
       background-image: none !important;
+      background-color: var(--navbar-bg, var(--bg-dark-primary)) !important;
     }
   }
 
@@ -35,36 +59,26 @@
     .website-redesign .navbar-default {
       @include navbar-light;
 
-      background: linear-gradient(
-        to right,
-        #fff 10rem,
-        var(--red-50) 40rem
-      );
+      background: linear-gradient(to right, #fff 10rem, var(--red-50) 40rem);
     }
   }
 }
 
-// Light theme: navbar-light already applies; pin the solid white surface on
-// user pages (clear any inherited gradient) and keep the red tail on the
-// template management console.
+// Light theme.
 #project-list-root,
 #library-root,
 #template-root,
 #template-gallery-root {
   .website-redesign-navbar,
   .website-redesign .navbar-default {
-    background-color: #fff !important;
     background-image: none !important;
+    background-color: var(--navbar-bg, #fff) !important;
   }
 }
 
 #template-admin-root {
   .website-redesign-navbar,
   .website-redesign .navbar-default {
-    background: linear-gradient(
-      to right,
-      #fff 10rem,
-      var(--red-50) 40rem
-    );
+    background: linear-gradient(to right, #fff 10rem, var(--red-50) 40rem);
   }
 }
