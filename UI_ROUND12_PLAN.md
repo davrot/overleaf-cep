@@ -103,7 +103,7 @@ pushed, site up.
 
 ## R12-15 .. R12-17 — live bug report (2026-08-31, user test of /templates/manage)
 
-### R12-15 (P1) Bundle "Import from URL" 500 — missing export
+### R12-15 (P1) Bundle "Import from URL" 500 — missing export [DONE build 45: 409 same-name conflict on the user's real zip; 500 gone]
 - **Repro**: /templates/manage → Template bundles → Import from URL… → POST
   `/template/bundle/import-url` → **500**.
 - **User console**: `UrlAgent.default.fetchWithPolicyRedirects is not a
@@ -118,7 +118,7 @@ pushed, site up.
   `promises` + named export; add a regression test (local HTTP server:
   direct fetch + redirect hop re-checked against policy + blocked-host hop
   must reject) in `modules/template-gallery/test/unit`.
-- **Status**: CODE FIX + TEST (this commit).
+- **Status**: SHIPPED + VERIFIED (build 45; local-server regression suite 36/36; live POST → 409 override flow).
 
 ### R12-16 (P2) Bundle URL input placeholder
 - **User request**: placeholder `//…/template.bundle.zip` (rendered) is not
@@ -127,7 +127,7 @@ pushed, site up.
 - **Fix**: proper i18n key `templateBundles.urlPlaceholder` in BOTH
   `locales/en.json` + `frontend/extracted-translations.json`, used in
   `template-bundles.tsx` (replaces the raw-string `t('https://…/…')` hack).
-- **Status**: CODE FIX (this commit).
+- **Status**: SHIPPED + VERIFIED (build 45; DOM placeholder = full https URL — note: the URL must stay in the i18n VALUE; a `:`-bearing KEY is parsed as ns:key by i18next)
 
 ### R12-17 (P3) Console warning: Permissions-Policy feature
 - **Symptom**: every page logs `Error with Permissions-Policy header:
@@ -136,4 +136,4 @@ pushed, site up.
 - **Fix**: remove `attribution-reporting` from the default `blocked` list in
   `config/settings.defaults.js` (no-op directive; other browsers ignore
   unknown directives, so behavior is unchanged).
-- **Status**: CODE FIX (this commit).
+- **Status**: SHIPPED (build 45; Permissions-Policy header no longer contains attribution-reporting).
