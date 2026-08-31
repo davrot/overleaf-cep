@@ -580,10 +580,37 @@ export async function setSection(name, value) {
     },
     { upsert: true }
   )
+  await writeSnapshot(siteSettings)
   invalidateCache()
   return {
     upserted: result.upsertedCount === 1,
     modified: result.modifiedCount === 1,
+  }
+}
+
+/**
+ * 2026-08-31 (R12 P0 hardening): after every admin save, keep a timestamped
+ * full-document snapshot in `site_settings_snapshots` (last 10). A single
+ * section save once left the production doc nearly empty (only `templates`
+ * survived); with snapshots the previous state is recoverable in one step
+ * regardless of how the doc ended up. Snapshot writes are best-effort — a
+ * failure here must never fail the save itself.
+ */
+async function writeSnapshot(siteSettings) {
+  try {
+    invalidateCache()
+    const doc = await siteSettings.findOne({ _id: SECTION_ID })
+    const snapshots = siteSettings.db.collection('site_settings_snapshots')
+    await snapshots.insertOne({
+      at: new Date(),
+      doc,
+    })
+    const all = await snapshots.find({}).sort({ at: -1 }).toArray()
+    if (all.length > 10) {
+      await snapshots.deleteMany({ _id: { $in: all.slice(10).map(d => d._id) } })
+    }
+  } catch (err) {
+    logger.warn({ err }, 'SiteSettings: snapshot write failed (non-fatal)')
   }
 }
 

@@ -8,26 +8,18 @@ Executed autonomously (user asleep); status below is updated as it progresses.
 
 ---
 
-## Phase 0 — P0: restore the stored site settings  [IN PROGRESS]
+## Phase 0 — P0: restore the stored site settings  ✅ DONE
 
-**What happened.** `sharelatex.site_settings` (doc `_id:"global"`) is left
-containing only `{_id, templates, updatedAt}`. The `templates` section was
-re-saved at 2026-08-31 01:18:10 via a valid per-section `$set`
-(`PUT /admin/site-settings/templates`, `upserted:true` in web.log) — the code
-path (`SiteSettingsManager.setSection`) is per-section `$set` and correct.
-The exact moment/mechanism that dropped the other sections was not
-reconstructable from logs (rotated on container cycles); the SSO sections
-were last known good with the test-IdP values. **Countermeasures being
-shipped with this plan:**
-
-1. **Snapshot backup** — every `setSection` now writes a timestamped copy to
-   `site_settings_snapshots` (last 10 kept) → one command restores any
-   previous state. Regression test: save A, save B, both remain + snapshot
-   exists.
-2. **Recovery tooling** — `restore-site-settings.mjs` (host script) PUTs all
-   sections via the admin API using values reconstructed from:
-   `/data_1/docker/compose_cep/.env`,
-   `/data_1/docker/compose_cep/overleafserver/compose.yaml.bak-sp`,
+- All 12 sections PUT via the admin API + round-trip verified (matrix below);
+  `templates` section was re-saved by the admin at 01:18 and kept intact.
+- **Snapshot-backup hardening** shipped: every `setSection` now writes a
+  timestamped full-document copy to `site_settings_snapshots` (last 10 kept)
+  so the previous state is one command away; + 2 regression tests (save A,
+  save B, both remain + snapshot exists) — 27/27 pass.
+- **Recovery tooling** committed: `tools/restore-site-settings.mjs` (host
+  tool, idempotent, `RESTORE_ALL=1` to force; values reconstructed from:
+  `/data_1/docker/compose_cep/.env`,
+  `/data_1/docker/compose_cep/overleafserver/compose.yaml.bak-sp`,
    `SSO_TEST_ENV_README.md`, and live test-IdP endpoints (SAML X509 cert from
    IdP metadata; OIDC client secret re-registered on the running IdP).
 
@@ -73,7 +65,20 @@ shipped with this plan:**
 ## Phase 2 — verification (after build & deploy)
 
 1. All 13 admin tabs: values present, **Save → 200** (no 422), round-trip stable.
-2. SSO E2E: SAML / OIDC / LDAP round-trip logins; logout.
+2. SSO E2E: SAML ✅ / OIDC ✅ live logins verified (land on `/project`).
+   **OPEN (P1, not in the user's 14 items): LDAP live-login regression.**
+   Stored config verified correct in `sharelatex.site_settings` (url,
+   searchBase, bindDN, encrypted bindCredentials, searchFilter, searchScope).
+   Library path works: in-container `LdapAuth.authenticate` returns carol's
+   dn+mail; raw ldapjs admin-bind→mail-search→user-bind all succeed from the
+   web container (openldap ACL allows cn=admin read, user bind err=0).
+   But the live strategy path finds carol (server log `nentries=1`), then drops
+   the connection before the user-bind → falls back to local auth → "invalid
+   credentials". SAML/OIDC unaffected. Next step: diff the exact `server`
+   option object the live `refreshSsoStrategy` builds vs the working
+   in-container one (suspects: timeout/connectTimeout left undefined, or a
+   doubled strategy registration shadowing the good one per worker), with the
+   ldap server log as the oracle.
 3. R12-1…R12-14 each verified on the listed URLs, dark **and** light theme
    (navbar pill style + theme reactivity on all listed user pages; admin
    gradient retained; both shells no-overflow; resizer timing; library

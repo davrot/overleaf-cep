@@ -446,4 +446,30 @@ describe('SiteSettings', () => {
       await m.setSection('github-sync', { enabled: false, clientID: '', clientSecret: '' })
     })
   })
+
+  describe('R12-0 sibling-section retention + snapshots (P0 hardening)', () => {
+    it('saving one section leaves sibling sections intact', async () => {
+      const m = globalThis.__ssm
+      await m.setSection('pandoc', { enabled: true, image: 'pandoc-ol:3.10.0.0' })
+      await m.setSection('github-sync', { enabled: true, clientID: 'ov-id', clientSecret: 'ov-secret-789' })
+      const pandoc = await m.getSection('pandoc', { pandoc: {} })
+      const github = await m.getSection('github-sync', { githubSync: {} })
+      expect(pandoc.image).to.equal('pandoc-ol:3.10.0.0')
+      expect(github.clientSecret).to.equal('ov-secret-789')
+      await m.setSection('pandoc', { enabled: false, image: '' })
+      await m.setSection('github-sync', { enabled: false, clientID: '', clientSecret: '' })
+    })
+
+    it('writes a recoverable snapshot after each save', async () => {
+      const m = globalThis.__ssm
+      await m.setSection('pandoc', { enabled: true, image: 'pandoc-ol:snap-shot' })
+      const doc = await unitDb.collection('site_settings').findOne({ _id: 'global' })
+      expect(doc.pandoc.image).to.equal('pandoc-ol:snap-shot')
+      const snaps = await unitDb.collection('site_settings_snapshots').find({}).toArray()
+      expect(snaps.length).to.be.greaterThan(0)
+      const latest = snaps[snaps.length - 1]
+      expect(latest.doc.pandoc.image).to.equal('pandoc-ol:snap-shot')
+      await m.setSection('pandoc', { enabled: false, image: '' })
+    })
+  })
 })
