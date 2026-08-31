@@ -18,10 +18,10 @@
 // ---------------------------------------------------------------------------
 
 // R12-3: pill parity for ALL top-nav links (both themes).
-.website-redesign-navbar .navbar-nav,
-.website-redesign .navbar-default .navbar-nav,
-  > .subdued > .nav-link,
-  > .subdued > .dropdown-toggle {
+.website-redesign-navbar .navbar-nav > .subdued > .nav-link,
+.website-redesign-navbar .navbar-nav > .subdued > .dropdown-toggle,
+.website-redesign .navbar-default .navbar-nav > .subdued > .nav-link,
+.website-redesign .navbar-default .navbar-nav > .subdued > .dropdown-toggle {
     border: var(--navbar-btn-border-width) solid
       var(--navbar-link-border-color);
     color: var(--navbar-link-color);
@@ -36,7 +36,6 @@
       background-color: var(--navbar-link-hover-bg);
       border-color: var(--navbar-link-hover-border-color);
     }
-  }
 }
 
 [data-theme='default'] {
