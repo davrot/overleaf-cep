@@ -16,4 +16,12 @@
  * (EnvHydrator) intentionally stays in app/src/Features/SiteSettings (it must
  * run BEFORE the Settings snapshot is taken; see EnvHydrator.mjs header).
  */
-export {}
+// WebModule contract (Modules.mjs): the loader attaches `.name` to the
+// module object, so it MUST be a default-exported extensible object —
+// an `export {}` namespace is frozen and crash-loops the web boot
+// ("Cannot add property name, object is not extensible", caught 2026-08-31).
+const CeUiModule = {
+  // CSS + React components only — no routes, no sections.
+}
+
+export default CeUiModule
