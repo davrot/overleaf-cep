@@ -1304,7 +1304,6 @@
   "how_we_use_your_data": "How we use your data",
   "how_we_use_your_data_explanation": "<0>Please help us continue to improve Overleaf by answering a few quick questions. Your answers will help us and our corporate group understand more about our user base. We may use this information to improve your Overleaf experience, for example by providing personalized onboarding, upgrade prompts, help suggestions, and tailored marketing communications (if you’ve opted-in to receive them).</0><1>For more details on how we use your personal data, please see our <0>Privacy Notice</0>.</1>",
   "html_export_feedback_message": "Exporting as HTML is a new feature. <0>Let us know what you think</0>",
-  "https://www.example.com/.../Test_1_cccc_v1.bundle.zip": "https://www.example.com/.../Test_1_cccc_v1.bundle.zip",
   "hundreds_templates_info": "Produce beautiful documents starting from our gallery of LaTeX templates for journals, conferences, theses, reports, CVs and much more.",
   "i_want_to_add_a_po_number": "I want to add a PO number",
   "i_want_to_stay": "I want to stay",
@@ -3727,5 +3726,6 @@
   "Delete this template and its bundled assets? This cannot be undone.": "Delete this template and its bundled assets? This cannot be undone.",
   "Template deleted": "Template deleted",
   "Edit": "Edit",
-  "Delete": "Delete"
+  "Delete": "Delete",
+  "template_bundles_url_placeholder": "https://www.example.com/.../Test_1_cccc_v1.bundle.zip"
 }

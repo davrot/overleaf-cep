@@ -1046,7 +1046,6 @@
   "how_we_use_your_data": "",
   "how_we_use_your_data_explanation": "",
   "html_export_feedback_message": "",
-  "https://www.example.com/.../Test_1_cccc_v1.bundle.zip": "https://www.example.com/.../Test_1_cccc_v1.bundle.zip",
   "i_want_to_add_a_po_number": "",
   "i_want_to_stay": "",
   "id": "",
@@ -3033,5 +3032,6 @@
   "Delete this template and its bundled assets? This cannot be undone.": "Delete this template and its bundled assets? This cannot be undone.",
   "Template deleted": "Template deleted",
   "Edit": "Edit",
-  "Delete": "Delete"
+  "Delete": "Delete",
+  "template_bundles_url_placeholder": "https://www.example.com/.../Test_1_cccc_v1.bundle.zip"
 }
