@@ -34,7 +34,22 @@ const { MongoClient } = mongodb
 const unitDb = new MongoClient(process.env.MONGO_URL).db()
 
 describe('SiteSettings', () => {
+  function assertUnitDb (label) {
+    // P0 (2026-08-31): never run destructive cleanup against the live DB.
+    const url = String(process.env.MONGO_URL || '').split('?')[0]
+    const dbMatch = url.match(/\/([^/?#]+)/)
+    const dbName = dbMatch ? dbMatch[1] : ''
+    if (!dbName || dbName === 'sharelatex') {
+      throw new Error(
+        `TEST GUARD (${label}): refusing destructive cleanup — MONGO_URL ` +
+        `resolves to the LIVE database '${dbName}' (expected a unit db).`
+      )
+    }
+    return dbName
+  }
+
   it('cleans a pre-existing unit test collection (hermetic start)', async () => {
+    assertUnitDb('hermetic start')
     await unitDb.collection('site_settings').deleteMany({})
   })
   describe('DEFAULT_TEMPLATE_CATEGORIES', () => {
@@ -406,8 +421,16 @@ describe('SiteSettings', () => {
     })
   })
 
-  it('keeps the live database untouched (hermetic end: drops only the unit db)', async () => {
-    try { await unitDb.dropDatabase() } catch { /* best effort */ }
+  it('keeps the live database untouched (hermetic end: cleans only the unit collections)', async () => {
+    assertUnitDb('hermetic end')
+    // 2026-08-31: dropDatabase() can block server-side on connections held
+    // by other test files in the SAME (shared, isolate:false) worker, and it
+    // is the one call that could ever be destructive if MONGO_URL were ever
+    // mis-set. Scoped deletes on the test's own collections are sufficient
+    // for the hermetic start of the next run and can never touch live data.
+    for (const name of ['site_settings', 'site_settings_snapshots']) {
+      await unitDb.collection(name).deleteMany({}).catch(() => {})
+    }
   })
 
   describe('R9 §7.2 stored-wins round-trip (2026-08-29)', () => {

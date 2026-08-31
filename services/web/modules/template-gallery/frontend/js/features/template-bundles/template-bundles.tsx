@@ -250,7 +250,7 @@ export default function TemplateBundles({ compact = false }: { compact?: boolean
           type="url"
           className="form-control form-control-sm"
           style={{ flex: '1 1 260px', minWidth: '220px' }}
-          placeholder={t('https://…/template.bundle.zip')}
+          placeholder={t('https://www.example.com/.../Test_1_cccc_v1.bundle.zip')}
           value={url}
           onChange={e => setUrl(e.target.value)}
           data-testid="bundle-import-url-input"

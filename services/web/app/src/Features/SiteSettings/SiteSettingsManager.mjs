@@ -23,10 +23,44 @@
  * feature does not import the settings singleton directly.
  */
 import logger from '@overleaf/logger'
+import Settings from '@overleaf/settings'
 import { encryptText, decryptText } from './SecretCipher.mjs'
 
 const SECTION_ID = 'global'
 const CACHE_TTL_MS = 5_000
+
+// ---------------------------------------------------------------------------
+// 2026-08-31 (P0 tripwire): site_settings is LIVE SITE STATE. Unit tests
+// must never read/write the production database. The vitest worker is
+// SHARED (isolate: false) and ESM static imports are hoisted, so a test
+// file's own `process.env.MONGO_URL = ...` line does NOT reliably guard
+// the `@overleaf/settings` singleton; once it resolves Settings.mongo.url
+// with the production default (mongodb://.../sharelatex) every later
+// manager call in that worker hits the LIVE database. This actually
+// destroyed the dev site's stored settings on 2026-08-30/31. Fail loudly.
+// ---------------------------------------------------------------------------
+function assertNotLiveDbInTests () {
+  const inVitest = !!(
+    process.env.VITEST_WORKER_ID ||
+    process.env.__VITEST_WORKER_ID ||
+    process.env.VITEST === 'true'
+  )
+  if (!inVitest) return
+  let dbName = ''
+  try {
+    const url = String(Settings.mongo.url || '')
+    // mongodb://127.0.0.1:27017/overleaf-unit-test  ->  last path segment
+    const segments = url.split('/').filter(Boolean)
+    dbName = segments.length ? segments[segments.length - 1] : ''
+  } catch (err) {
+    return // Settings not available in this context: nothing to check
+  }
+  if (dbName === 'sharelatex') {
+    const err = new Error('FATAL (test tripwire): a unit-test process is bound to the LIVE sharelatex database. Set MONGO_URL to a unit database BEFORE any web-stack import (test/unit/unit-env.mjs). Refusing to touch live site settings.')
+    err.liveDbTripwire = true
+    throw err
+  }
+}
 
 /**
  * Lazy collection access: importing the raw-connection hub at module
@@ -34,6 +68,7 @@ const CACHE_TTL_MS = 5_000
  * environments do not tolerate; the server context always has it.
  */
 async function getCollection() {
+  assertNotLiveDbInTests()
   try {
     // eslint-disable-next-line prefer-const
     let dbModule
@@ -87,6 +122,11 @@ function loadDoc() {
         return _cache.doc
       })
       .catch(err => {
+        // The live-DB test tripwire must never be swallowed into env seeds.
+        if (err && err.liveDbTripwire) {
+          _inflight = null
+          throw err
+        }
         // Read failures degrade to env seeds; the failure is not cached.
         logger.warn({ err }, 'SiteSettings: load failed, using env seeds')
         _inflight = null

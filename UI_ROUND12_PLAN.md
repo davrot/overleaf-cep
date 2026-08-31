@@ -100,3 +100,40 @@ push to `bib-editor`.
 **Definition of done:** settings restored and durable (snapshot backups
 active), all 14 items fixed & verified, R11 regressions green, report
 pushed, site up.
+
+## R12-15 .. R12-17 — live bug report (2026-08-31, user test of /templates/manage)
+
+### R12-15 (P1) Bundle "Import from URL" 500 — missing export
+- **Repro**: /templates/manage → Template bundles → Import from URL… → POST
+  `/template/bundle/import-url` → **500**.
+- **User console**: `UrlAgent.default.fetchWithPolicyRedirects is not a
+  function` (browser `Error with Permissions-Policy header: Unrecognized
+  feature: 'attribution-reporting'` is unrelated console noise — see R12-17).
+- **Root cause**: `fetchWithPolicyRedirects` IS implemented in
+  `app/src/Features/LinkedFiles/UrlAgent.mjs` (and used by
+  `createLinkedFile`), but it was never added to the module's **default
+  export object**; `TemplateGalleryManager.importTemplateBundleFromUrl`
+  calls `UrlAgent.default.fetchWithPolicyRedirects(...)` → undefined → 500.
+- **Fix**: export `fetchWithPolicyRedirects` on the default object +
+  `promises` + named export; add a regression test (local HTTP server:
+  direct fetch + redirect hop re-checked against policy + blocked-host hop
+  must reject) in `modules/template-gallery/test/unit`.
+- **Status**: CODE FIX + TEST (this commit).
+
+### R12-16 (P2) Bundle URL input placeholder
+- **User request**: placeholder `//…/template.bundle.zip` (rendered) is not
+  URL-like; change to a realistic example, e.g.
+  `https://www.example.com/.../Test_1_cccc_v1.bundle.zip`.
+- **Fix**: proper i18n key `templateBundles.urlPlaceholder` in BOTH
+  `locales/en.json` + `frontend/extracted-translations.json`, used in
+  `template-bundles.tsx` (replaces the raw-string `t('https://…/…')` hack).
+- **Status**: CODE FIX (this commit).
+
+### R12-17 (P3) Console warning: Permissions-Policy feature
+- **Symptom**: every page logs `Error with Permissions-Policy header:
+  Unrecognized feature: 'attribution-reporting'` (modern Chrome dropped
+  the directive from the spec).
+- **Fix**: remove `attribution-reporting` from the default `blocked` list in
+  `config/settings.defaults.js` (no-op directive; other browsers ignore
+  unknown directives, so behavior is unchanged).
+- **Status**: CODE FIX (this commit).

@@ -104,6 +104,11 @@ async function fetchWithPolicyRedirects(url, policy, hops = 0) {
   if (hops > MAX_REDIRECT_HOPS) {
     throw new RequestFailedError(url, {}, { status: 302 }, 'too many redirects')
   }
+  // 2026-08-31: belt & braces — callers (linked files, bundle import)
+  // already assert the first URL, but the agent must be safe even when
+  // used standalone: never fetch a URL whose host the site policy
+  // blocks.
+  await UrlPolicy.assertUrlAllowed(url, policy)
   const response = await fetch(url, {
     redirect: 'manual',
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -140,5 +145,14 @@ function _getUrl(projectId, data, currentUserId) {
 export default {
   createLinkedFile: callbackify(createLinkedFile),
   refreshLinkedFile: callbackify(refreshLinkedFile),
-  promises: { createLinkedFile, refreshLinkedFile },
+  // 2026-08-31 (R12-15): fetchWithPolicyRedirects was implemented (and used
+  // internally by createLinkedFile) but never exposed — the template-bundle
+  // "Import from URL" flow calls UrlAgent.default.fetchWithPolicyRedirects
+  // and 500'd with "is not a function". Expose it on the default object,
+  // the promises namespace, and as a named export.
+  fetchWithPolicyRedirects: (url, policy, hops = 0) =>
+    fetchWithPolicyRedirects(url, policy, hops),
+  promises: { createLinkedFile, refreshLinkedFile, fetchWithPolicyRedirects },
 }
+
+export { fetchWithPolicyRedirects }

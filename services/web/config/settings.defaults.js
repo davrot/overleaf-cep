@@ -84,7 +84,11 @@ const parseTextExtensions = function (extensions) {
 const httpPermissionsPolicy = {
   blocked: [
     'accelerometer',
-    'attribution-reporting',
+    // 2026-08-31 (R12-17): 'attribution-reporting' removed — it is no
+    // longer a valid Permissions-Policy directive (replaced by the
+    // Attribution Reporting API). Modern Chrome logs
+    // "Error with Permissions-Policy header: Unrecognized feature:
+    // 'attribution-reporting'" on every page, polluting the console.
     'browsing-topics',
     'camera',
     'display-capture',
