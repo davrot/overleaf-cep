@@ -127,7 +127,17 @@ block content
 			  function start() {
 			    var btns = navBtns()
 			    var els = btns.map(targetOf).filter(Boolean)
-			    if (!els.length || !('IntersectionObserver' in window)) return false
+			    if (!els.length) return false
+			    // Hide nav entries whose section is not rendered in this build
+			    // (e.g. project sync / reference managers / linked accounts are
+			    // SaaS-gated upstream and absent in community editions).
+			    navBtns().forEach(function (b) {
+			      if (!targetOf(b)) {
+			        var li = b.closest('li')
+			        if (li) li.style.display = 'none'
+			      }
+			    })
+			    if (!('IntersectionObserver' in window)) return true
 			    var map = new Map(els.map(function (el, i) { return [el, btns[i]] }))
 			    var io = new IntersectionObserver(function (entries) {
 			      var vis = entries

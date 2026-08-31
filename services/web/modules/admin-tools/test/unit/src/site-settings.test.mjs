@@ -22,12 +22,12 @@ const {
   validateLinkedFileTypesSection,
   validatePandocSection,
   getSection,
-} = await import('../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
+} = await import('../../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
 const {
   encryptText,
   decryptText,
-} = await import('../../../app/src/Features/SiteSettings/SecretCipher.mjs')
-globalThis.__ssm = await import('../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
+} = await import('../../../../../app/src/Features/SiteSettings/SecretCipher.mjs')
+globalThis.__ssm = await import('../../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
 const { default: mongodb } = await import('mongodb-legacy')
 const { MongoClient } = mongodb
 

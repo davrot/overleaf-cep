@@ -1253,6 +1253,7 @@ module.exports = {
     'orcid-picker', // Import-from-ORCID picker (P2, BIB_ORCID_TEMPLATES_PLAN.md)
     'bib-editor',
     'page-shells', // UI-R10 W8: /admin/panel + /user/mysettings shells importing the upstream pages
+    'ce-ui', // module hygiene (R11-12): fork CSS/components outside upstream directories (see modules/ce-ui)
   ],
   viewIncludes: {},
 
