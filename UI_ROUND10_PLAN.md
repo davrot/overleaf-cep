@@ -1,3 +1,4 @@
+> **Historical round log — for current status and open items see `PLAN.md` (single source of truth).**
 # UI Round 10 — Implementation Plan (13 items)
 
 Date: 2026-08-30 · Baseline: build deployed to psintern (HEAD `0f3be3f67e`)

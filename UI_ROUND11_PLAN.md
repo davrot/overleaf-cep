@@ -1,3 +1,4 @@
+> **Historical round log — for current status and open items see `PLAN.md` (single source of truth).**
 # UI Round 11 — dark-mode polish, account-settings/admin-panel shells, template-admin fixes
 
 **Context:** user reports 14 issues while viewing **dark mode** (2026-08-30). Baseline: build 33 (`28751cdb0cf6`), HEAD `021c7abfef` on `bib-editor`.

@@ -1,3 +1,4 @@
+> **Historical round log — for current status and open items see `PLAN.md` (single source of truth).**
 # SSO Multi-Provider — Plan (CE+ integration, env-free, tested against the three test IdPs)
 
 **Branch:** `bib-editor` · **Live:** https://psintern.neuro.uni-bremen.de · **Date:** 2026-08-29

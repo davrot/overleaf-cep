@@ -1,3 +1,4 @@
+> **Historical round log — for current status and open items see `PLAN.md` (single source of truth).**
 # UI Round 12 — Plan (2026-08-31, night run)
 
 Context: UI Round 11 (batches A–F) is code-complete and deployed (build 42,
