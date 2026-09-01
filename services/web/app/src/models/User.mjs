@@ -273,6 +273,20 @@ export const UserSchema = new Schema(
     // Each row is a free-form document shaped by the module's row schema
     // (id/name/providerType/baseUrl/apiKey[encrypted]/models/completionModel/enabled).
     llmProviders: { type: [Object], default: [] },
+    // Grammar module (services/web/modules/languagetool): per-user grammar-
+    // checking preferences. `mode` is 'default' | 'lt' | 'llm' | 'lt+llm';
+    // `llmModel` is the model id (or `u:<rowId>:<model>`) for LLM grammar;
+    // `language` is the LT language code or 'auto'.
+    grammar: {
+      mode: { type: String, default: 'default' },
+      llmModel: { type: String, default: '' },
+      language: { type: String, default: 'auto' },
+      // overleaf-lab (grammar port): free-text list of LanguageTool rule IDs
+      // the user has blocked (typed from the rule name shown in the editor
+      // hover panel). Filtered client-side in the grammar extension; we never
+      // need a catalog of which rules exist.
+      blockedRules: { type: [String], default: [] },
+    },
   },
   { minimize: false }
 )

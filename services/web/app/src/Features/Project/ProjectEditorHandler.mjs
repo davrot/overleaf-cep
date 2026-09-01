@@ -23,6 +23,8 @@ export default ProjectEditorHandler = {
       compiler: project.compiler,
       description: project.description,
       spellCheckLanguage: project.spellCheckLanguage,
+      // overleaf-lab (grammar port): absent/legacy => picky ON (treated as true).
+      grammarPicky: project.grammarPicky !== false,
       deletedByExternalDataSource: project.deletedByExternalDataSource || false,
       imageName:
         project.imageName != null

@@ -148,6 +148,23 @@ export default function LLMAdminSettingsPage() {
     const [chatEnabled, setChatEnabled] = useState<boolean>(getMeta('ol-chatEnabled') !== false)
     const [completionEnabled, setCompletionEnabled] = useState<boolean>(getMeta('ol-completionEnabled') !== false)
     const [reviewEnabled, setReviewEnabled] = useState<boolean>(getMeta('ol-reviewEnabled') !== false)
+
+    // overleaf-lab (grammar port): global availability force-offs + the
+    // LanguageTool server URL (managed here, shared admin settings file).
+    const [llmDisabledByAdmin, setLlmDisabledByAdmin] = useState<boolean>(
+        getMeta('ol-llmDisabledByAdmin') === 'true'
+    )
+    const [languageToolUrl, setLanguageToolUrl] = useState<string>(
+        (getMeta('ol-languageToolUrl') as string) || ''
+    )
+    const [languageToolDisabledByAdmin, setLanguageToolDisabledByAdmin] =
+        useState<boolean>(
+            getMeta('ol-languageToolDisabledByAdmin') === 'true'
+        )
+    const [ltCheckStatus, setLtCheckStatus] = useState<
+        'idle' | 'checking' | 'success' | 'error'
+    >('idle')
+    const [ltCheckMessage, setLtCheckMessage] = useState<string>('')
     // overleaf-lab: editable AI prompts. Empty field means the backend uses its
     // built-in default; promptDefaults feeds the per-field reset buttons.
     const promptDefaults = (getMeta('ol-promptDefaults') as any) || {}
@@ -208,6 +225,10 @@ export default function LLMAdminSettingsPage() {
                     chatEnabled,
                     completionEnabled,
                     reviewEnabled,
+                    // overleaf-lab (grammar port): availability force-offs + LT URL.
+                    llmDisabledByAdmin,
+                    languageToolUrl,
+                    languageToolDisabledByAdmin,
                     askAiSystemPrompt,
                     errorPrompt,
                     reviewSystemPrompt,
@@ -242,6 +263,42 @@ export default function LLMAdminSettingsPage() {
             }
         } catch (e) {
             setTestStatus('error')
+        }
+    }
+
+    // overleaf-lab (grammar port): probe the LanguageTool server (admin endpoint.
+    // Falls back to the configured admin URL when none is typed yet).
+    const testLanguageToolConnection = async (urlToCheck?: string) => {
+        const url = urlToCheck ?? languageToolUrl
+        if (!url) {
+            setLtCheckStatus('error')
+            setLtCheckMessage(t('lt_no_url', 'No LanguageTool URL configured'))
+            return
+        }
+        setLtCheckStatus('checking')
+        setLtCheckMessage('')
+        try {
+            const resp = await postJSON('/admin/languagetool/check', {
+                body: { url },
+            })
+            if (resp && (resp as any).success) {
+                setLtCheckStatus('success')
+                setLtCheckMessage(
+                    t('lt_reachable', 'LanguageTool reachable ({{count}} languages)', {
+                        count: (resp as any).languageCount ?? 0,
+                    })
+                )
+            } else {
+                setLtCheckStatus('error')
+                setLtCheckMessage(
+                    (resp as any)?.error || t('lt_unreachable', 'LanguageTool not reachable')
+                )
+            }
+        } catch (err: any) {
+            setLtCheckStatus('error')
+            setLtCheckMessage(
+                err?.data?.error || t('lt_check_failed', 'Connection attempt failed')
+            )
         }
     }
 
@@ -313,6 +370,7 @@ export default function LLMAdminSettingsPage() {
                   { id: 'models', icon: 'model_training', label: t('model_selection', 'Model Selection') },
                   { id: 'prompt', icon: 'description', label: t('system_prompt', 'System Prompt') },
                   { id: 'prompts', icon: 'edit_note', label: t('ai_prompts', 'AI Prompts') },
+                  { id: 'availability', icon: 'shield', label: t('services_availability', 'Services (availability)') }, // overleaf-lab (grammar port)
                   { id: 'usage', icon: 'insights', label: t('llm_usage', 'Usage') }, // overleaf-lab (usage meter)
               ].map(s => (
                   <button
@@ -870,6 +928,89 @@ export default function LLMAdminSettingsPage() {
                   </div>
               </div>
 
+              {/* overleaf-lab (grammar port): Section 6 — availability force-offs +
+                  LanguageTool server. Saved with the rest of the form. */}
+              <div className="llm-settings-section" data-sec="availability">
+                  <div className="llm-settings-section-header">
+                      <span className="llm-settings-section-badge">6</span>
+                      <MaterialIcon type="shield" />
+                      {t('services_availability', 'Services (availability)')}
+                  </div>
+                  <p className="llm-settings-section-desc">
+                      {t(
+                          'services_availability_desc',
+                          'Force the AI or LanguageTool grammar checking off for every user, even when configured. LanguageTool needs a server URL (env fallback: LANGUAGE_TOOL_URL, or LANGUAGE_TOOL_HOST + PORT).'
+                      )}
+                  </p>
+
+                  <div className="llm-settings-section-body">
+                      <div className="ol-llm-admin-settings__feature-row">
+                          <input
+                              type="checkbox"
+                              id="llm-disabled-by-admin"
+                              checked={llmDisabledByAdmin}
+                              onChange={e => setLlmDisabledByAdmin(e.target.checked)}
+                              style={{ marginRight: '0.5rem' }}
+                          />
+                          <label htmlFor="llm-disabled-by-admin">
+                              {t('llm_disabled_by_admin', 'Disable LLM for all users (force off, even BYO)')}
+                          </label>
+                      </div>
+
+                      <OLFormGroup controlId="language-tool-url" className="ol-llm-admin-settings__mb-md">
+                          <OLFormLabel>
+                              {t('languagetool_url', 'LanguageTool server URL')}
+                          </OLFormLabel>
+                          <OLFormControl
+                              type="url"
+                              value={languageToolUrl}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  setLanguageToolUrl(e.target.value)
+                              }
+                              placeholder="http://languagetool:8010"
+                          />
+                          <OLFormText className="ol-llm-admin-settings__no-margin">
+                              {t(
+                                  'languagetool_url_help',
+                                  'The URL of the self-hosted LanguageTool server (/v2 API), e.g. the internal Docker hostname + port. Blank = env fallbacks only.'
+                              )}
+                          </OLFormText>
+                      </OLFormGroup>
+
+                      <div className="ol-llm-admin-settings__feature-row">
+                          <input
+                              type="checkbox"
+                              id="languagetool-disabled-by-admin"
+                              checked={languageToolDisabledByAdmin}
+                              onChange={e => setLanguageToolDisabledByAdmin(e.target.checked)}
+                              style={{ marginRight: '0.5rem' }}
+                          />
+                          <label htmlFor="languagetool-disabled-by-admin">
+                              {t('languagetool_disabled_by_admin', 'Disable LanguageTool for all users (force off)')}
+                          </label>
+                      </div>
+
+                      <div className="ol-llm-admin-settings__row-between">
+                          <OLButton
+                              variant="secondary"
+                              size="sm"
+                              type="button"
+                              onClick={() => testLanguageToolConnection()}
+                              disabled={ltCheckStatus === 'checking'}
+                              isLoading={ltCheckStatus === 'checking'}
+                          >
+                              {t('language_tool_check', 'Check LanguageTool connection')}
+                          </OLButton>
+                          {ltCheckStatus !== 'idle' && (
+                              <OLNotification
+                                  type={ltCheckStatus === 'success' ? 'success' : 'error'}
+                                  content={ltCheckMessage}
+                              />
+                          )}
+                      </div>
+                  </div>
+              </div>
+
               {/* ── Notifications ── */}
               {showSuccess && (
                   <div className="ol-llm-admin-settings__mb-lg">
@@ -908,10 +1049,10 @@ export default function LLMAdminSettingsPage() {
               </OLButton>
           </form>
 
-          {/* ── Section 6: Usage (usage meter) — read-only, outside the form ── */}
+          {/* ── Section 7: Usage (usage meter) — read-only, outside the form ── */}
           <div className="llm-settings-section" data-sec="usage">
               <div className="llm-settings-section-header">
-                  <span className="llm-settings-section-badge">6</span>
+                  <span className="llm-settings-section-badge">7</span>
                   <MaterialIcon type="insights" />
                   {t('llm_usage', 'Usage')}
               </div>

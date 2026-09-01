@@ -32,6 +32,16 @@ export default function useProjectWideSettings() {
   const { setRootDocId, rootDocId } = useRootDocId()
   const setSpellCheckLanguage = useSetSpellCheckLanguage()
 
+  // overleaf-lab (grammar port): per-project LanguageTool pickiness (default ON).
+  const setGrammarPicky = useCallback(
+    async (newGrammarPicky: ProjectSettings['grammarPicky']) => {
+      await saveProjectSettings('grammarPicky', newGrammarPicky).catch(
+        debugConsole.error
+      )
+    },
+    [saveProjectSettings]
+  )
+
   return {
     compiler: project?.compiler,
     setCompiler,
@@ -41,5 +51,7 @@ export default function useProjectWideSettings() {
     setRootDocId,
     spellCheckLanguage: project?.spellCheckLanguage,
     setSpellCheckLanguage,
+    grammarPicky: project?.grammarPicky !== false,
+    setGrammarPicky,
   }
 }

@@ -219,6 +219,15 @@ function useCodeMirrorScope(view: EditorView) {
   }, [view, spellCheckLanguage, hunspellManager])
 
   const projectFeaturesRef = useRef(projectFeatures)
+  // overleaf-lab (grammar port): mirror the project-pickiness value in a ref so
+  // the editor-state effect (which must not depend on project) can read a fresh
+  // value at state-creation time; live changes arrive via the `grammar:picky-
+  // changed` window event (socket broadcast), handled inside the extension.
+  const grammarPickyRef = useRef<boolean>(project?.grammarPicky !== false)
+  useEffect(() => {
+    grammarPickyRef.current =
+      (project as { grammarPicky?: boolean } | null)?.grammarPicky !== false
+  }, [project])
   const editorContextMenuEnabledRef = useRef(editorContextMenuEnabled)
 
   // listen to doc:after-opened, and focus the editor if it's not a new doc
@@ -346,6 +355,10 @@ function useCodeMirrorScope(view: EditorView) {
           phrases: phrasesRef.current,
           spelling: spellingRef.current,
           visual: visualRef.current,
+          // overleaf-lab (grammar port): per-project LanguageTool pickiness
+          // (default ON). Live changes arrive later via the
+          // `grammar:picky-changed` window event (socket broadcast).
+          grammarPicky: grammarPickyRef.current,
           projectFeatures: projectFeaturesRef.current,
           editorContextMenuEnabled: editorContextMenuEnabledRef.current,
           initialSearchQuery: searchQueryRef.current,

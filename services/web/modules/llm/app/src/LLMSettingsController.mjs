@@ -640,6 +640,12 @@ async function getGrammarSettings(req, res) {
     const mode = typeof stored.mode === 'string' && stored.mode ? stored.mode : 'default'
     const llmModel = typeof stored.llmModel === 'string' ? stored.llmModel : ''
     const language = typeof stored.language === 'string' && stored.language ? stored.language : 'auto'
+    // overleaf-lab (grammar port): free-text list of LanguageTool rule IDs the
+    // user has blocked (filtered client-side by rule.id; unknown future-proof
+    // IDs are inert).
+    const blockedRules = Array.isArray(stored.blockedRules)
+        ? stored.blockedRules.filter(r => typeof r === 'string' && r)
+        : []
 
     const available = await grammarAvailability(userId)
     const effectiveMode = degradeGrammarMode(mode, available)
@@ -683,6 +689,7 @@ async function getGrammarSettings(req, res) {
         effectiveMode,
         llmModel,
         language,
+        blockedRules,
         availability: available,
         models
     })
@@ -709,15 +716,42 @@ async function saveGrammarSettings(req, res) {
     const stored = (user && user.grammar && typeof user.grammar === 'object') ? user.grammar : {}
     const nextMode = (typeof mode === 'string' && mode) || (typeof stored.mode === 'string' && stored.mode) || 'default'
 
+    // overleaf-lab (grammar port): normalize the blocked-rules list (trim,
+    // drop empties/dupes, cap size so one user can't bloat the document or
+    // smuggle in garbage). Omitted key keeps the stored list.
+    const normalizeBlockedRules = input => {
+        const out = []
+        const seen = new Set()
+        for (const raw of (Array.isArray(input) ? input : [])) {
+            if (typeof raw !== 'string') continue
+            const id = raw.trim().slice(0, 120)
+            if (!id || seen.has(id)) continue
+            seen.add(id)
+            out.push(id)
+        }
+        return out.slice(0, 200)
+    }
+    let blockedRules
+    if (Array.isArray(body.blockedRules)) {
+        blockedRules = normalizeBlockedRules(body.blockedRules)
+    } else if (typeof body.blockedRules === 'string') {
+        blockedRules = normalizeBlockedRules([body.blockedRules])
+    } else if (body.blockedRules === null) {
+        blockedRules = []
+    } else {
+        blockedRules = normalizeBlockedRules(stored.blockedRules)
+    }
+
     const available = await grammarAvailability(userId)
     const effectiveMode = degradeGrammarMode(nextMode, available)
 
-    // Always write all three keys (the subdocument is strict; keep the
-    // stored shape stable for readers that select individual fields).
+    // Always write ALL keys (the subdocument is strict; keep the stored shape
+    // stable for readers that select individual fields).
     const grammar = {
         mode: nextMode,
         llmModel: typeof llmModel === 'string' ? llmModel : (stored.llmModel || ''),
-        language: (typeof language === 'string' && language) || (stored.language || 'auto')
+        language: (typeof language === 'string' && language) || (stored.language || 'auto'),
+        blockedRules
     }
 
     try {
@@ -735,6 +769,7 @@ async function saveGrammarSettings(req, res) {
         mode: grammar.mode,
         effectiveMode,
         degraded: effectiveMode !== grammar.mode,
+        blockedRules,
         availability: available
     })
 }

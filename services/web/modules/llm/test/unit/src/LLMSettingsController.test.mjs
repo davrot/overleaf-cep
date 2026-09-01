@@ -249,7 +249,7 @@ describe('POST /user/llm-settings/grammar', () => {
       languageToolUrl: 'http://languagetool:8010',
     })
     state.user = makeUser({
-      grammar: { mode: 'lt', llmModel: 'gpt-4o', language: 'de-DE' },
+      grammar: { mode: 'lt', llmModel: 'gpt-4o', language: 'de-DE', blockedRules: ['PASSIVE_VOICE_SIMPLE'] },
     })
     req.body = { mode: 'lt+llm' }
     const res = new FakeRes()
@@ -258,13 +258,58 @@ describe('POST /user/llm-settings/grammar', () => {
     expect(state.updateOneCalls).toHaveLength(1)
     const { filter, update } = state.updateOneCalls[0]
     expect(filter).toEqual({ _id: 'user-1' })
-    expect(update.$set.grammar).toEqual({
-      mode: 'lt+llm',
-      llmModel: 'gpt-4o',
-      language: 'de-DE',
-    })
+    expect(update.$set.grammar.mode).toBe('lt+llm')
+    expect(update.$set.grammar.llmModel).toBe('gpt-4o')
+    expect(update.$set.grammar.language).toBe('de-DE')
+    expect(update.$set.grammar.blockedRules).toEqual(['PASSIVE_VOICE_SIMPLE'])
     const payload = JSON.parse(res.body)
     expect(payload.degraded).toBe(false)
     expect(payload.effectiveMode).toBe('lt+llm')
+  })
+
+  it('normalizes blockedRules: trims, dedupes, drops non-strings, caps at 200', async () => {
+    await writeAdmin({})
+    state.user = makeUser()
+    const many = Array.from({ length: 250 }, (_, i) => `RULE_${i}`)
+    req.body = {
+      blockedRules: [' PASSIVE_VOICE_SIMPLE ', 'PASSIVE_VOICE_SIMPLE', '', null, 42, 'TRY_AND', ...many],
+    }
+    const res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+
+    const { update } = state.updateOneCalls[0]
+    const list = update.$set.grammar.blockedRules
+    expect(list[0]).toBe('PASSIVE_VOICE_SIMPLE')
+    expect(list).toContain('TRY_AND')
+    expect(list).toHaveLength(200)
+    expect(JSON.parse(res.body).blockedRules).toEqual(list)
+  })
+
+  it('clears blockedRules when null is sent, keeps them when omitted', async () => {
+    await writeAdmin({})
+    state.user = makeUser({
+      grammar: { mode: 'lt', blockedRules: ['WHITESPACE_RULE'] },
+    })
+
+    req.body = { blockedRules: null }
+    let res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(state.updateOneCalls[0].update.$set.grammar.blockedRules).toEqual([])
+
+    state.updateOneCalls = []
+    req.body = {}
+    res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(state.updateOneCalls[0].update.$set.grammar.blockedRules).toEqual(['WHITESPACE_RULE'])
+  })
+
+  it('returns stored blockedRules from GET', async () => {
+    await writeAdmin({})
+    state.user = makeUser({
+      grammar: { mode: 'lt', blockedRules: ['SENTENCE_FRAGMENT'] },
+    })
+    const res = new FakeRes()
+    await LLMSettingsController.getGrammarSettings(req, res)
+    expect(JSON.parse(res.body).blockedRules).toEqual(['SENTENCE_FRAGMENT'])
   })
 })

@@ -91,6 +91,8 @@ const updateProjectSettingsSchema = z.object({
     name: z.string().optional(),
     rootDocId: zz.objectId().optional(),
     spellCheckLanguage: z.string().optional(),
+    // overleaf-lab (grammar port): per-project LanguageTool pickiness (default ON).
+    grammarPicky: z.boolean().optional(),
   }),
 })
 
@@ -125,6 +127,13 @@ const _ProjectController = {
       await EditorController.promises.setSpellCheckLanguage(
         projectId,
         body.spellCheckLanguage
+      )
+    }
+
+    if (body.grammarPicky != null) {
+      await EditorController.promises.setGrammarPicky(
+        projectId,
+        body.grammarPicky
       )
     }
 

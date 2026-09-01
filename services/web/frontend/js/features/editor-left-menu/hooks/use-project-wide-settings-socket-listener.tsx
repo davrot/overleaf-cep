@@ -35,6 +35,22 @@ export default function useProjectWideSettingsSocketListener() {
     [project, updateProject]
   )
 
+  const setGrammarPicky = useCallback(
+    (grammarPicky: boolean) => {
+      if (project) {
+        updateProject({ grammarPicky })
+      }
+      // overleaf-lab (grammar port): tell the live editor extension (outside
+      // React) so it can re-run the grammar check with the new level.
+      window.dispatchEvent(
+        new CustomEvent('grammar:picky-changed', {
+          detail: { picky: grammarPicky === true },
+        })
+      )
+    },
+    [project, updateProject]
+  )
+
   useEffect(() => {
     // data is not available on initial mounting
     const dataAvailable = !!project
@@ -43,6 +59,7 @@ export default function useProjectWideSettingsSocketListener() {
       socket.on('compilerUpdated', setCompiler)
       socket.on('imageNameUpdated', setImageName)
       socket.on('spellCheckLanguageUpdated', setSpellCheckLanguage)
+      socket.on('grammarPickyUpdated', setGrammarPicky)
       return () => {
         socket.removeListener('compilerUpdated', setCompiler)
         socket.removeListener('imageNameUpdated', setImageName)
@@ -50,7 +67,10 @@ export default function useProjectWideSettingsSocketListener() {
           'spellCheckLanguageUpdated',
           setSpellCheckLanguage
         )
+        socket.removeListener('grammarPickyUpdated', setGrammarPicky)
       }
     }
-  }, [socket, project, setCompiler, setImageName, setSpellCheckLanguage])
+  }, [
+    socket, project, setCompiler, setImageName, setSpellCheckLanguage, setGrammarPicky,
+  ])
 }

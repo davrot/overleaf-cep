@@ -73,6 +73,13 @@ const ProjectOptionsHandler = {
     return Project.updateOne(conditions, update, {})
   },
 
+  // overleaf-lab (grammar port): per-project LanguageTool pickiness toggle.
+  async setGrammarPicky(projectId, picky) {
+    const conditions = { _id: projectId }
+    const update = { grammarPicky: picky === true }
+    return Project.updateOne(conditions, update, {})
+  },
+
   async setBrandVariationId(projectId, brandVariationId) {
     if (!brandVariationId) {
       return
@@ -120,6 +127,7 @@ export default {
   setSpellCheckLanguage: callbackify(
     ProjectOptionsHandler.setSpellCheckLanguage
   ),
+  setGrammarPicky: callbackify(ProjectOptionsHandler.setGrammarPicky),
   setBrandVariationId: callbackify(ProjectOptionsHandler.setBrandVariationId),
   unsetBrandVariationId: callbackify(
     ProjectOptionsHandler.unsetBrandVariationId

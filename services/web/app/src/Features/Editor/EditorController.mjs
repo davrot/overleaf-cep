@@ -594,6 +594,22 @@ const EditorController = {
     )
   },
 
+  // overleaf-lab (grammar port): broadcast the new pickiness value so live
+  // editor clients can re-run the grammar check.
+  setGrammarPicky(projectId, picky, callback) {
+    ProjectOptionsHandler.setGrammarPicky(projectId, picky, function (err) {
+      if (err) {
+        return callback(err)
+      }
+      EditorRealTimeController.emitToRoom(
+        projectId,
+        'grammarPickyUpdated',
+        picky === true
+      )
+      callback()
+    })
+  },
+
   setPublicAccessLevel(projectId, newAccessLevel, callback) {
     async.series(
       [
@@ -718,6 +734,7 @@ EditorController.promises = {
   setCompiler: promisify(EditorController.setCompiler),
   setImageName: promisify(EditorController.setImageName),
   setSpellCheckLanguage: promisify(EditorController.setSpellCheckLanguage),
+  setGrammarPicky: promisify(EditorController.setGrammarPicky),
   setPublicAccessLevel: promisify(EditorController.setPublicAccessLevel),
   setRootDoc: promisify(EditorController.setRootDoc),
   setMainBibliographyDoc: promisify(EditorController.setMainBibliographyDoc),

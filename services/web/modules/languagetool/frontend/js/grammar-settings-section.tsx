@@ -37,6 +37,7 @@ interface GrammarSettingsResponse {
     effectiveMode: GrammarMode
     llmModel: string
     language: string
+    blockedRules?: string[]
     availability: GrammarSettings
     models: Array<{ id: string; name: string; isPersonal: boolean }>
 }
@@ -83,6 +84,12 @@ export default function GrammarSettingsSection() {
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const [saveError, setSaveError] = useState<string | null>(null)
+    // overleaf-lab (grammar port): free-text list of LanguageTool rule IDs the
+    // user blocked (rule name is shown in the editor hover panel, e.g.
+    // "LanguageTool (PASSIVE_VOICE_SIMPLE)")
+    const [blockedRules, setBlockedRules] = useState<string[]>([])
+    const [newRule, setNewRule] = useState('')
+    const [addRuleError, setAddRuleError] = useState<string | null>(null)
 
     // ── Hydrate from the server (authoritative, per-user) ─────────────
     useEffect(() => {
@@ -95,6 +102,7 @@ export default function GrammarSettingsSection() {
                 setMode(data.effectiveMode || data.mode || 'default')
                 setLlmModel(data.llmModel || '')
                 setLanguage(data.language || 'auto')
+                setBlockedRules(data.blockedRules ?? [])
                 setModels(data.models ?? [])
             })
             .catch(() => {
@@ -160,6 +168,25 @@ export default function GrammarSettingsSection() {
 
     const degraded = storedMode !== mode
 
+    const addBlockedRule = () => {
+        const id = newRule.trim().slice(0, 120)
+        if (!id) {
+            setAddRuleError('Enter a rule ID to block')
+            return
+        }
+        if (blockedRules.some(r => r.toLowerCase() === id.toLowerCase())) {
+            setAddRuleError('That rule is already blocked')
+            return
+        }
+        setBlockedRules([...blockedRules, id])
+        setNewRule('')
+        setAddRuleError(null)
+    }
+
+    const removeBlockedRule = (id: string) => {
+        setBlockedRules(blockedRules.filter(r => r !== id))
+    }
+
     const handleModeChange = (value: GrammarMode) => {
         setMode(value)
     }
@@ -172,13 +199,17 @@ export default function GrammarSettingsSection() {
             const response = await postJSON<{
                 success: boolean
                 effectiveMode?: GrammarMode
+                blockedRules?: string[]
             }>('/user/llm-settings/grammar', {
-                body: { mode, llmModel, language },
+                body: { mode, llmModel, language, blockedRules },
             })
             const nextMode =
                 response.effectiveMode ?? mode
             setMode(nextMode)
             setStoredMode(nextMode)
+            if (Array.isArray(response.blockedRules)) {
+                setBlockedRules(response.blockedRules)
+            }
             setSaved(true)
             // Tell the editor extension (if the user has an editor open in
             // another tab — and always, so the extension can resync).
@@ -201,8 +232,7 @@ export default function GrammarSettingsSection() {
 
     if (error) {
         return (
-            <OLNotification type="error">
-                Could not load your grammar settings.
+            <OLNotification type="error" content="Could not load your grammar settings.">
             </OLNotification>
         )
     }
@@ -221,11 +251,11 @@ export default function GrammarSettingsSection() {
 
             {degraded && (
                 <OLFormGroup>
-                    <OLNotification type="warning">
-                        Your saved grammar mode ({storedMode}) is not
-                        available right now — using {mode} instead.
-                    </OLNotification>
-                </OLFormGroup>
+                    <OLNotification
+                        type="warning"
+                        content={`Your saved grammar mode (${storedMode}) is not available right now — using ${mode} instead.`}
+                    />
+                    </OLFormGroup>
             )}
 
             <form
@@ -302,6 +332,82 @@ export default function GrammarSettingsSection() {
                     </OLFormGroup>
                 )}
 
+                {/* overleaf-lab (grammar port): blocklist of LanguageTool rules.
+                    Free text: the rule ID is shown in the editor hover panel
+                    (e.g. "LanguageTool (PASSIVE_VOICE_SIMPLE)"). Filtered in the
+                    editor before anything is shown, so no rule catalog needed. */}
+                <OLFormGroup controlId="grammar-blocked-rules">
+                    <OLFormLabel>Blocked rules (LanguageTool)</OLFormLabel>
+                    <OLFormText>
+                        Block individual LanguageTool rules that annoy you. Copy the
+                        rule ID from the underline tooltip in the editor (shown as
+                        "LanguageTool (RULE_ID)"), add it here, and the editor will
+                        stop showing it. Works regardless of the grammar mode and the
+                        project's picky setting.
+                    </OLFormText>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                            className="form-control"
+                            style={{ width: '18rem' }}
+                            placeholder="e.g. PASSIVE_VOICE_SIMPLE"
+                            value={newRule}
+                            onChange={event => {
+                                setNewRule(event.target.value)
+                                setAddRuleError(null)
+                            }}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    addBlockedRule()
+                                }
+                            }}
+                        />
+                        <OLButton
+                            variant="secondary"
+                            type="button"
+                            onClick={addBlockedRule}
+                        >
+                            Add
+                        </OLButton>
+                    </div>
+                    {addRuleError && (
+                        <OLFormText style={{ color: 'var(--danger, #d9534f)' }}>
+                            {addRuleError}
+                        </OLFormText>
+                    )}
+                    {blockedRules.length > 0 ? (
+                        <ul
+                            style={{
+                                margin: '0.5rem 0 0',
+                                paddingLeft: '1.25rem',
+                            }}
+                        >
+                            {blockedRules.map(rule => (
+                                <li key={rule} style={{ marginBottom: '0.25rem' }}>
+                                    <code>{rule}</code>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeBlockedRule(rule)}
+                                        style={{
+                                            marginLeft: '0.5rem',
+                                            border: 'none',
+                                            background: 'none',
+                                            cursor: 'pointer',
+                                            color: 'var(--danger, #d9534f)',
+                                        }}
+                                    >
+                                        (remove)
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <OLFormText>
+                            No rules blocked yet.
+                        </OLFormText>
+                    )}
+                </OLFormGroup>
+
                 <OLFormGroup>
                     <OLButton
                         variant="primary"
@@ -316,18 +422,14 @@ export default function GrammarSettingsSection() {
 
                 {saved && (
                     <OLFormGroup>
-                        <OLNotification type="success">
-                            Grammar settings saved.
-                        </OLNotification>
-                    </OLFormGroup>
+                        <OLNotification type="success" content="Grammar settings saved." />
+                        </OLFormGroup>
                 )}
 
                 {saveError && (
                     <OLFormGroup>
-                        <OLNotification type="error">
-                            {saveError}
-                        </OLNotification>
-                    </OLFormGroup>
+                        <OLNotification type="error" content={saveError} />
+                        </OLFormGroup>
                 )}
             </form>
         </>

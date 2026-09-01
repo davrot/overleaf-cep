@@ -39,6 +39,11 @@ export const ProjectSchema = new Schema(
     publicAccesLevel: { type: String, default: 'private' },
     compiler: { type: String, default: settings.defaultLatexCompiler },
     spellCheckLanguage: { type: String, default: 'en' },
+    // overleaf-lab (grammar port): per-project LanguageTool pickiness toggle.
+    // true (default) = request LT at level=picky (style/wordiness/passive
+    // voice/... rules included); false = level=default. Absent/undefined is
+    // treated as true everywhere it is read.
+    grammarPicky: { type: Boolean, default: true },
     deletedByExternalDataSource: { type: Boolean, default: false },
     description: { type: String, default: '' },
     archived: { type: Schema.Types.Mixed },

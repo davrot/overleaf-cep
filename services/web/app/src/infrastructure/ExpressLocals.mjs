@@ -15,6 +15,10 @@ import AdminAuthorizationHelper from '../Features/Helpers/AdminAuthorizationHelp
 import { addOptionalCleanupHandlerAfterDrainingConnections } from './GracefulShutdown.mjs'
 import { sanitizeSessionUserForFrontEnd } from './FrontEndUser.mjs'
 import { expressify } from '@overleaf/promise-utils'
+// overleaf-lab (grammar port): site-wide grammar-checking availability,
+// computed per request from the shared LLM admin settings file (so admin
+// changes apply without a server restart).
+import { readAdminSettings } from '../../../modules/languagetool/app/src/adminConfig.mjs'
 
 const {
   canRedirectToAdminDomain,
@@ -261,6 +265,41 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
     next()
   })
 
+  /**
+   * overleaf-lab (grammar port): grammar-checking availability flags, computed
+   * once per request from env + the admin settings file (readAdminSettings;
+   * a cheap JSON read). Site-wide here; the per-user BYO contribution is
+   * added client-side via GET /user/llm-settings/grammar.
+   */
+  webRouter.use(
+    expressify(async function (req, res, next) {
+      const adminSettings = await readAdminSettings()
+
+      const llmAdminEnabled = adminSettings.llmDisabledByAdmin !== true
+      const ltAvailable =
+        adminSettings.languageToolDisabledByAdmin !== true &&
+        !!(
+          adminSettings.languageToolUrl ||
+          process.env.LANGUAGE_TOOL_URL ||
+          process.env.LANGUAGE_TOOL_HOST ||
+          process.env.LANGUAGE_TOOL_PORT
+        )
+      const llmServerConfigured =
+        !!(adminSettings.llmApiUrl && adminSettings.llmApiKey) ||
+        !!(process.env.LLM_API_URL && process.env.LLM_API_KEY)
+
+      res.locals.grammarSettings = {
+        llmAdminEnabled,
+        llmServerConfigured,
+        // Site-level availability (no user-specific BYO rows here).
+        llmAvailableForUser: llmAdminEnabled && llmServerConfigured,
+        ltAvailable,
+      }
+
+      next()
+    })
+  )
+
   webRouter.use(function (req, res, next) {
     const currentUser = SessionManager.getSessionUser(req.session)
     if (currentUser != null) {
@@ -424,6 +463,36 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
         Settings.labs?.enable && Settings.analytics?.mixpanel?.labsToken,
       llmAllowUserSettings: Settings.llm?.allowUserSettings ?? false,
       llmEnabled: Settings.llm?.enabled ?? false,
+      // overleaf-lab (grammar port): grammar-checking availability (site-level;
+      // per-user BYO is layered on by the editor extension at runtime).
+      llmAdminEnabled: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmAdminEnabled
+        : true,
+      llmServerConfigured: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmServerConfigured
+        : !!(process.env.LLM_API_URL && process.env.LLM_API_KEY),
+      llmAvailableForUser: res.locals.grammarSettings
+        ? res.locals.grammarSettings.llmAvailableForUser
+        : false,
+      languageToolAvailable: res.locals.grammarSettings
+        ? res.locals.grammarSettings.ltAvailable
+        : !!(
+            process.env.LANGUAGE_TOOL_URL ||
+            process.env.LANGUAGE_TOOL_HOST ||
+            process.env.LANGUAGE_TOOL_PORT
+          ),
+      // Single JSON blob consumed by getMeta('ol-grammarSettings') in the
+      // source-editor grammar extension + the user settings section.
+      grammarSettings: res.locals.grammarSettings || {
+        llmAdminEnabled: true,
+        llmServerConfigured: !!(process.env.LLM_API_URL && process.env.LLM_API_KEY),
+        llmAvailableForUser: !!(process.env.LLM_API_URL && process.env.LLM_API_KEY),
+        ltAvailable: !!(
+          process.env.LANGUAGE_TOOL_URL ||
+          process.env.LANGUAGE_TOOL_HOST ||
+          process.env.LANGUAGE_TOOL_PORT
+        ),
+      },
     }
     next()
   })

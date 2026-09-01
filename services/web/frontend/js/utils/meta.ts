@@ -74,6 +74,20 @@ import { FullHistoryFailure } from '@ol-types/history/projectHistory'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
+  // overleaf-lab (grammar port): site-level grammar-checking availability
+  // (LLM + LanguageTool), consumed by the source-editor grammar extension and
+  // the user settings section. Kept in sync with ExposedSettings.grammarSettings.
+  'ol-grammarSettings': {
+    llmAdminEnabled: boolean
+    llmServerConfigured: boolean
+    llmAvailableForUser: boolean
+    ltAvailable: boolean
+  }
+  // overleaf-lab (grammar port): admin availability force-offs + LT server URL
+  // (injected by modules/llm/app/views/llm-admin-settings.pug).
+  'ol-llmDisabledByAdmin': string
+  'ol-languageToolUrl': string
+  'ol-languageToolDisabledByAdmin': string
   'ol-addonPrices': Record<
     string,
     { annual: string; monthly: string; annualDividedByTwelve: string }

@@ -1065,6 +1065,12 @@ module.exports = {
         __dirname,
         '../modules/llm/frontend/js/extensions/llm-inline-completion'
       ),
+      // overleaf-lab (grammar port): CM6 grammar-checking extension (LanguageTool
+      // + optional LLM suggestions, per-user mode from /user/llm-settings/grammar).
+      Path.resolve(
+        __dirname,
+        '../modules/languagetool/frontend/js/grammar-extension'
+      ),
     ],
     sourceEditorVisualExtensions: [],
     sourceEditorComponents: [
@@ -1278,6 +1284,9 @@ module.exports = {
     'github-sync',
     'zotero',
     'llm',
+    // overleaf-lab (grammar port): imports the LLM module's admin-settings
+    // reader at module load, so it must be imported AFTER 'llm'.
+    'languagetool',
   ],
   viewIncludes: {},
 

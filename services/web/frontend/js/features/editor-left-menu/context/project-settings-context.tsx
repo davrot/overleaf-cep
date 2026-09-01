@@ -12,6 +12,9 @@ type ProjectSettingsSetterContextValue = {
   setSpellCheckLanguage: (
     spellCheckLanguage: ProjectSettings['spellCheckLanguage']
   ) => void
+  setGrammarPicky: (
+    grammarPicky: ProjectSettings['grammarPicky']
+  ) => Promise<void>
   setAutoComplete: (autoComplete: UserSettings['autoComplete']) => void
   setAutoPairDelimiters: (
     autoPairDelimiters: UserSettings['autoPairDelimiters']
@@ -64,6 +67,8 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
     setRootDocId,
     spellCheckLanguage,
     setSpellCheckLanguage,
+    grammarPicky,
+    setGrammarPicky,
   } = useProjectWideSettings()
 
   const {
@@ -125,6 +130,8 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setRootDocId,
       spellCheckLanguage,
       setSpellCheckLanguage,
+      grammarPicky,
+      setGrammarPicky,
       autoComplete,
       setAutoComplete,
       autoPairDelimiters,
@@ -179,6 +186,8 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setRootDocId,
       spellCheckLanguage,
       setSpellCheckLanguage,
+      grammarPicky,
+      setGrammarPicky,
       autoComplete,
       setAutoComplete,
       autoPairDelimiters,

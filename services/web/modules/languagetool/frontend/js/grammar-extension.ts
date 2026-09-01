@@ -74,6 +74,8 @@ interface GrammarSettingsResponse {
   effectiveMode: GrammarMode
   llmModel: string
   language: string
+  /** overleaf-lab (grammar port): user-blocked LanguageTool rule IDs. */
+  blockedRules?: string[]
   availability: GrammarSettings
   models: GrammarModel[]
 }
@@ -475,7 +477,9 @@ async function runLanguageToolCheck(
   annotations: LTAnnotation[],
   language: string,
   hunspellActive: boolean,
-  ac: AbortController
+  ac: AbortController,
+  picky: boolean,
+  blockedRules: ReadonlySet<string>
 ): Promise<GrammarDiagnostic[]> {
   const csrf = getMeta('ol-csrfToken') as string | undefined
   const response = await fetch('/languagetool/check', {
@@ -486,6 +490,9 @@ async function runLanguageToolCheck(
     },
     body: JSON.stringify({
       language,
+      // overleaf-lab (grammar port): per-project pickiness (default ON on the
+      // server when absent). Explicit value here so project settings win.
+      picky,
       data: { annotation: annotations },
     }),
     signal: ac.signal,
@@ -493,6 +500,15 @@ async function runLanguageToolCheck(
   if (!response.ok) return []
 
   const result: { matches: LTMatch[] } = await response.json()
+
+  // overleaf-lab (grammar port): drop user-blocked rules (free-text list from
+  // the user settings page; matched case-sensitively by rule.id, exactly as
+  // shown in this editor's tooltip).
+  if (blockedRules.size > 0) {
+    result.matches = (
+      result.matches || []
+    ).filter(m => !m.rule?.id || !blockedRules.has(m.rule.id))
+  }
 
   // Filter TYPOS when Hunspell is active (it handles typos itself).
   let matches = result.matches
@@ -615,6 +631,10 @@ function syncPlugin(
     let llmModel: string = ''
     let language: string = 'auto'
     let hunspellActive = !!options?.spelling?.spellCheckLanguage
+    // overleaf-lab (grammar port): per-project pickiness (default ON) and the
+    // per-user blocked-rules set (empty until hydration fills it).
+    let picky: boolean = options?.grammarPicky !== false
+    let blockedRules: ReadonlySet<string> = new Set<string>()
     let timer: ReturnType<typeof setTimeout> | null = null
     let controller: AbortController | null = null
     let hydrated = false
@@ -685,7 +705,7 @@ function syncPlugin(
       // coordination in 4c).
       const [ltDiags, llmDiags] = await Promise.all([
         wantsLT
-          ? runLanguageToolCheck(view, built.annotations, language, hunspellActive, ac)
+          ? runLanguageToolCheck(view, built.annotations, language, hunspellActive, ac, picky, blockedRules)
           : Promise.resolve([] as GrammarDiagnostic[]),
         wantsLLM
           ? runLLMCheck(view, built.spans, llmModel, ac)
@@ -713,6 +733,10 @@ function syncPlugin(
         })
         if (!response.ok) return
         const data: GrammarSettingsResponse = await response.json()
+        // overleaf-lab (grammar port): blocked rules (per-user).
+        if (Array.isArray(data.blockedRules)) {
+          blockedRules = new Set(data.blockedRules)
+        }
         applySettings(
           data.mode || 'default',
           data.llmModel || '',
@@ -781,6 +805,20 @@ function syncPlugin(
 
     window.addEventListener('grammar:settings-changed', handler)
 
+    // overleaf-lab (grammar port): project pickiness changed (server socket
+    // broadcast 'grammarPickyUpdated' → React dispatches this window event).
+    const pickyHandler = (event: Event) => {
+      const detail = (event as CustomEvent<{ picky?: boolean }>).detail
+      if (typeof detail?.picky !== 'boolean') return
+      if (detail.picky === picky) return
+      picky = detail.picky
+      if (hydrated && mode !== 'default') {
+        if (controller) controller.abort()
+        scheduleCheck(100)
+      }
+    }
+    window.addEventListener('grammar:picky-changed', pickyHandler)
+
     hydrate()
 
     // ── ViewPlugin callbacks ───────────────────────────────────────────
@@ -816,6 +854,7 @@ function syncPlugin(
 
       destroy() {
         window.removeEventListener('grammar:settings-changed', handler)
+        window.removeEventListener('grammar:picky-changed', pickyHandler)
         if (timer) clearTimeout(timer)
         if (controller) {
           controller.abort()

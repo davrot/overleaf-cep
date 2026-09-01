@@ -4,6 +4,10 @@ import getMeta from '@/utils/meta'
 import LLMSettingsSection from './llm-settings-section'
 import LLMComplianceSettings from './llm-compliance-settings' // overleaf-lab (2026-08-27): user-scoped review rubrics
 import LLMUsageMeter from './llm-usage-meter' // overleaf-lab (usage meter)
+// overleaf-lab (grammar port): grammar-checking settings (per-user mode/language/blocked
+// rules) + the per-project picky toggle.
+import GrammarSettingsSection from '../../../../languagetool/frontend/js/grammar-settings-section'
+import GrammarPickySetting from '@/features/settings/components/editor-settings/grammar-picky-setting'
 import OLRow from '@/shared/components/ol/ol-row'
 import OLCol from '@/shared/components/ol/ol-col'
 import OLPageContentCard from '@/shared/components/ol/ol-page-content-card'
@@ -34,6 +38,16 @@ export default function LLMSettingsPage() {
                                 </div>
                                 <div>
                                     <LLMSettingsSection initialSettings={user.llmSettings} />
+                                </div>
+                                {/* overleaf-lab (grammar port): grammar checking (LanguageTool/LLM) —
+                                    - per-user mode + language + blocked rules (below), plus the
+                                    per-project pickiness toggle (style-rule aggressiveness). */}
+                                <div className="ol-llm-admin-settings__mt-xl">
+                                    <h2>{t('grammar_checking', 'Grammar Checking')}</h2>
+                                    <GrammarPickySetting />
+                                    <div className="ol-llm-admin-settings__mt-xl">
+                                        <GrammarSettingsSection />
+                                    </div>
                                 </div>
                                 {/* overleaf-lab (2026-08-27, owner request): the compliance
                                     review rubrics are USER-SCOPED and configured here, in

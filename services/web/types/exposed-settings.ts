@@ -56,4 +56,18 @@ export type ExposedSettings = {
   zoteroEnabled: boolean
   enablePandocConversions: boolean
   llmAllowUserSettings?: boolean
+  llmEnabled?: boolean
+  // overleaf-lab (grammar port): site-level grammar-checking availability
+  // (ExpressLocals computes these per request from the LLM admin settings
+  // file + env; see modules/languagetool).
+  llmAdminEnabled?: boolean
+  llmServerConfigured?: boolean
+  llmAvailableForUser?: boolean
+  languageToolAvailable?: boolean
+  grammarSettings?: {
+    llmAdminEnabled: boolean
+    llmServerConfigured: boolean
+    llmAvailableForUser: boolean
+    ltAvailable: boolean
+  }
 }

@@ -10,6 +10,8 @@ export interface ProjectSettings {
   rootDocId: string
   spellCheckLanguage: string
   name: string
+  // overleaf-lab (grammar port): per-project LanguageTool pickiness (default ON).
+  grammarPicky?: boolean
 }
 
 type SaveUserSettings = Partial<
