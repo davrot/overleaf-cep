@@ -9,3 +9,14 @@ docker-compose.override.yml
 references/
 AGENTS.md
 todo.md
+
+# Dependencies (npm workspaces: hoisted to root + per-workspace)
+node_modules/
+
+# Local dev tool state (pi agent)
+.pi/
+
+# Yarn 4 local cache (enableGlobalCache=false)
+.yarn/
+!/.yarn/releases
+!/.yarn/patches

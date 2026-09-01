@@ -36,6 +36,9 @@ The present "extended" version of Overleaf CE includes:
 - Import file from external URL
 - Git integration
 - GitHub synchronization
+- AI Assistant: LLM-powered chat, inline completion, compliance review, and
+  grammar checking (LanguageTool and/or LLM, per-user settings + admin control
+  page, plus an optional self-hosted LanguageTool service)
 - Zotero integration
 - Reference Search and Pick Tool
 - Document Import (`.docx`, `.md`) and Export (`.docx`, `.md`, `.html`) 

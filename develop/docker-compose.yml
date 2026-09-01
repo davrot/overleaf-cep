@@ -152,6 +152,11 @@ services:
       - EMAIL_CONFIRMATION_DISABLED=true
       - NODE_ENV=development
       - OVERLEAF_ALLOW_PUBLIC_ACCESS=true
+      # LanguageTool (grammar check) — env fallback for the admin UI.
+      # The admin can also set a URL directly on the LLM admin settings
+      # page (Admin > LLM Settings). See services/web/modules/languagetool.
+      - LANGUAGE_TOOL_HOST=languagetool
+      - LANGUAGE_TOOL_PORT=8010
     command: ["node", "app.mjs"]
     volumes:
       - sharelatex-data:/var/lib/overleaf
@@ -169,6 +174,35 @@ services:
       - notifications
       - project-history
       - real-time
+      - languagetool
+
+  # LanguageTool server (grammar check). The web service proxies
+  # GET /languagetool/languages and POST /languagetool/check to it; the admin
+  # can also point at any other server via the LLM admin settings page
+  # (or LANGUAGE_TOOL_URL). `./ngrams` holds the LT language models
+  # (langtool_languageModel=/ngrams) — populate it for full rule quality.
+  languagetool:
+    image: erikvl87/languagetool:latest
+    container_name: languagetool
+    hostname: languagetool
+    restart: unless-stopped
+
+    environment:
+      - Java_Xms=512m
+      - Java_Xmx=2g
+      - langtool_languageModel=/ngrams
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider --timeout=5 http://localhost:8010/v2/languages 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    ports:
+      - "8010:8010"
+
+    volumes:
+      - ./ngrams:/ngrams:ro
 
   webpack:
     build:
