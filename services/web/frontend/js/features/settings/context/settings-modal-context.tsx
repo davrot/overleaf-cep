@@ -16,6 +16,8 @@ import PDFViewerSetting from '@/features/settings/components/editor-settings/pdf
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
 import SpellCheckSetting from '@/features/settings/components/editor-settings/spell-check-setting'
 import DictionarySetting from '@/features/settings/components/editor-settings/dictionary-setting'
+// overleaf-lab (grammar port): per-project LanguageTool pickiness toggle
+import GrammarPickySetting from '@/features/settings/components/editor-settings/grammar-picky-setting'
 import { useTranslation } from 'react-i18next'
 import BreadcrumbsSetting from '@/features/settings/components/editor-settings/breadcrumbs-setting'
 import NonBlinkingCursorSetting from '@/features/settings/components/editor-settings/non-blinking-cursor-setting'
@@ -190,6 +192,12 @@ export const SettingsModalProvider: FC<React.PropsWithChildren> = ({
               {
                 key: 'spellCheckLanguage',
                 component: <SpellCheckSetting />,
+              },
+              // overleaf-lab (grammar port): per-project LanguageTool pickiness
+              // (ON by default; turns off the aggressive style rules).
+              {
+                key: 'grammarPicky',
+                component: <GrammarPickySetting />,
               },
               {
                 key: 'dictionary-settings',

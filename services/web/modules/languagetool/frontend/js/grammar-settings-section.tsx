@@ -53,11 +53,12 @@ const emptyAvailability: GrammarSettings = {
 function announceChange(
     mode: GrammarMode,
     llmModel: string,
-    language: string
+    language: string,
+    blockedRules?: string[]
 ) {
     window.dispatchEvent(
         new CustomEvent('grammar:settings-changed', {
-            detail: { mode, llmModel, language },
+            detail: { mode, llmModel, language, blockedRules },
         })
     )
 }
@@ -213,7 +214,7 @@ export default function GrammarSettingsSection() {
             setSaved(true)
             // Tell the editor extension (if the user has an editor open in
             // another tab — and always, so the extension can resync).
-            announceChange(nextMode, llmModel, language)
+            announceChange(nextMode, llmModel, language, blockedRules)
             setTimeout(() => setSaved(false), 4000)
         } catch (err) {
             setSaveError(

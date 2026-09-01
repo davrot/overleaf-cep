@@ -502,12 +502,12 @@ async function runLanguageToolCheck(
   const result: { matches: LTMatch[] } = await response.json()
 
   // overleaf-lab (grammar port): drop user-blocked rules (free-text list from
-  // the user settings page; matched case-sensitively by rule.id, exactly as
-  // shown in this editor's tooltip).
+  // the user settings page; matched by rule.id, case-insensitively — the
+  // tooltip shows the exact id, but user-typed entries may differ in case).
   if (blockedRules.size > 0) {
     result.matches = (
       result.matches || []
-    ).filter(m => !m.rule?.id || !blockedRules.has(m.rule.id))
+    ).filter(m => !m.rule?.id || !blockedRules.has(String(m.rule.id).toLowerCase()))
   }
 
   // Filter TYPOS when Hunspell is active (it handles typos itself).
@@ -735,7 +735,10 @@ function syncPlugin(
         const data: GrammarSettingsResponse = await response.json()
         // overleaf-lab (grammar port): blocked rules (per-user).
         if (Array.isArray(data.blockedRules)) {
-          blockedRules = new Set(data.blockedRules)
+          // Store lowercase so the per-match filter can compare case-insensitively.
+          blockedRules = new Set(
+            data.blockedRules.map(r => String(r).trim().toLowerCase()).filter(Boolean)
+          )
         }
         applySettings(
           data.mode || 'default',
@@ -779,6 +782,7 @@ function syncPlugin(
           mode?: GrammarMode
           llmModel?: string
           language?: string
+          blockedRules?: string[]
         }>
       ).detail
 
@@ -787,10 +791,28 @@ function syncPlugin(
       const nextLanguage = detail.language ?? language
       const effectiveMode = degradeGrammarMode(nextMode, available)
 
+      // overleaf-lab (grammar port): the settings UI may have changed the
+      // blocked-rules list — adopt it (it is server-side state shared with
+      // other tabs).
+      let blockedChanged = false
+      if (Array.isArray(detail.blockedRules)) {
+        const next = new Set(
+          detail.blockedRules.map(r => String(r).trim().toLowerCase()).filter(Boolean)
+        )
+        if (
+          next.size !== blockedRules.size ||
+          [...next].some(r => !blockedRules.has(r))
+        ) {
+          blockedRules = next
+          blockedChanged = true
+        }
+      }
+
       if (
         effectiveMode === mode &&
         nextModel === llmModel &&
-        nextLanguage === language
+        nextLanguage === language &&
+        !blockedChanged
       ) {
         return
       }
