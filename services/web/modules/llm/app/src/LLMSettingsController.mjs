@@ -31,7 +31,8 @@ import { User } from '../../../../app/src/models/User.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { encryptSecret, normalizeStoredSecret, storedToPlaintext } from './LLMCrypto.mjs'
 import { normalizeProviderSpec, chatText, listModels, detectProviderType, PROVIDER_TYPES, assertPublicLlmBaseUrl } from './LLMClient.mjs'
-import { sanitizeComplianceRubrics, validateComplianceRubrics, getComplianceRubrics, getLLMFeatureFlags } from './LLMAdminController.mjs'
+import { sanitizeComplianceRubrics, validateComplianceRubrics, getComplianceRubrics, getLLMFeatureFlags, readAdminSettings } from './LLMAdminController.mjs'
+import { GRAMMAR_MODES, degradeGrammarMode } from './LLMGrammar.mjs' // overleaf-lab (grammar port)
 import OError from '@overleaf/o-error'
 
 // overleaf-lab: hard cap on rows per user - keeps the editor model list and
@@ -578,6 +579,166 @@ async function userUsageSummary(req, res) {
     return res.json({ ok: false, error: 'unavailable' })
 }
 
+/*
+ * overleaf-lab (grammar port): per-user grammar-checking preferences
+ * (LLM + LanguageTool). The mode is one of GRAMMAR_MODES and is validated
+ * against live availability on every read/save: a stored mode degrades to
+ * the closest feasible engine, it is never auto-upgraded (mirrored on the
+ * client in modules/languagetool/frontend/js/utils/grammar-helpers.ts).
+ */
+
+// Availability of each grammar engine for `userId` (admin flags + service
+// configuration + the user's BYO rows). Mirrors the ExpressLocals flags but
+// also accounts for personal BYO rows, which only exist per user.
+async function grammarAvailability(userId) {
+    const admin = readAdminSettings()
+    const llmAdminEnabled = admin.llmDisabledByAdmin !== true
+    const ltAvailable =
+        admin.languageToolDisabledByAdmin !== true &&
+        !!(
+            admin.languageToolUrl ||
+            process.env.LANGUAGE_TOOL_URL ||
+            process.env.LANGUAGE_TOOL_HOST ||
+            process.env.LANGUAGE_TOOL_PORT
+        )
+    const llmServerConfigured =
+        !!(admin.llmApiUrl && admin.llmApiKey) ||
+        !!(process.env.LLM_API_URL && process.env.LLM_API_KEY)
+
+    // Personal BYO lane: at least one enabled provider row with models.
+    let llmPersonalComplete = false
+    if (userId) {
+        try {
+            const rows = await loadProviders(userId)
+            llmPersonalComplete = rows.some(
+                r => r.enabled !== false && Array.isArray(r.models) && r.models.length > 0
+            )
+        } catch (err) {
+            logger.warn({ userId, err: err?.message }, '[LLM] grammarAvailability: BYO rows failed')
+        }
+    }
+
+    return {
+        llmAdminEnabled,
+        ltAvailable,
+        llmServerConfigured,
+        llmAvailableForUser: llmAdminEnabled && (llmServerConfigured || llmPersonalComplete),
+        llmPersonalComplete,
+    }
+}
+
+async function getGrammarSettings(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+
+    let user = null
+    try {
+        user = await User.findOne({ _id: userId }).lean()
+    } catch (err) {
+        logger.warn({ userId, err: err?.message }, '[LLM] Error loading grammar settings')
+    }
+    const stored = (user && user.grammar && typeof user.grammar === 'object') ? user.grammar : {}
+    const mode = typeof stored.mode === 'string' && stored.mode ? stored.mode : 'default'
+    const llmModel = typeof stored.llmModel === 'string' ? stored.llmModel : ''
+    const language = typeof stored.language === 'string' && stored.language ? stored.language : 'auto'
+
+    const available = await grammarAvailability(userId)
+    const effectiveMode = degradeGrammarMode(mode, available)
+
+    // Model picker: site models (when the site lane is configured) plus the
+    // user's enabled BYO rows, namespaced exactly like the chat picker
+    // (parseModelRef / resolveLane understand both forms).
+    const models = []
+    if (available.llmAdminEnabled) {
+        if (available.llmServerConfigured) {
+            const admin = readAdminSettings()
+            const ids = (Array.isArray(admin.allowedModels) && admin.allowedModels.length)
+                ? admin.allowedModels
+                : (process.env.LLM_AVAILABLE_MODELS || process.env.LLM_MODEL_NAME || '')
+                      .split(',').map(m => m.trim()).filter(Boolean)
+            for (const id of ids) {
+                if (id) models.push({ id, name: id, isPersonal: false })
+            }
+        }
+        if (available.llmPersonalComplete) {
+            try {
+                const rows = await loadProviders(userId)
+                for (const row of rows) {
+                    if (row.enabled === false) continue
+                    for (const modelId of (Array.isArray(row.models) ? row.models : [])) {
+                        models.push({
+                            id: `u:${row.id}:${modelId}`,
+                            name: `${row.name || 'BYO'} — ${modelId}`,
+                            isPersonal: true
+                        })
+                    }
+                }
+            } catch (err) {
+                logger.warn({ userId, err: err?.message }, '[LLM] getGrammarSettings: BYO model list failed')
+            }
+        }
+    }
+
+    res.json({
+        mode,
+        effectiveMode,
+        llmModel,
+        language,
+        availability: available,
+        models
+    })
+}
+
+async function saveGrammarSettings(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const body = req.body || {}
+    const { mode, llmModel, language } = body
+
+    if (mode !== undefined && mode !== null && !GRAMMAR_MODES.includes(mode)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid grammar mode'
+        })
+    }
+
+    let user = null
+    try {
+        user = await User.findOne({ _id: userId }).lean()
+    } catch (err) {
+        logger.warn({ userId, err: err?.message }, '[LLM] Error loading grammar settings')
+    }
+    const stored = (user && user.grammar && typeof user.grammar === 'object') ? user.grammar : {}
+    const nextMode = (typeof mode === 'string' && mode) || (typeof stored.mode === 'string' && stored.mode) || 'default'
+
+    const available = await grammarAvailability(userId)
+    const effectiveMode = degradeGrammarMode(nextMode, available)
+
+    // Always write all three keys (the subdocument is strict; keep the
+    // stored shape stable for readers that select individual fields).
+    const grammar = {
+        mode: nextMode,
+        llmModel: typeof llmModel === 'string' ? llmModel : (stored.llmModel || ''),
+        language: (typeof language === 'string' && language) || (stored.language || 'auto')
+    }
+
+    try {
+        await User.updateOne({ _id: userId }, { $set: { grammar } })
+    } catch (error) {
+        logger.error({ userId, err: error }, '[LLM] Error saving grammar settings')
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to save grammar settings'
+        })
+    }
+
+    res.json({
+        success: true,
+        mode: grammar.mode,
+        effectiveMode,
+        degraded: effectiveMode !== grammar.mode,
+        availability: available
+    })
+}
+
 export default {
     isUserSettingsAllowed,
     requireUserSettingsAllowed,
@@ -595,5 +756,11 @@ export default {
     saveSelectedModel: expressify(saveSelectedModel),
     // overleaf-lab (2026-08-27): user-scoped compliance review rubrics
     getUserCompliance: expressify(getUserCompliance),
-    saveUserCompliance: expressify(saveUserCompliance)
+    saveUserCompliance: expressify(saveUserCompliance),
+    // overleaf-lab (grammar port): per-user grammar mode/model/language
+    getGrammarSettings: expressify(getGrammarSettings),
+    saveGrammarSettings: expressify(saveGrammarSettings)
 }
+
+// overleaf-lab (grammar port): re-export for tests and other modules.
+export { GRAMMAR_MODES, degradeGrammarMode }

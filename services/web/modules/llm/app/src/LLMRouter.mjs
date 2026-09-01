@@ -74,6 +74,16 @@ export default {
         )
         logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/completion')
 
+        // overleaf-lab (grammar port): LLM grammar check on the editor's
+        // prose spans (modules/languagetool extension). Project-scoped like
+        // chat/completion (auth + audit + rate limiting).
+        webRouter.post(
+            '/project/:Project_id/llm/grammar',
+            AuthorizationMiddleware.ensureUserCanReadProject,
+            LLMChatController.grammar
+        )
+        logger.debug({}, '[LLM] Route registered: POST /project/:id/llm/grammar')
+
         // overleaf-lab: whole-document generators (title/abstract/keywords)
         webRouter.post(
             '/project/:Project_id/llm/generate',
@@ -202,6 +212,23 @@ export default {
             LLMSettingsController.userUsageSummary
         )
         logger.debug({}, '[LLM] Route registered: GET /user/llm-usage')
+
+        // overleaf-lab (grammar port): per-user grammar-checking preferences
+        // (LLM + LanguageTool modes). Literal 'grammar' path — no ':id'
+        // sibling exists, but keep it in the literal-first block regardless.
+        webRouter.get(
+            '/user/llm-settings/grammar',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.getGrammarSettings
+        )
+        logger.debug({}, '[LLM] Route registered: GET /user/llm-settings/grammar')
+
+        webRouter.post(
+            '/user/llm-settings/grammar',
+            AuthenticationController.requireLogin(),
+            LLMSettingsController.saveGrammarSettings
+        )
+        logger.debug({}, '[LLM] Route registered: POST /user/llm-settings/grammar')
 
         // overleaf-lab: /user/llm-settings is the dedicated BYO settings page
         // (Account menu 'AI Settings' and the Account Settings card link here).

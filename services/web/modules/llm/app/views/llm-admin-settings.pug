@@ -12,6 +12,10 @@ block append meta
     meta(name='ol-llmApiType' data-type='string' content=llmApiType)
     meta(name='ol-hasLlmApiKey' data-type='string' content=hasLlmApiKey ? 'true' : 'false')
     meta(name='ol-allowedModels' data-type='string' content=(allowedModels || []).join(','))
+    //- overleaf-lab (grammar port): global force-off + LanguageTool service
+    meta(name='ol-llmDisabledByAdmin' data-type='string' content=llmDisabledByAdmin ? 'true' : 'false')
+    meta(name='ol-languageToolUrl' data-type='string' content=languageToolUrl)
+    meta(name='ol-languageToolDisabledByAdmin' data-type='string' content=languageToolDisabledByAdmin ? 'true' : 'false')
     meta(name='ol-knownModels' data-type='string' content=(knownModels || []).join(','))
     meta(name='ol-completionModel' data-type='string' content=completionModel)
     meta(name='ol-llmApiUrlFromEnv' data-type='string' content=llmApiUrlFromEnv ? 'true' : 'false')

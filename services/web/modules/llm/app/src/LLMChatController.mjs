@@ -20,7 +20,8 @@ import { expressify } from '@overleaf/promise-utils'
 import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
 import Settings from '@overleaf/settings'
 import ProjectEntityHandler from '../../../../app/src/Features/Project/ProjectEntityHandler.mjs'
-import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts } from './LLMAdminController.mjs'
+import { getSystemPrompt, getAdminLLMSettings, getLLMFeatureFlags, getLLMPrompts, readAdminSettings } from './LLMAdminController.mjs'
+import { buildGrammarMessages, parseGrammarSuggestions, sanitizeGrammarSpans } from './LLMGrammar.mjs' // overleaf-lab (grammar port)
 import { decryptSecret } from './LLMCrypto.mjs'
 import { chatText, chatObject, normalizeProviderSpec, detectProviderType, assertNonEmpty } from './LLMClient.mjs'
 import { isUserSettingsAllowed, loadProviders } from './LLMSettingsController.mjs'
@@ -50,6 +51,10 @@ async function getModels(req, res) {
     const projectId = req.params.Project_id
 
     if (Settings.llm && !Settings.llm.enabled) {
+        return res.json({ models: [], userRows: [] })
+    }
+    // overleaf-lab (grammar port): admin force-off hides the model list.
+    if (readAdminSettings().llmDisabledByAdmin === true) {
         return res.json({ models: [], userRows: [] })
     }
     const flags = await getLLMFeatureFlags()
@@ -166,6 +171,15 @@ async function resolveUserLane(userId, ref) {
  * always still wins.
  */
 async function resolveLane(userId, modelRef) {
+    // overleaf-lab (grammar port): admin force-off is enforced at the shared
+    // lane-resolution choke point, so chat / completion / generators /
+    // compile-fix / review / grammar ALL fall over with one switch.
+    if (readAdminSettings().llmDisabledByAdmin === true) {
+        throw Object.assign(
+            new Error('LLM service is disabled by the administrator'),
+            { code: 'llm-disabled' }
+        )
+    }
     if (!modelRef.model) {
         const profile = await User.findOne({ _id: userId }).lean().catch(() => null)
         const profileRef = typeof profile?.llmSelectedModel === 'string' ? profile.llmSelectedModel.trim() : ''
@@ -865,6 +879,94 @@ async function generateDocument(req, res) {
     }
 }
 
+/*
+ * overleaf-lab (grammar port): POST /project/:Project_id/llm/grammar
+ * LLM grammar check on plain-text spans extracted from the LaTeX source by
+ * the editor extension (modules/languagetool).
+ *
+ * Body: { spans: [{ spanId, text }], model? }
+ *   - spans: prose-only regions (never markup, so we never pay for LaTeX).
+ *   - model: '' (shared selection chain), a site model id, a
+ *     `u:<rowId>:<model>` BYO ref, or a legacy `personal-<model>`.
+ * Response: { success: true, suggestions: [{ spanId, start, end, message,
+ * suggestion }] } where start/end are offsets WITHIN the span text.
+ *
+ * Cost guardrails (the check is AUTOMATIC — 2 s debounce in the editor):
+ * span count / total char caps (sanitizeGrammarSpans), the shared per-user
+ * budget (guardLLMCall), and usage metering via usageMeta.
+ */
+async function grammar(req, res) {
+    const projectId = req.params.Project_id
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { spans, model: modelRefString } = req.body || {}
+
+    if (Settings.llm && !Settings.llm.enabled) {
+        return res.status(503).json({
+            success: false,
+            error: 'llm-disabled',
+            message: 'LLM service is disabled'
+        })
+    }
+
+    const clean = sanitizeGrammarSpans(spans)
+    if (clean === null) {
+        return res.status(400).json({
+            success: false,
+            error: 'llm-invalid',
+            message: 'spans must be an array'
+        })
+    }
+    if (clean.spans.length === 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'llm-invalid',
+            message: 'spans must be a non-empty array'
+        })
+    }
+
+    // overleaf-lab (F4): the rate gate also makes the AUTOMATIC grammar check
+    // safe while typing; a 429 simply means "no suggestions this round".
+    let budget
+    try {
+        budget = await guardLLMCall(userId)
+    } catch (err) {
+        logger.debug({ userId, code: err?.code }, '[LLM] grammar: budget gate (silent)')
+        return res.json({ success: true, suggestions: [] })
+    }
+
+    let resolved
+    try {
+        resolved = await resolveLane(userId, parseModelRef(modelRefString))
+    } catch (err) {
+        return sendError(res, err, 400)
+    }
+    const { spec, model, lane } = resolved
+
+    const started = Date.now()
+    logger.info(
+        { projectId, lane, model, spans: clean.spans.length, chars: clean.totalChars, truncated: clean.truncated },
+        '[LLM] grammar: sending request'
+    )
+    try {
+        const messages = buildGrammarMessages(clean.spans)
+        const { text, usage } = await chatText(spec, messages, {
+            maxOutputTokens: Math.min(4096, Math.max(512, Math.ceil(clean.totalChars / 2))),
+            temperature: 0,
+            timeoutMs: 120000,
+            usageMeta: { userId, action: 'grammar', lane, projectId } // overleaf-lab (usage meter)
+        })
+        const suggestions = parseGrammarSuggestions(text, clean.spans)
+        budget.record(usage?.outputTokens)
+        logger.info(
+            { projectId, lane, model, duration: `${Date.now() - started}ms`, suggestionCount: suggestions.length },
+            '[LLM] grammar: ok'
+        )
+        res.json({ success: true, suggestions })
+    } catch (err) {
+        return sendError(res, err, 502)
+    }
+}
+
 export default {
     chat: expressify(chat),
     getModels: expressify(getModels),
@@ -873,5 +975,6 @@ export default {
     getSourceContext: expressify(getSourceContext),
     getPrompts: expressify(getPrompts),
     compileFix: expressify(compileFix),
-    generateDocument: expressify(generateDocument)
+    generateDocument: expressify(generateDocument),
+    grammar: expressify(grammar)
 }

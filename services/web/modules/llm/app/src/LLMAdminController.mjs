@@ -54,6 +54,12 @@ function writeAdminSettings(data) {
   }
 }
 
+// overleaf-lab (grammar port): exported so the languagetool module
+// (modules/languagetool/app/src/adminConfig.mjs) and the per-user grammar
+// endpoints can share the SAME admin settings file — single source of truth
+// for llmDisabledByAdmin / languageToolUrl / languageToolDisabledByAdmin.
+export { ADMIN_SETTINGS_PATH, readAdminSettings, writeAdminSettings }
+
 // overleaf-lab: the shared LLM backend can be configured either via this admin
 // settings JSON file OR via environment variables (LLM_API_URL / LLM_API_KEY /
 // LLM_MODEL_NAME). The chat already falls back to env; expose the same fallback
@@ -108,6 +114,11 @@ async function buildDisplaySettings() {
     chatEnabled: settings.chatEnabled !== false,
     completionEnabled: settings.completionEnabled !== false,
     reviewEnabled: settings.reviewEnabled !== false,
+    // overleaf-lab (grammar port): global force-off + LanguageTool service
+    // settings (the same admin page governs chat AND the grammar engines).
+    llmDisabledByAdmin: settings.llmDisabledByAdmin === true,
+    languageToolUrl: settings.languageToolUrl || '',
+    languageToolDisabledByAdmin: settings.languageToolDisabledByAdmin === true,
     // overleaf-lab: editable prompt overrides. Show the EFFECTIVE value (the
     // admin override when set, else the shipped default) plus the pristine
     // defaults so the admin page can offer a reset-to-default button.
@@ -160,6 +171,13 @@ const llmSettingsSchema = z.object({
   completionEnabled: z.boolean().optional(),
   reviewEnabled: z.boolean().optional(),
 
+  // overleaf-lab (grammar port): global force-off for every LLM lane, and the
+  // LanguageTool service (URL + force-off). Absent fields keep the existing
+  // value; a fresh/missing file means NOT disabled.
+  llmDisabledByAdmin: z.boolean().optional(),
+  languageToolUrl: z.string().max(2048).optional(),
+  languageToolDisabledByAdmin: z.boolean().optional(),
+
   // overleaf-lab: editable prompt overrides. Each scalar prompt, when provided,
   // must be a string capped at 8000 chars. An empty string is allowed and means
   // "fall back to default" (buildDisplaySettings/getLLMPrompts use `|| DEFAULT`).
@@ -205,6 +223,9 @@ async function saveAdminSettings(req, res) {
     chatEnabled,
     completionEnabled,
     reviewEnabled,
+    llmDisabledByAdmin,
+    languageToolUrl,
+    languageToolDisabledByAdmin,
     // overleaf-lab: editable prompt overrides.
     askAiSystemPrompt,
     errorPrompt,
@@ -299,6 +320,11 @@ async function saveAdminSettings(req, res) {
     chatEnabled: typeof chatEnabled === 'boolean' ? chatEnabled : (existing.chatEnabled !== false),
     completionEnabled: typeof completionEnabled === 'boolean' ? completionEnabled : (existing.completionEnabled !== false),
     reviewEnabled: typeof reviewEnabled === 'boolean' ? reviewEnabled : (existing.reviewEnabled !== false),
+    // overleaf-lab (grammar port): omitted field keeps the existing value;
+    // absent in a fresh file means NOT disabled (default false).
+    llmDisabledByAdmin: typeof llmDisabledByAdmin === 'boolean' ? llmDisabledByAdmin : (existing.llmDisabledByAdmin === true),
+    languageToolUrl: typeof languageToolUrl === 'string' ? languageToolUrl : (existing.languageToolUrl || ''),
+    languageToolDisabledByAdmin: typeof languageToolDisabledByAdmin === 'boolean' ? languageToolDisabledByAdmin : (existing.languageToolDisabledByAdmin === true),
     // overleaf-lab: editable prompt overrides. An empty string is stored as-is
     // and later falls back to the default via `|| DEFAULT`.
     askAiSystemPrompt: typeof askAiSystemPrompt === 'string' ? askAiSystemPrompt : (existing.askAiSystemPrompt || ''),
@@ -321,6 +347,9 @@ async function saveAdminSettings(req, res) {
     hasLlmApiKey: !!updatedSettings.llmApiKey,
     allowedModels: updatedSettings.allowedModels?.length || 0,
     knownModels: updatedSettings.knownModels?.length || 0,
+    llmDisabledByAdmin: updatedSettings.llmDisabledByAdmin,
+    hasLanguageToolUrl: !!updatedSettings.languageToolUrl,
+    languageToolDisabledByAdmin: updatedSettings.languageToolDisabledByAdmin,
   }, '[LLM] Admin settings updated')
 
   res.json({ success: true })
