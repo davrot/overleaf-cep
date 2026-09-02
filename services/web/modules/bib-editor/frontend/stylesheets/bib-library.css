@@ -477,7 +477,13 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden scroll;
+  /* R12-10 (2026-08-31, user re-report): the parent must NOT force a
+     permanent scrollbar (the old `overflow: hidden scroll` always showed
+     one, even when the list fit). The scroller is the child
+     .bibtex-entry-list-body (overflow-y: auto, thin, transparent until
+     hover); the parent only clips. The scrollbar appears on the body
+     only when the entries actually overflow; hidden otherwise. */
+  overflow: clip;
   transition: margin-right 0.3s ease; /* D4: animated by the :has shift */
 }
 

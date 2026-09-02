@@ -219,6 +219,22 @@ export const SECTION_KNOWN_KEYS = {
   ],
   'linked-file-types': ['enabledTypes'],
   pandoc: ['enabled', 'image'],
+  misc: [
+    'appName',
+    'navHidePoweredBy',
+    'robotsNoindex',
+    'allowPublicAccess',
+    'allowAnonymousReadWriteSharing',
+    'disableLinkSharing',
+    'disableChat',
+    'projectHardDeletionDelayDays',
+    'userHardDeletionDelayDays',
+    'historyRestore',
+    'enablePdfCaching',
+    'maxUploadSizeMiB',
+    'maxEntitiesPerProject',
+    'defaultLatexCompiler',
+  ],
 }
 
 export function cleanSectionInput (name, value) {
@@ -342,6 +358,19 @@ function boolFromEnv(value) {
   if (value === 'true') return true
   if (value === 'false') return false
   return undefined
+}
+
+// Deletion-delay env vars are milliseconds; the admin UI uses days.
+function delayDaysFromMs(env, name, defaultDays) {
+  const raw = env[name]
+  if (raw) {
+    const ms = parseInt(raw, 10)
+    if (Number.isFinite(ms) && ms > 0) {
+      const days = Math.round(ms / (24 * 60 * 60 * 1000))
+      if (days > 0) return days
+    }
+  }
+  return defaultDays
 }
 
 
@@ -517,6 +546,31 @@ function envSeeds(env, coreSettings, stored) {
     pandoc: {
       enabled: boolFromEnv(env.ENABLE_PANDOC_CONVERSIONS) === true,
       image: env.PANDOC_IMAGE || 'pandoc-ol:3.10.0.0',
+    },
+    // Miscellaneous (2026-09-01): remaining toolkit/env differences surfaced
+    // in /admin/site (see TOOLKIT_ENV_GAP.md). Seeds mirror settings.defaults.
+    misc: {
+      appName: env.APP_NAME || 'Overleaf (Community Edition)',
+      navHidePoweredBy: boolFromEnv(env.NAV_HIDE_POWERED_BY) ?? false,
+      robotsNoindex: boolFromEnv(env.ROBOTS_NOINDEX) ?? false,
+      allowPublicAccess: boolFromEnv(env.OVERLEAF_ALLOW_PUBLIC_ACCESS) ?? false,
+      allowAnonymousReadWriteSharing:
+        boolFromEnv(env.OVERLEAF_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING) ?? false,
+      disableLinkSharing: boolFromEnv(env.OVERLEAF_DISABLE_LINK_SHARING) ?? false,
+      disableChat: boolFromEnv(env.OVERLEAF_DISABLE_CHAT) ?? false,
+      // Deletion delays are MS in env / settings; surfaced to the admin in
+      // DAYS for usability.
+      projectHardDeletionDelayDays:
+        delayDaysFromMs(env, 'OVERLEAF_PROJECT_HARD_DELETION_DELAY', 90),
+      userHardDeletionDelayDays:
+        delayDaysFromMs(env, 'OVERLEAF_USER_HARD_DELETION_DELAY', 90),
+      historyRestore: boolFromEnv(env.OVERLEAF_HISTORY_RESTORE) ?? false,
+      enablePdfCaching: boolFromEnv(env.ENABLE_PDF_CACHING) ?? true,
+      maxUploadSizeMiB: env.MAX_UPLOAD_SIZE
+        ? (parseInt(env.MAX_UPLOAD_SIZE, 10) || 50) : 50,
+      maxEntitiesPerProject: env.MAX_ENTITIES_PER_PROJECT
+        ? (parseInt(env.MAX_ENTITIES_PER_PROJECT, 10) || 2000) : 2000,
+      defaultLatexCompiler: env.DEFAULT_LATEX_COMPILER || 'pdflatex',
     },
   }
 }
@@ -983,6 +1037,50 @@ export function validatePandocSection(value) {
   return errors
 }
 
+export function validateMiscSection(value) {
+  const errors = []
+  if (typeof value !== 'object' || value === null) return ['body must be a JSON object']
+  const booleans = [
+    'navHidePoweredBy',
+    'robotsNoindex',
+    'allowPublicAccess',
+    'allowAnonymousReadWriteSharing',
+    'disableLinkSharing',
+    'disableChat',
+    'historyRestore',
+    'enablePdfCaching',
+  ]
+  for (const f of booleans) {
+    if (value[f] !== undefined && typeof value[f] !== 'boolean') {
+      errors.push(`${f} must be a boolean`)
+    }
+  }
+  const intMin = {
+    projectHardDeletionDelayDays: 1,
+    userHardDeletionDelayDays: 1,
+    maxUploadSizeMiB: 1,
+    maxEntitiesPerProject: 1,
+  }
+  for (const f of Object.keys(intMin)) {
+    if (value[f] !== undefined &&
+      (!Number.isInteger(value[f]) || value[f] < intMin[f])) {
+      errors.push(`${f} must be an integer >= ${intMin[f]}`)
+    }
+  }
+  if (value.appName !== undefined &&
+      (typeof value.appName !== 'string' ||
+       value.appName.length === 0 || value.appName.length > 64)) {
+    errors.push('appName must be a non-empty string (<=64 chars)')
+  }
+  if (value.defaultLatexCompiler !== undefined &&
+      (typeof value.defaultLatexCompiler !== 'string' ||
+       value.defaultLatexCompiler.length === 0 ||
+       !/^[a-z0-9_-]+$/i.test(value.defaultLatexCompiler))) {
+    errors.push('defaultLatexCompiler must be a non-empty compiler name (e.g. pdflatex, lualatexmk)')
+  }
+  return errors
+}
+
 export const SECTION_VALIDATORS = {
   templates: validateTemplatesSection,
   zotero: validateZoteroSection,
@@ -997,4 +1095,5 @@ export const SECTION_VALIDATORS = {
   email: validateEmailSection,
   'linked-file-types': validateLinkedFileTypesSection,
   pandoc: validatePandocSection,
+  misc: validateMiscSection,
 }

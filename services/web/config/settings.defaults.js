@@ -1104,7 +1104,16 @@ module.exports = {
     sourceEditorToolbarStartButtons: [],
     sourceEditorToolbarButtonGroups: [],
     sourceEditorToolbarComponents: [],
-    sourceEditorToolbarEndButtons: [],
+    sourceEditorToolbarEndButtons: [
+      // tex-autoformatter module (ported 2026-08-31 from CE+ autoformat,
+      // commit e5edadaa): toolbar end button that formats the current
+      // document via POST /api/format-tex (tex-fmt for TeX, bibtex-tidy
+      // for .bib).
+      Path.resolve(
+        __dirname,
+        '../modules/tex-autoformatter/frontend/components/autoformat-button'
+      ),
+    ],
     rootContextProviders: [
       Path.resolve(
         __dirname,
@@ -1256,7 +1265,9 @@ module.exports = {
     'zotero',
     'orcid-picker', // Import-from-ORCID picker (P2, BIB_ORCID_TEMPLATES_PLAN.md)
     'bib-editor',
+    'tex-autoformatter', // autoformat toolbar button (N-C port, 2026-08-31)
     'page-shells', // UI-R10 W8: /admin/panel + /user/mysettings shells importing the upstream pages
+    'instance-stats', // N-D (2026-09-01): /admin/instance-stats dashboards (gated by settings.instanceStats.enabled)
     'ce-ui', // module hygiene (R11-12): fork CSS/components outside upstream directories (see modules/ce-ui)
   ],
   viewIncludes: {},
@@ -1282,6 +1293,15 @@ module.exports = {
 
   managedUsers: {
     enabled: false,
+  },
+
+  // N-D (2026-09-01): admin instance-statistics dashboards
+  // (/admin/instance-stats). The module router self-disables when
+  // `enabled` is false; retention prunes InstanceStat docs older than
+  // `retentionDays` on every collector run (see modules/instance-stats).
+  instanceStats: {
+    enabled: process.env.INSTANCE_STATS_ENABLED !== 'false',
+    retentionDays: intFromEnv('INSTANCE_STATS_RETENTION_DAYS', 365),
   },
 
   enablePandocConversions: process.env.ENABLE_PANDOC_CONVERSIONS === 'true',

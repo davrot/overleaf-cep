@@ -26,13 +26,21 @@ import ThemeToggle from '@/features/project-list/components/sidebar/theme-toggle
  * (the upstream account-settings app, themed) — from the page-shells
  * module. The original upstream URLs keep working.
  */
-function ManageMenu({ canManageProjects }: { canManageProjects: boolean }) {
+function ManageMenu({
+  canManageProjects,
+  canDisplayInstanceStats = false,
+}: { canManageProjects: boolean; canDisplayInstanceStats?: boolean }) {
   const [open, setOpen] = useState(false)
   const items = [
     { href: '/admin/panel', label: 'Manage Site' },
     { href: '/admin/site', label: 'Manage Extensions' },
     { href: '/admin/user', label: 'Manage Users' },
   ]
+  // N-D (2026-09-01): instance-statistics dashboards — first item of the
+  // Manage submenu (requirement: above "Manage Site").
+  if (canDisplayInstanceStats) {
+    items.unshift({ href: '/admin/instance-stats', label: 'Dashboard' })
+  }
   if (canManageProjects) items.push({ href: '/admin/project', label: 'Manage Projects' })
   return (
     <>
@@ -142,7 +150,13 @@ export function AccountMenuItems({
         <>
           <NavDropdownDivider />
           {(nav.canDisplayAdminMenu || nav.canDisplayProjectUrlLookup) ? (
-            <ManageMenu canManageProjects={Boolean(nav.canDisplayProjectUrlLookup)} />
+            <ManageMenu
+              canManageProjects={Boolean(nav.canDisplayProjectUrlLookup)}
+              canDisplayInstanceStats={Boolean(
+                (nav as { canDisplayInstanceStats?: boolean })
+                  .canDisplayInstanceStats
+              )}
+            />
           ) : null}
           {nav.canDisplayAdminRedirect && nav.adminUrl ? (
             <NavDropdownLinkItem href={nav.adminUrl}>

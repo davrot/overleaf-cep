@@ -605,3 +605,96 @@ export function PandocTab ({ initial }: { initial: SectionValue }) {
     </Card>
   )
 }
+
+// ------------------------------------------------------------------------
+// Miscellaneous (2026-09-01) — the remaining toolkit/env differences
+// (branding / access / lifecycle / limits / compile) consolidated into one
+// tab. See TOOLKIT_ENV_GAP.md. API section id: "misc".
+// ------------------------------------------------------------------------
+export function MiscTab ({ initial }: { initial: SectionValue }) {
+  const { t } = useTranslation()
+  const { flash, save } = useSave('misc')
+
+  // Branding
+  const [appName, setAppName] = useState(String(initial.appName ?? ''))
+  const [hidePoweredBy, setHidePoweredBy] = useState(Boolean(initial.navHidePoweredBy))
+  const [noindex, setNoindex] = useState(Boolean(initial.robotsNoindex))
+  // Access & sharing
+  const [allowPublic, setAllowPublic] = useState(Boolean(initial.allowPublicAccess))
+  const [anonRW, setAnonRW] = useState(Boolean(initial.allowAnonymousReadWriteSharing))
+  const [disableLink, setDisableLink] = useState(Boolean(initial.disableLinkSharing))
+  const [disableChat, setDisableChat] = useState(Boolean(initial.disableChat))
+  // Lifecycle
+  const [projDelay, setProjDelay] = useState(String(initial.projectHardDeletionDelayDays ?? 90))
+  const [userDelay, setUserDelay] = useState(String(initial.userHardDeletionDelayDays ?? 90))
+  const [historyRestore, setHistoryRestore] = useState(Boolean(initial.historyRestore))
+  const [pdfCaching, setPdfCaching] = useState(initial.enablePdfCaching !== false)
+  // Limits
+  const [maxUpload, setMaxUpload] = useState(String(initial.maxUploadSizeMiB ?? 50))
+  const [maxEntities, setMaxEntities] = useState(String(initial.maxEntitiesPerProject ?? 2000))
+  // Compile
+  const [compiler, setCompiler] = useState(String(initial.defaultLatexCompiler ?? 'pdflatex'))
+
+  const submit = (): void => {
+    void save({
+      appName,
+      navHidePoweredBy: hidePoweredBy,
+      robotsNoindex: noindex,
+      allowPublicAccess: allowPublic,
+      allowAnonymousReadWriteSharing: anonRW,
+      disableLinkSharing: disableLink,
+      disableChat,
+      projectHardDeletionDelayDays: parseInt(projDelay, 10),
+      userHardDeletionDelayDays: parseInt(userDelay, 10),
+      historyRestore,
+      enablePdfCaching: pdfCaching,
+      maxUploadSizeMiB: parseInt(maxUpload, 10),
+      maxEntitiesPerProject: parseInt(maxEntities, 10),
+      defaultLatexCompiler: compiler,
+    })
+  }
+
+  return (
+    <Card title={t('adminSite.miscellaneous')} badge="misc">
+      <p className="text-muted">{t('adminSite.miscDesc')}</p>
+
+      <SectionTitle top>{t('adminSite.miscBranding')}</SectionTitle>
+      <Two a={<Field id="misc-app-name" label={t('adminSite.miscAppName')} value={appName} onChange={setAppName} placeholder="Overleaf (Community Edition)" hint={t('adminSite.restartHint')} />} />
+      <Two
+        a={<Switch id="misc-hide-pb" checked={hidePoweredBy} onChange={setHidePoweredBy} label={t('adminSite.miscHidePoweredBy')} />}
+        b={<Switch id="misc-noindex" checked={noindex} onChange={setNoindex} label={t('adminSite.miscNoindex')} />}
+      />
+
+      <SectionTitle>{t('adminSite.miscAccess')}</SectionTitle>
+      <Two
+        a={<Switch id="misc-public" checked={allowPublic} onChange={setAllowPublic} label={t('adminSite.miscAllowPublic')} />}
+        b={<Switch id="misc-anonrw" checked={anonRW} onChange={setAnonRW} label={t('adminSite.miscAnonRW')} />}
+      />
+      <Two
+        a={<Switch id="misc-nolink" checked={disableLink} onChange={setDisableLink} label={t('adminSite.miscDisableLinkSharing')} />}
+        b={<Switch id="misc-nochat" checked={disableChat} onChange={setDisableChat} label={t('adminSite.miscDisableChat')} />}
+      />
+
+      <SectionTitle>{t('adminSite.miscLifecycle')}</SectionTitle>
+      <Two
+        a={<Field id="misc-proj-delay" label={t('adminSite.miscProjDelay')} type="number" value={projDelay} onChange={setProjDelay} placeholder="90" hint={t('adminSite.miscDaysHint')} />}
+        b={<Field id="misc-user-delay" label={t('adminSite.miscUserDelay')} type="number" value={userDelay} onChange={setUserDelay} placeholder="90" hint={t('adminSite.miscDaysHint')} />}
+      />
+      <Two
+        a={<Switch id="misc-hist" checked={historyRestore} onChange={setHistoryRestore} label={t('adminSite.miscHistoryRestore')} />}
+        b={<Switch id="misc-pdfcache" checked={pdfCaching} onChange={setPdfCaching} label={t('adminSite.miscPdfCaching')} />}
+      />
+
+      <SectionTitle>{t('adminSite.miscLimits')}</SectionTitle>
+      <Two
+        a={<Field id="misc-maxupload" label={t('adminSite.miscMaxUpload')} type="number" value={maxUpload} onChange={setMaxUpload} placeholder="50" hint={t('adminSite.miscMibHint')} />}
+        b={<Field id="misc-maxentities" label={t('adminSite.miscMaxEntities')} type="number" value={maxEntities} onChange={setMaxEntities} placeholder="2000" />}
+      />
+
+      <SectionTitle>{t('adminSite.miscCompile')}</SectionTitle>
+      <Two a={<Field id="misc-compiler" label={t('adminSite.miscCompiler')} value={compiler} onChange={setCompiler} placeholder="pdflatex" hint={t('adminSite.restartHint')} />} />
+
+      <SaveFooter flash={flash} onSave={submit} note={t('adminSite.restartHint')} />
+    </Card>
+  )
+}

@@ -57,6 +57,7 @@ import {
   GithubSyncTab,
   EmailTab,
   LinkedFileTypesTab,
+  MiscTab,
   PandocTab
 } from './r9-settings-tabs'
 
@@ -103,6 +104,7 @@ type SiteSettings = {
     bindCredentialsSet?: boolean
     [key: string]: unknown
   }
+  misc: { [key: string]: unknown }
 }
 
 type Section =
@@ -110,6 +112,7 @@ type Section =
   | 'ssoSaml' | 'ssoOidc' | 'ssoLdap'
   | 'sandboxedCompiles' | 'gitIntegration' | 'githubSync'
   | 'email' | 'linkedFileTypes' | 'pandoc'
+  | 'misc'
 
 const SECTIONS: { id: Section; labelKey: string }[] = [
   { id: 'templates', labelKey: 'adminSite.templates' },
@@ -125,6 +128,7 @@ const SECTIONS: { id: Section; labelKey: string }[] = [
   { id: 'email', labelKey: 'adminSite.email' },
   { id: 'linkedFileTypes', labelKey: 'adminSite.linkedFileTypes' },
   { id: 'pandoc', labelKey: 'adminSite.pandoc' },
+  { id: 'misc', labelKey: 'adminSite.miscellaneous' },
 ]
 
 function useSectionSave(section: Section) {
@@ -347,6 +351,12 @@ export default function SiteSettingsPage() {
                         <PandocTab
                           key={`pd-${settings.pandoc?.enabled}`}
                           initial={settings.pandoc ?? { enabled: false, image: 'pandoc-ol:3.10.0.0' }}
+                        />
+                      )}
+                      {active === 'misc' && (
+                        <MiscTab
+                          key={`misc-${settings.misc?.appName}`}
+                          initial={settings.misc ?? {}}
                         />
                       )}
                     </div>

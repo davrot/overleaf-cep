@@ -6445,6 +6445,7 @@ __metadata:
     base-x: "npm:^4.0.1"
     basic-auth: "npm:^2.0.1"
     bcrypt: "npm:^6.0.0"
+    bibtex-tidy: "npm:1.14.0"
     body-parser: "npm:1.20.4"
     bootstrap: "npm:^5.3.7"
     bowser: "npm:^2.11.0"
@@ -12072,6 +12073,15 @@ __metadata:
     kleur: "npm:^4.1.4"
     log-update: "npm:^4.0.0"
   checksum: 10c0/3f731a58aa5d7483f0cce69bd62f9db0589c0f86e677669397a64ad56e85a307e340e9a957b19da51feab8ddb3082039b6bfa71fefd00a4b195a11420a8c9b03
+  languageName: node
+  linkType: hard
+
+"bibtex-tidy@npm:1.14.0":
+  version: 1.14.0
+  resolution: "bibtex-tidy@npm:1.14.0"
+  bin:
+    bibtex-tidy: bin/bibtex-tidy
+  checksum: 10c0/1cc516be73018904417f95a6b0e8307a2f9d5e99348a61a5175f2ebdefbc24417797b3185c2a038a8dfda1494e74b68b27239d9a7e7acf1e6aa124a569feb04c
   languageName: node
   linkType: hard
 

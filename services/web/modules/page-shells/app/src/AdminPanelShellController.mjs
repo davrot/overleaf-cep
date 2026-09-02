@@ -2,6 +2,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import logger from '@overleaf/logger'
 import AdminController from '../../../../app/src/Features/ServerAdmin/AdminController.mjs'
+import SessionManager from '../../../../app/src/Features/Authentication/SessionManager.mjs'
+import { User } from '../../../../app/src/models/User.mjs'
+import UserSettingsHelper from '../../../../app/src/Features/Project/UserSettingsHelper.mjs'
 import captureRender from './captureRender.mjs'
 
 /**
@@ -34,8 +37,19 @@ const AdminPanelShellController = {
 
       const { locals } = cap.ensureRendered()
       logger.debug({ reqId: req.id }, 'PSH rendering /admin/panel shell')
+      // N-2 structural rebuild (2026-09-01): the DS-nav shell chrome
+      // (shared DefaultNavbar + AccountMenuItems, same as the golden
+      // /admin/site) reads its theme from `ol-userSettings`.
+      const userId = SessionManager.getLoggedInUserId(req.session)
+      const user = await User.findById(userId, 'ace')
+      const userSettings = await UserSettingsHelper.buildUserSettings(
+        req,
+        res,
+        user
+      )
       res.render(adminPanelView, {
         ...locals,
+        userSettings,
         title: 'System Admin',
         // Shells identify themselves so stylesheets/logic can adjust:
         isAdminPanelShell: true,

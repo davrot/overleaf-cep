@@ -1,12 +1,53 @@
 extends ../../../../app/views/layout-react.pug
+//- PSH — /user/mysettings shell (N-2 STRUCTURAL REBUILD, 2026-09-01).
+//- Same architecture as admin-panel.pug — the exact /admin/site mirror
+//- (manage-site-react.pug + site-settings-page.tsx), WITHOUT the red admin
+//- gradient (user page): layout navbar suppressed, shared React DefaultNavbar
+//- INSIDE .user-ds-nav-page, the .user-list-sidebar-wrapper-react COLUMN wrapper
+//- around the sidebar (was missing — the left column), content column INSIDE
+//- .user-list-wrapper (was outside — content below the sidebar), shared React
+//- account menu in .ds-nav-sidebar-lower (the static one was dead on the React
+//- layout), footer + cookie banner in the golden's slots. The upstream
+//- `pages/user/settings` React app (#settings-page-root) is UNCHANGED.
 
 block entrypointVar
 	- entrypoint = 'pages/user/settings'
 
 block vars
 	- isWebsiteRedesign = true
+	// Golden parity (manage-site-react.pug): this page renders its own
+	// navbar / footer / cookie banner within the DS-nav page div.
+	- const suppressNavContentLinks = true
+	- const suppressNavbar = true
+	- const suppressFooter = true
+	- const suppressPugCookieBanner = true
 
 block append meta
+	// N-2 (2026-08-31, user re-report 2a): the whole page follows the SAME
+	// overall theme as /admin/site (ace.overallTheme) — one theme store for
+	// admin + user pages.
+	meta(name='ol-adminOverallTheme' content=(user && user.ace && user.ace.overallTheme) || '')
+	// N-2 structural rebuild (2026-09-01): the shared DS-nav chrome reads
+	// its theme from ol-userSettings (golden /admin/site pattern) and the
+	// theme toggle from ol-overallThemes (res local — same as the golden
+	// manage-users / manage-projects views).
+	meta(name='ol-userSettings' data-type='json' content=userSettings)
+	meta(name='ol-overallThemes' data-type='json' content=overallThemes)
+	script(type="text/javascript", nonce=scriptNonce).
+		(function () {
+		  function apply() {
+		    try {
+		      var el = document.querySelector('meta[name=ol-adminOverallTheme]');
+		      if (!el) return;
+		      var v = el.getAttribute('content') || '';
+		      var prefersDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+		      var dark = v === 'system' ? prefersDark : v !== 'light-';
+		      document.body.dataset.theme = dark ? 'default' : 'light';
+		    } catch (e) {}
+		  }
+		  if (document.body) apply();
+		  else document.addEventListener('DOMContentLoaded', apply);
+		})();
 	meta(name='ol-mySettingsShell' content='true')
 	meta(name='ol-hasPassword' data-type='boolean' content=hasPassword)
 	meta(
@@ -64,97 +105,52 @@ block append meta
 	meta(name='ol-capabilities' data-type='json' content=capabilities)
 
 block content
-	// R11 item 1 (2026-08-30): the same CE+ shell as /admin/site — page
-	// header + LEFT navigation (anchor links into the single-page settings
-	// scroll). The upstream settings React app is unmodified: its sections
-	// already expose stable anchors (#update-account-info, #password-change-
-	// form, #project-sync, #references, #linked-accounts; Sessions h3 has no
-	// id upstream → text-located), and the vanilla nav below only scrolls
-	// to them — no upstream file edits.
-	.my-settings-shell.user-ds-nav-page.website-redesign
-		.my-settings-body
-			h1.my-settings-title My settings
-			nav.my-settings-left(role='navigation' aria-label='Settings sections')
-				ul.my-settings-nav-list.list-unstyled(role='tablist')
-					li(role='presentation')
-						button.my-settings-nav-btn.active(type='button' data-target='#update-account-info') Update account info
-					li(role='presentation')
-						button.my-settings-nav-btn(type='button' data-target='#password-change-form') Update password
-					li(role='presentation')
-						button.my-settings-nav-btn(type='button' data-target='#project-sync') Project synchronisation
-					li(role='presentation')
-						button.my-settings-nav-btn(type='button' data-target='#references') Reference managers
-					li(role='presentation')
-						button.my-settings-nav-btn(type='button' data-target='#linked-accounts') Linked accounts
-					li(role='presentation')
-						button.my-settings-nav-btn(type='button' data-target-text='Sessions') Sessions
-			// R12-6 (2026-08-31): content styled as the /admin/site white admin card.
-			.my-settings-content.ce-admin-card
-			main#main-content.content.content-alt
-				#settings-page-root
-		script(type='text/javascript', nonce=scriptNonce).
-			(function () {
-			  function navBtns() {
-			    return Array.prototype.slice.call(document.querySelectorAll('.my-settings-nav-btn'))
-			  }
-			  function targetOf(btn) {
-			    var sel = btn.getAttribute('data-target') || ''
-			    if (sel) {
-			      var el = document.querySelector(sel)
-			      if (el) return el
-			    }
-			    var text = btn.getAttribute('data-target-text')
-			    if (text) {
-			      var hs = document.querySelectorAll('h3')
-			      for (var i = 0; i < hs.length; i += 1) {
-			        if ((hs[i].textContent || '').trim() === text) return hs[i]
-			      }
-			    }
-			    return null
-			  }
-			  function setActive(btn) {
-			    navBtns().forEach(function (b) {
-			      b.classList.toggle('active', b === btn)
-			    })
-			  }
-			  navBtns().forEach(function (btn) {
-			    btn.addEventListener('click', function () {
-			      var el = targetOf(btn)
-			      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-			      setActive(btn)
-			    })
-			  })
-			  // Active-section highlight once the settings app has rendered.
-			  function start() {
-			    var btns = navBtns()
-			    var els = btns.map(targetOf).filter(Boolean)
-			    if (!els.length) return false
-			    // Hide nav entries whose section is not rendered in this build
-			    // (e.g. project sync / reference managers / linked accounts are
-			    // SaaS-gated upstream and absent in community editions).
-			    navBtns().forEach(function (b) {
-			      if (!targetOf(b)) {
-			        var li = b.closest('li')
-			        if (li) li.style.display = 'none'
-			      }
-			    })
-			    if (!('IntersectionObserver' in window)) return true
-			    var map = new Map(els.map(function (el, i) { return [el, btns[i]] }))
-			    var io = new IntersectionObserver(function (entries) {
-			      var vis = entries
-			        .filter(function (e) { return e.isIntersecting })
-			        .sort(function (a, b) {
-			          return (a.target.compareDocumentPosition(b.target) & 2) ? 1 : -1
-			        })
-			      var btn = map.get(vis[0].target)
-			      if (btn) setActive(btn)
-			    }, { rootMargin: '0px 0px -55% 0px', threshold: 0 })
-			    els.forEach(function (el) { io.observe(el) })
-			    return true
-			  }
-			  var tries = 0
-			  var timer = setInterval(function () {
-			    tries += 1
-			    if (start() || tries > 40) clearInterval(timer)
-			  }, 250)
-			})()
+	ol-admin-shell-marker(style='display:none' data-shell='my-settings')
+	// N-2 (2026-09-01 structural rebuild): EXACT /admin/site tree:
+	// page div > shared React navbar mount + .user-list-wrapper >
+	// [sidebar COLUMN wrapper (nav + ds-nav-sidebar-lower with the shared
+	// React account menu + CE+), content-and-messages column (h1 +
+	// settings app + footer, cookie banner)]. Theme-aware in both themes.
+	.user-ds-nav-page.website-redesign.manage-extensions-page
+		// Shared React navbar (the SAME DefaultNavbar as /admin/site),
+		// mounted INSIDE the page div so the DS-nav CSS applies.
+		#my-settings-navbar-root
+		.user-list-wrapper
+			.user-list-sidebar-wrapper-react.d-none.d-md-flex.manage-extensions-sidebar
+				nav.flex-grow.flex-shrink(role='navigation' aria-label='Settings sections')
+					.user-list-sidebar-scroll
+						ul.list-unstyled.user-list-filters
+							li.dropdown-header My settings
+							li.my-settings-nav-item
+								button(type='button' data-target='#update-account-info') Update account info
+							li.my-settings-nav-item
+								button(type='button' data-target='#password-change-form') Update password
+							li.my-settings-nav-item
+								button(type='button' data-target='#project-sync') Project synchronisation
+							li.my-settings-nav-item
+								button(type='button' data-target='#references') Reference managers
+							li.my-settings-nav-item
+								button(type='button' data-target='#linked-accounts') Linked accounts
+							li.my-settings-nav-item
+								button(type='button' data-target-text='Sessions') Sessions
+				.ds-nav-sidebar-lower
+					nav.d-flex.flex-row.gap-3.mb-2(aria-label='Account and help')
+						// Shared React account menu (email, Account settings,
+						// Theme toggle, Log out) — same menu as /admin/site.
+						#my-settings-account-root
+					.ds-nav-ds-name(translate='no')
+						span CE+
+			.user-ds-nav-content-and-messages
+				.user-ds-nav-content
+					.user-ds-nav-main
+						main(aria-labelledby='main-content')
+							.user-list-header-row
+								h1#main-content.user-list-title.text-truncate.d-none.d-md-block(tabindex='-1') My settings
+							#settings-page-root
+					// Golden footer slot (inside the content column).
+					#my-settings-footer-root
+				// Golden cookie-banner slot.
+				#my-settings-cookie-root
+
+	each file in entrypointScripts('modules/page-shells/pages/my-settings-shell')
+		script(type='text/javascript' nonce=scriptNonce src=file)

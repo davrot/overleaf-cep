@@ -116,6 +116,33 @@ export async function hydrateEnvFromStoredSiteSettings() {
         PANDOC_IMAGE: pandoc.image || '',
       })
     }
+
+    const misc = await readStoredSection('misc')
+    if (misc) {
+      // Deletion delays are stored as DAYS in the admin UI; the env/settings
+      // value is MILLISECONDS. Pass undefined when unset so `apply` skips it.
+      const toMs = (days) =>
+        Number.isFinite(Number(days)) && Number(days) > 0
+          ? String(Math.round(Number(days) * 24 * 60 * 60 * 1000))
+          : undefined
+      apply('misc', {
+        APP_NAME: misc.appName || '',
+        NAV_HIDE_POWERED_BY: b(misc.navHidePoweredBy),
+        ROBOTS_NOINDEX: b(misc.robotsNoindex),
+        OVERLEAF_ALLOW_PUBLIC_ACCESS: b(misc.allowPublicAccess),
+        OVERLEAF_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING: b(misc.allowAnonymousReadWriteSharing),
+        OVERLEAF_DISABLE_LINK_SHARING: b(misc.disableLinkSharing),
+        OVERLEAF_DISABLE_CHAT: b(misc.disableChat),
+        OVERLEAF_PROJECT_HARD_DELETION_DELAY: toMs(misc.projectHardDeletionDelayDays),
+        OVERLEAF_USER_HARD_DELETION_DELAY: toMs(misc.userHardDeletionDelayDays),
+        OVERLEAF_HISTORY_RESTORE: b(misc.historyRestore),
+        ENABLE_PDF_CACHING: b(misc.enablePdfCaching),
+        MAX_UPLOAD_SIZE: misc.maxUploadSizeMiB ? String(misc.maxUploadSizeMiB) : '',
+        MAX_ENTITIES_PER_PROJECT: misc.maxEntitiesPerProject
+          ? String(misc.maxEntitiesPerProject) : '',
+        DEFAULT_LATEX_COMPILER: misc.defaultLatexCompiler || '',
+      })
+    }
   } catch (err) {
     // Boot must never fail because of optional stored settings.
     logger.warn({ err }, 'boot: stored site-settings env hydration failed (env defaults stand)')

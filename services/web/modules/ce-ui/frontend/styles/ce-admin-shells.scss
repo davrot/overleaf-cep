@@ -1,189 +1,107 @@
 // ---------------------------------------------------------------------------
-// CE fork — CE+ admin shells (UI round 11, items 1 + 11 + 14; 2026-08-30).
+// CE fork — CE+ admin shells (N-2 STRUCTURAL REBUILD, 2026-09-01).
 //
-// /admin/panel (item 11) and /user/mysettings (item 1) get the same shell
-// vocabulary as /admin/site: a page header + a LEFT navigation column that
-// drives the existing section panes (upstream tabset / upstream settings
-// React app) — implemented with the module-owned shell views
-// (modules/page-shells) + this stylesheet, WITHOUT editing upstream views.
-//
-// Both shells also host the Dark/Light/System theme selector (item 14) in
-// the /admin/site sidebar; its styling lives here too.
+// /admin/panel + /user/mysettings now emit the EXACT /admin/site DOM tree
+// (page div > in-page React navbar + .user-list-sidebar-wrapper-react
+// column + content column inside .user-list-wrapper), so the shared
+// themed styles (modules/admin-tools/frontend/styles/user-list-ds-nav.scss,
+// bundled globally) apply unmodified. This file only adds the pieces the
+// golden page gets from React components that we render as static markup:
+//   * the "Admin Panel" sidebar tab links (the golden uses <button>s, the
+//     panel keeps the upstream bookmarkable-tabset <a data-toggle=tab>),
+//   * the mysettings settings-nav buttons active-state parity.
+// The sidebar account menu (incl. Theme) is now the SHARED React
+// AccountMenuItems/ThemeToggle — styled by the global .theme-toggle*
+// rules; the previous static .theme-selector* styles are deleted.
+// All hard-coded white / forced dark surfaces are GONE — the pages
+// follow ace.overallTheme in both themes like /admin/site.
 // ---------------------------------------------------------------------------
+
 $shell-title: 1.75rem;
 
-// shared shell skeleton -----------------------------------------------------
-.admin-panel-shell,
-.my-settings-shell {
-  // R12-5/R12-8 (2026-08-31): no `min-height: 100vh` here — these shells sit
-  // INSIDE the DS page layout's fixed-height, scrolling #main-content; a 100vh
-  // min-height made the left nav column run out of the displayable region.
-  background: var(--bg-primary-themed, #fff);
-
-  .admin-panel-title,
-  .my-settings-title {
-    font-size: $shell-title;
-    font-weight: 600;
-    margin: 1.5rem 0 0.25rem;
-    color: var(--content-primary-themed);
-  }
-
-  .admin-panel-intro {
+// /admin/panel — sidebar tab links (upstream bookmarkable tabset markup:
+// `li > a.nav-link`) styled like the golden sidebar buttons.
+.user-ds-nav-page {
+  // Themed surface behind the right-hand content column. The golden
+  // /admin/site paints its content area with the page theme's primary
+  // background; the shell markup leaves `.user-ds-nav-content` transparent,
+  // which let the white body show through in dark mode — read as "not
+  // theme-aware". Both shell pages (they are the ONLY consumers of these
+  // classes) are covered here.
+  .user-ds-nav-content {
+    background-color: var(--ds-nav-bg-color);
     color: var(--content-secondary-themed);
-    max-width: 46rem;
-    margin-bottom: 1rem;
   }
 
-  .admin-panel-body,
-  .my-settings-body {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.5rem;
-    padding-bottom: 2.5rem;
-  }
-
-  .admin-panel-left,
-  .my-settings-left {
-    flex: 0 0 240px;
-    max-width: 240px;
-    padding-top: 0.25rem;
-
-    .list-unstyled { padding: 0; }
-    li { margin-bottom: 2px; }
-  }
-
-  .admin-panel-nav-list a.nav-link,
-  .my-settings-nav-btn {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 0.6rem 0.9rem;
-    border: 0;
-    background: transparent;
-    border-radius: 0.5rem;
-    color: var(--content-secondary-themed);
-    font-size: 0.95rem;
-    line-height: 1.3;
-    cursor: pointer;
-
-    &:hover {
-      background: var(--bg-tertiary-themed);
-      color: var(--content-primary-themed);
-      text-decoration: none;
+  .user-list-filters > li.admin-panel-nav-item {
+    > a.nav-link {
+      display: block;
+      width: 100%;
+      text-align: left;
+      color: var(--ds-nav-color);
+      background: none;
+      border-radius: var(--border-radius-medium);
+      border: none;
+      padding: var(--spacing-04) var(--spacing-05);
+      font-size: 0.95rem;
     }
 
-    &.active {
-      background: var(--bg-tertiary-themed);
-      color: var(--content-primary-themed);
-      font-weight: 600;
+    &:hover > a.nav-link {
+      background-color: var(--ds-nav-hover-bg);
+    }
+
+    &.active > a.nav-link {
+      background-color: var(--ds-nav-active-bg);
+      color: var(--ds-nav-active-color);
+      font-weight: bold;
     }
   }
 
-  .admin-panel-content,
-  .my-settings-content {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
+  // /user/mysettings — the upstream settings React app renders its own
+// <h1>Account settings</h1> inside the content card; the shell's h1
+// ("My settings") is the column header, so the app-level duplicate is
+// hidden. `#settings-page-root` only exists on this shell, so the rule
+// is page-scoped and safe.
+#settings-page-root .page-content-card > .page-header {
+  display: none !important;
+}
 
-  // R12-6 (2026-08-31): /user/mysettings mirrors /admin/site — the content
-  // column is a white admin card like the site-settings panes.
-  .my-settings-content.ce-admin-card {
-    border-left: 1px solid var(--border-divider-themed);
-    border-radius: 0.5rem;
-    padding: 1.5rem;
+// (N-2 round 3, 2026-09-01: the `.my-settings-nav-item` overlay is GONE —
+// the sidebar now uses the exact golden markup `ul.user-list-filters >
+// li.active > button` and the shared DS-nav stylesheet provides all the
+// styling, exactly like /admin/site.)
 
-    .form-control,
-    .form-select {
-      color: rgb(27, 34, 44);
-    }
-
-    .form-label,
-    label.form-label,
-    legend {
-      color: rgb(27, 34, 44);
-    }
-  }
-
-  // R12-8: keep the panel nav buttons visible in both themes (the card text
-  // pin above only targets the mysettings card).
-  .admin-panel-content {
-    border-left: 1px solid var(--border-divider-themed);
-    padding-left: 1.5rem;
+  // Right-column header row (h1 "Admin Panel" / "My settings").
+  .user-list-header-row {
+    margin-bottom: var(--spacing-06);
   }
 }
 
-// keep the upstream tabset panes looking like the CE+ admin cards (item 11)
-.admin-panel-shell .tab-content {
-  .form-control,
-  .form-label,
-  label.form-label {
-    color: var(--content-primary-themed);
-  }
-
-  label.form-label,
-  .form-label {
-    color: var(--content-secondary-themed);
-  }
-
+// The tab panes on /admin/panel stay plain themed content (no forced white
+// cards — the surface is the themed .user-ds-nav-content column, exactly
+// like the /admin/site panes).
+#admin-panel-tabs {
   .tab-pane {
-    padding-top: 0.25rem;
+    .form-label,
+    label.form-label {
+      color: var(--content-primary-themed);
+    }
+
+    .form-control {
+      color: var(--content-primary, rgb(27, 34, 44));
+    }
+
+    .row-spaced {
+      margin-bottom: var(--spacing-07);
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Item 14 — theme selector (Dark / Light / System), shown in the /admin/site
-// sidebar (ManageSidebar) and available to the other admin shells.
+// Sidebar Theme control (N-2 structural rebuild, 2026-09-01):
+// the static .theme-selector* markup + styles are DELETED — both shells
+// now use the shared React AccountMenuItems ThemeToggle (`.theme-toggle*
+// classes), styled by the global DS-nav stylesheet exactly like on
+// /admin/site. (The static radios were dead markup on the React layout: no
+// bootstrap JS to open the dropdown, and a second, unshared theme UI.)
 // ---------------------------------------------------------------------------
-.theme-selector {
-  border: 0;
-  padding: 0 0.75rem 0.5rem;
-  margin: 0;
-
-  legend {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--content-secondary-themed);
-    margin-bottom: 0.35rem;
-  }
-}
-
-.theme-selector-radios {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.theme-selector-radio {
-  position: relative;
-  width: 40px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border-divider-themed);
-  color: var(--content-secondary-themed);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--bg-tertiary-themed);
-    color: var(--content-primary-themed);
-  }
-
-  .material-icon { pointer-events: none; }
-
-  input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    margin: 0;
-    cursor: pointer;
-  }
-}
-
-.theme-selector-radios .theme-selector-radio:has(input:checked),
-.theme-selector-radios .theme-selector-radio:has(input:focus-visible) {
-  border-color: rgb(0, 107, 255);
-  color: rgb(0, 107, 255);
-  background: var(--bg-tertiary-themed);
-}

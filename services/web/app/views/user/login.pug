@@ -5,6 +5,8 @@ block vars
 	// R9 item 8 (2026-08-29, davrot/overleaf-cep@6a0aaaba login.pug): suppress
 	// the right-side navbar block on the login page (no account/admin tabs
 	// are meaningful signed-out — keeps the navbar clean).
+	// 2026-09-01 (user decision): brand-only header in EVERY session state —
+	// /login and /register are not visited by logged-in users anyway.
 	- suppressNavbarRight = true
 
 block content

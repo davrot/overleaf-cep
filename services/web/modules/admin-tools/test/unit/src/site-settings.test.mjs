@@ -21,6 +21,7 @@ const {
   validateEmailSection,
   validateLinkedFileTypesSection,
   validatePandocSection,
+  validateMiscSection,
   getSection,
 } = await import('../../../../../app/src/Features/SiteSettings/SiteSettingsManager.mjs')
 const {
@@ -165,6 +166,7 @@ describe('SiteSettings', () => {
         'git-integration',
         'github-sync',
         'linked-file-types',
+        'misc',
         'pandoc',
         'sandboxed-compiles',
         'signup',
@@ -270,6 +272,36 @@ describe('SiteSettings', () => {
     it('pandoc: image required when enabled', () => {
       expect(validatePandocSection({ enabled: true, image: 'pandoc-ol:3.1.0' })).to.deep.equal([])
       expect(validatePandocSection({ enabled: true, image: '' }).length).to.be.greaterThan(0)
+    })
+
+    it('misc: booleans/ints/strings validated (2026-09-01)', () => {
+      // valid
+      expect(validateMiscSection({
+        appName: 'My Lab',
+        navHidePoweredBy: true,
+        robotsNoindex: false,
+        allowPublicAccess: true,
+        allowAnonymousReadWriteSharing: false,
+        disableLinkSharing: true,
+        disableChat: false,
+        projectHardDeletionDelayDays: 30,
+        userHardDeletionDelayDays: 90,
+        historyRestore: true,
+        enablePdfCaching: false,
+        maxUploadSizeMiB: 100,
+        maxEntitiesPerProject: 5000,
+        defaultLatexCompiler: 'pdflatex',
+      })).to.deep.equal([])
+      // non-boolean boolean field
+      expect(validateMiscSection({ disableChat: 'yes' }).length).to.be.greaterThan(0)
+      // non-integer / sub-minimum ints
+      expect(validateMiscSection({ maxUploadSizeMiB: 0 }).length).to.be.greaterThan(0)
+      expect(validateMiscSection({ userHardDeletionDelayDays: 1.5 }).length).to.be.greaterThan(0)
+      // bad appName / compiler
+      expect(validateMiscSection({ appName: '' }).length).to.be.greaterThan(0)
+      expect(validateMiscSection({ defaultLatexCompiler: 'pd flatex!' }).length).to.be.greaterThan(0)
+      // unknown keys are allowed by the validator (allow-listed by
+      // cleanSectionInput) — the validator only checks known field types.
     })
 
     it('masks github-sync and email secrets (empty-keeps handled by setSection)', () => {
@@ -407,6 +439,49 @@ describe('SiteSettings', () => {
       expect(section.blockedNetworks).to.include('127.0.0.0/8')
       expect(section.blockedNetworks).to.include('10.0.0.0/8')
       capture()
+    })
+
+    it('seeds misc from env + falls back to defaults', async () => {
+      const MKEYS = [
+        'APP_NAME', 'NAV_HIDE_POWERED_BY', 'ROBOTS_NOINDEX',
+        'OVERLEAF_ALLOW_PUBLIC_ACCESS',
+        'OVERLEAF_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING',
+        'OVERLEAF_DISABLE_LINK_SHARING', 'OVERLEAF_DISABLE_CHAT',
+        'OVERLEAF_PROJECT_HARD_DELETION_DELAY', 'OVERLEAF_USER_HARD_DELETION_DELAY',
+        'OVERLEAF_HISTORY_RESTORE', 'ENABLE_PDF_CACHING',
+        'MAX_UPLOAD_SIZE', 'MAX_ENTITIES_PER_PROJECT', 'DEFAULT_LATEX_COMPILER',
+      ]
+      for (const k of MKEYS) delete process.env[k]
+
+      // defaults with nothing in env
+      const dflt = await getSection('misc')
+      expect(dflt.navHidePoweredBy).to.equal(false)
+      expect(dflt.enablePdfCaching).to.equal(true)
+      expect(dflt.maxUploadSizeMiB).to.equal(50)
+      expect(dflt.maxEntitiesPerProject).to.equal(2000)
+      expect(dflt.defaultLatexCompiler).to.equal('pdflatex')
+      // defaults are 90 days
+      expect(dflt.projectHardDeletionDelayDays).to.equal(90)
+      expect(dflt.userHardDeletionDelayDays).to.equal(90)
+
+      // env wins
+      process.env.APP_NAME = 'My Lab'
+      process.env.NAV_HIDE_POWERED_BY = 'true'
+      process.env.ROBOTS_NOINDEX = 'true'
+      process.env.MAX_UPLOAD_SIZE = '200'
+      process.env.MAX_ENTITIES_PER_PROJECT = '4000'
+      process.env.DEFAULT_LATEX_COMPILER = 'lualatexmk'
+      process.env.OVERLEAF_PROJECT_HARD_DELETION_DELAY = String(30 * 24 * 60 * 60 * 1000)
+      const e = await getSection('misc')
+      expect(e.appName).to.equal('My Lab')
+      expect(e.navHidePoweredBy).to.equal(true)
+      expect(e.robotsNoindex).to.equal(true)
+      expect(e.maxUploadSizeMiB).to.equal(200)
+      expect(e.maxEntitiesPerProject).to.equal(4000)
+      expect(e.defaultLatexCompiler).to.equal('lualatexmk')
+      expect(e.projectHardDeletionDelayDays).to.equal(30)
+
+      for (const k of MKEYS) delete process.env[k]
     })
   })
 

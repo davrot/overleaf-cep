@@ -24,19 +24,34 @@ describe('PSH view mirrors', () => {
     const upstream = read(resolve(repoApp, 'views/admin/index.pug'))
     const shell = read(resolve(moduleDir, 'app/views/admin-panel.pug'))
 
-    // Same tab set
-    for (const id of ['system-messages', 'active-projects', 'open-sockets', 'open-close-editor', 'privileges-matrix', 'tpds', 'debug-projects']) {
+    // Same tab set. R12-9 (2026-08-31, user-requested) intentionally
+    // removed the four empty husk tabs (open-sockets, privileges-matrix,
+    // tpds, debug-projects) from the fork's /admin/panel shell, so the
+    // parity check covers the remaining functional tabs only — the
+    // upstream admin/index.pug still contains all seven.
+    for (const id of ['system-messages', 'active-projects', 'open-close-editor']) {
       expect(shell).toContain(`'${id}'`)
+      expect(upstream).toContain(`'${id}'`)
     }
-    // Same upstream endpoints
-    for (const action of ['/admin/messages', '/admin/messages/clear', '/admin/closeEditor', '/admin/disconnectAllUsers', '/admin/openEditor', '/admin/flushProjectToTpds', '/admin/pollDropboxForUser']) {
+    // Same upstream endpoints (the two TPDS/Dropbox endpoints are only
+    // asserted on the upstream side — the removed husk tabs don't exist in
+    // the fork shell by design).
+    for (const action of ['/admin/messages', '/admin/messages/clear', '/admin/closeEditor', '/admin/disconnectAllUsers', '/admin/openEditor']) {
       expect(shell).toContain(`action='${action}'`)
       expect(upstream).toContain(`action='${action}'`)
     }
+    expect(upstream).toContain(`action='/admin/flushProjectToTpds'`)
+    expect(upstream).toContain(`action='/admin/pollDropboxForUser'`)
     // Reuses the upstream pieces
     expect(shell).toContain('bookmarkable_tabset')
     expect(shell).toContain('active-projects.pug')
-    expect(shell).toContain('layout-marketing')
+    expect(shell).toContain('layout-react')
+    // N-2 structural rebuild (2026-09-01): the DS-nav chrome mounts must
+    // exist so the shared React navbar/account menu can mount INSIDE the
+    // page div (golden /admin/site parity).
+    expect(shell).toContain('#admin-panel-navbar-root')
+    expect(shell).toContain('#admin-panel-account-root')
+    expect(shell).toContain('user-list-sidebar-wrapper-react')
     // Theme parity with /admin (meta + script present in upstream)
     const themeScriptUpstream = /meta\(name='ol-adminOverallTheme'/
     expect(upstream).toMatch(themeScriptUpstream)
