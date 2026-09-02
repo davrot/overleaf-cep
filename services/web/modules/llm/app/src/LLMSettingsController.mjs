@@ -707,6 +707,41 @@ async function saveGrammarSettings(req, res) {
         })
     }
 
+    // overleaf-lab (audit 2026-09-01): same hardening as saveSelectedModel —
+    // a malformed model reference here would silently break LLM grammar mode
+    // for the user (resolveLane can't resolve it). Only accept a well-formed
+    // reference (or the empty string = explicit reset). Language codes are
+    // short: cap them so the user doc stays lean.
+    const MODEL_REF_RE = /^[A-Za-z0-9._\-/]+(:[A-Za-z0-9._\-/]+){0,2}$/
+    if (llmModel !== undefined && llmModel !== null && llmModel !== '') {
+        if (typeof llmModel !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid model reference'
+            })
+        }
+        const modelTrimmed = llmModel.trim()
+        if (
+            modelTrimmed.length > 500 ||
+            !MODEL_REF_RE.test(modelTrimmed)
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid model reference'
+            })
+        }
+    }
+    if (
+        body.language !== undefined &&
+        body.language !== null &&
+        (typeof body.language !== 'string' || body.language.length > 64)
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid language'
+        })
+    }
+
     let user = null
     try {
         user = await User.findOne({ _id: userId }).lean()
@@ -746,10 +781,13 @@ async function saveGrammarSettings(req, res) {
     const effectiveMode = degradeGrammarMode(nextMode, available)
 
     // Always write ALL keys (the subdocument is strict; keep the stored shape
-    // stable for readers that select individual fields).
+    // stable for readers that select individual fields). null llmModel =
+    // explicit reset (matches saveSelectedModel semantics).
     const grammar = {
         mode: nextMode,
-        llmModel: typeof llmModel === 'string' ? llmModel : (stored.llmModel || ''),
+        llmModel: llmModel === null || llmModel === ''
+            ? ''
+            : (typeof llmModel === 'string' ? llmModel.trim() : (stored.llmModel || '')),
         language: (typeof language === 'string' && language) || (stored.language || 'auto'),
         blockedRules
     }

@@ -225,6 +225,51 @@ describe('POST /user/llm-settings/grammar', () => {
     expect(state.updateOneCalls.length).toBe(0)
   })
 
+  it('rejects malformed model references and oversized languages (audit 2026-09-01)', async () => {
+    await writeAdmin({})
+    state.user = makeUser()
+
+    req.body = { llmModel: 'bad ref! with spaces' }
+    let res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(res.statusCode).toBe(400)
+
+    state.updateOneCalls = []
+    req.body = { llmModel: 'a'.repeat(501) }
+    res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(res.statusCode).toBe(400)
+
+    state.updateOneCalls = []
+    req.body = { language: 'x'.repeat(100) }
+    res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(res.statusCode).toBe(400)
+
+    expect(state.updateOneCalls.length).toBe(0)
+  })
+
+  it('accepts well-formed site + BYO model references and trims them', async () => {
+    await writeAdmin({
+      llmApiUrl: 'http://llm/v1',
+      llmApiKey: 'key',
+    })
+    state.user = makeUser()
+
+    req.body = { llmModel: 'gpt-4o' }
+    let res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(state.updateOneCalls[0].update.$set.grammar.llmModel).toBe('gpt-4o')
+
+    state.updateOneCalls = []
+    req.body = { llmModel: ' u:deadbeef0011223344556677:claude-3 ' }
+    res = new FakeRes()
+    await LLMSettingsController.saveGrammarSettings(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(state.updateOneCalls[0].update.$set.grammar.llmModel).toBe('u:deadbeef0011223344556677:claude-3')
+  })
+
   it('degrades an infeasible mode on save and reports the degradation', async () => {
     await writeAdmin({
       llmDisabledByAdmin: true,

@@ -16,6 +16,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
+import { degradeGrammarMode } from './utils/grammar-helpers'
 import getMeta from '@/utils/meta'
 import OLButton from '@/shared/components/ol/ol-button'
 import OLFormGroup from '@/shared/components/ol/ol-form-group'
@@ -167,7 +168,7 @@ export default function GrammarSettingsSection() {
         return options
     }, [availability.ltAvailable, availability.llmAvailableForUser])
 
-    const degraded = storedMode !== mode
+    const degraded = degradeGrammarMode(storedMode, availability) !== storedMode
 
     const addBlockedRule = () => {
         const id = newRule.trim().slice(0, 120)
@@ -189,7 +190,11 @@ export default function GrammarSettingsSection() {
     }
 
     const handleModeChange = (value: GrammarMode) => {
-        setMode(value)
+        // The radio binds the STORED preference; the effective mode (after
+        // availability degradation) is derived, so a degraded preference stays
+        // saved and "un-degrades" when the engine comes back.
+        setStoredMode(value)
+        setMode(degradeGrammarMode(value, availability))
     }
 
     const handleSave = async () => {
@@ -199,22 +204,27 @@ export default function GrammarSettingsSection() {
         try {
             const response = await postJSON<{
                 success: boolean
+                mode?: GrammarMode
                 effectiveMode?: GrammarMode
                 blockedRules?: string[]
             }>('/user/llm-settings/grammar', {
-                body: { mode, llmModel, language, blockedRules },
+                // Send the stored preference (radio value), never the derived
+                // effective mode — the server degrades for the response.
+                body: { mode: storedMode, llmModel, language, blockedRules },
             })
-            const nextMode =
-                response.effectiveMode ?? mode
-            setMode(nextMode)
-            setStoredMode(nextMode)
-            if (Array.isArray(response.blockedRules)) {
-                setBlockedRules(response.blockedRules)
-            }
+            const savedMode = response.mode ?? storedMode
+            setStoredMode(savedMode)
+            setMode(response.effectiveMode ?? degradeGrammarMode(savedMode, availability))
+            const nextBlocked = Array.isArray(response.blockedRules)
+                ? response.blockedRules
+                : blockedRules
+            setBlockedRules(nextBlocked)
             setSaved(true)
             // Tell the editor extension (if the user has an editor open in
             // another tab — and always, so the extension can resync).
-            announceChange(nextMode, llmModel, language, blockedRules)
+            // NOTE: use the post-save values — React state above is not yet
+            // recomputed in this closure.
+            announceChange(savedMode, llmModel, language, nextBlocked)
             setTimeout(() => setSaved(false), 4000)
         } catch (err) {
             setSaveError(
@@ -277,7 +287,7 @@ export default function GrammarSettingsSection() {
                                 name="grammar-mode"
                                 id={`grammar-mode-${option.value}`}
                                 value={option.value}
-                                checked={mode === option.value}
+                                checked={storedMode === option.value}
                                 onChange={() =>
                                     handleModeChange(option.value)
                                 }
